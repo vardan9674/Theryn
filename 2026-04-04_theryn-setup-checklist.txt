@@ -1,0 +1,255 @@
+
+THERYN
+Project Setup & Build Checklist
+Personal gym & body tracking  |  iOS + Android + Web
+Supabase
+Backend + Auth
+Capacitor
+iOS / Android
+Vercel
+Web hosting
+Claude API
+AI parsing
+
+PHASE 1  Foundation  —  Supabase + Auth
+▸ Week 1–2  |  Get the database and auth running
+SUPABASE PROJECT SETUP
+☐  Create Supabase project (theryn)
+☐  Set project region (us-east-1 for Denver proximity)
+☐  Copy project URL + anon key to .env
+☐  Install Supabase CLI locally
+☐  Run supabase link --project-ref
+DATABASE SCHEMA
+☐  Create profiles table
+☐  Create public_exercises table (seed library)
+☐  Create user_exercises table (custom)
+☐  Create routines table
+☐  Create routine_days table
+☐  Create routine_exercises table
+☐  Create workout_sessions table
+☐  Create workout_sets table
+☐  Create body_weights table
+☐  Create body_measurements table
+☐  Create personal_records table
+☐  Create coaching_relationships table
+☐  Create ai_imports table
+☐  Create coach_activity_log table
+INDEXES & VIEWS
+☐  Add idx_workout_sets_exercise_session index
+☐  Add idx_workout_sessions_user_date index
+☐  Create search_exercises() Postgres function
+☐  Create get_last_set_values() Postgres function
+☐  Create weekly_volume view
+☐  Create best_lifts view
+ROW-LEVEL SECURITY
+☐  Enable RLS on all tables
+☐  Create is_coach_of() helper function
+☐  Add RLS policies for profiles
+☐  Add RLS policies for exercises (public + user)
+☐  Add RLS policies for routines + routine_days + routine_exercises
+☐  Add RLS policies for workout_sessions + workout_sets
+☐  Add RLS policies for body_weights + body_measurements
+☐  Add RLS policies for personal_records
+☐  Add RLS policies for coaching_relationships
+☐  Add RLS policies for ai_imports
+☐  Test: user A cannot see user B data
+SEED DATA
+☐  Seed ~300 public exercises (chest, back, shoulders, legs, arms, core, cardio)
+☐  Verify search_exercises returns results for common queries
+GOOGLE OAUTH
+☐  Create Google Cloud project (theryn)
+☐  Enable Google OAuth consent screen
+☐  Create OAuth 2.0 client ID (Web)
+☐  Add authorized redirect URIs for Supabase
+☐  Create OAuth 2.0 client ID (iOS)
+☐  Create OAuth 2.0 client ID (Android)
+☐  Configure Google provider in Supabase Auth dashboard
+☐  Test: sign in with Google on web
+FRONTEND: SUPABASE INTEGRATION
+☐  Install @supabase/supabase-js in React app
+☐  Create lib/supabase.ts client init
+☐  Create useAuth hook (signIn, signOut, onAuthStateChange)
+☐  Build login screen (Google sign-in button, Theryn branding)
+☐  Add auth guard: redirect to login if no session
+☐  Create auto-profile on first sign-in (DB trigger or app logic)
+
+PHASE 2  Data Layer  —  Wire App to Supabase
+▸ Week 2–3  |  Replace useState with real database calls
+HOOKS: READ/WRITE DATA
+☐  Create useRoutine hook (CRUD for routine template)
+☐  Create useWorkouts hook (CRUD for sessions + sets)
+☐  Create useBody hook (weight + measurements CRUD)
+☐  Create useExerciseSearch hook (autocomplete)
+☐  Create usePRs hook (personal records)
+☐  Create useProgress hook (weekly volume + best lifts)
+☐  Create useGhostValues hook (last set memory)
+LAST SET MEMORY (GHOST VALUES)
+☐  Fetch ghost values on workout start (single RPC call)
+☐  Display ghost values as placeholder text in set inputs
+☐  Show ghost reference row above each set (10px, SB color)
+☐  Tap check with empty inputs = auto-fill ghost values
+☐  Tap check with partial input = merge with ghost
+☐  Show ↑/↓ delta indicators after logging
+☐  Auto-collapse completed exercise, expand next
+☐  Tap completed check again = un-complete (re-edit)
+OFFLINE-FIRST CACHING
+☐  Install @capacitor/preferences for local storage
+☐  Write current session to local state first, then sync
+☐  Create sync queue for failed background writes
+☐  Batch upsert on Finish Workout as safety net
+☐  Load ghost values from cache if offline
+☐  Test: log full workout with airplane mode on
+PR DETECTION
+☐  Create checkIfPR() function (compare against personal_records)
+☐  Auto-flag is_pr on workout_sets when new record
+☐  Trigger haptic feedback on PR (Haptics.impact Heavy)
+☐  Show PR toast notification with exercise name + value
+☐  Auto-update personal_records table
+
+PHASE 3  Mobile  —  Capacitor for iOS + Android
+▸ Week 3  |  Wrap the web app as native mobile apps
+CAPACITOR SETUP
+☐  Install @capacitor/core + @capacitor/cli
+☐  Run npx cap init "Theryn" "com.theryn.app"
+☐  Create capacitor.config.ts
+☐  Set StatusBar style to DARK, bg #080808
+☐  Add Supabase + Google domains to allowNavigation
+IOS
+☐  Install @capacitor/ios
+☐  Run npx cap add ios
+☐  Open Xcode: npx cap open ios
+☐  Set bundle ID: com.theryn.app
+☐  Configure Google Sign-In URL scheme in Info.plist
+☐  Test OAuth flow on iOS simulator
+☐  Test full workout logging flow on device
+☐  Configure app icon (1024x1024, dark bg + lime T)
+☐  Configure launch screen (dark bg)
+ANDROID
+☐  Install @capacitor/android
+☐  Run npx cap add android
+☐  Open Android Studio: npx cap open android
+☐  Set package name: com.theryn.app
+☐  Add Google Sign-In SHA-1 fingerprint
+☐  Test OAuth flow on Android emulator
+☐  Test full workout logging flow on device
+☐  Configure adaptive icon
+NATIVE PLUGINS
+☐  Install @capacitor/haptics (set completion feedback)
+☐  Install @capacitor/preferences (offline cache)
+☐  Install @capacitor/status-bar
+☐  Install @capacitor/keyboard (auto-dismiss behavior)
+☐  Test haptic feedback on PR detection
+PWA (WEB)
+☐  Install vite-plugin-pwa
+☐  Configure service worker for offline support
+☐  Add manifest.json (name, icons, theme_color: #080808)
+☐  Test: install PWA on mobile Chrome
+
+PHASE 4  AI Import  —  Paste & Parse Workouts
+▸ Week 4  |  Let users paste AI gym prompts and import exercises
+EDGE FUNCTION: PARSE-WORKOUT
+☐  Create supabase/functions/parse-workout/index.ts
+☐  Add ANTHROPIC_API_KEY to Supabase secrets
+☐  Write Claude prompt for structured exercise JSON output
+☐  Handle error case: pasted text is not a workout
+☐  Deploy: supabase functions deploy parse-workout
+☐  Test with ChatGPT workout output
+☐  Test with Claude workout output
+☐  Test with Gemini workout output
+☐  Test with random non-workout text (graceful error)
+FRONTEND: IMPORT UI
+☐  Create useAIImport hook
+☐  Add "Import from AI" button on Routine tab (paste icon)
+☐  Build paste input (full-width textarea, S2 background)
+☐  Show loading state while Edge Function runs
+☐  Build diff/preview view:
+☐  Current routine (greyed out, left side)
+☐  Suggested changes (highlighted in lime, right side)
+☐  Per-exercise keep/remove toggles
+☐  Summary of what will change
+☐  "Apply Changes" button (btnPrim)
+☐  "Cancel" button (btnGhost)
+☐  Store pre-import snapshot in ai_imports table
+REVERT FLOW
+☐  "Undo Import" button visible for 24h after import
+☐  Fetch previous_state from ai_imports on revert
+☐  Restore routine from snapshot
+☐  Update ai_imports status to "reverted"
+☐  Test: import → verify → revert → verify original restored
+
+PHASE 5  Coach Access  —  Remote Training
+▸ Week 5  |  Let athletes invite coaches to view/edit their training
+BACKEND
+☐  coaching_relationships table already created (Phase 1)
+☐  is_coach_of() function already created (Phase 1)
+☐  Create send-coach-invite Edge Function (email notification)
+☐  Test: coach RLS - can read client workout data
+☐  Test: coach RLS - can edit routine with edit_routine permission
+☐  Test: coach RLS - cannot delete client data
+☐  Test: revoked coach cannot access anything
+FRONTEND: ATHLETE SIDE
+☐  Add "My Coach" section to Settings screen
+☐  Build invite coach form (email input + permission picker)
+☐  Show active coach with permission level badge
+☐  "Revoke Access" button with confirmation
+☐  Show coach activity log (what they changed and when)
+FRONTEND: COACH SIDE
+☐  Build context switcher (top bar dropdown)
+☐  Show client list when coach has active relationships
+☐  Load client data using same components (RLS handles scoping)
+☐  Show permission badges (CAN EDIT / VIEW ONLY)
+☐  Show lock indicators on restricted sections
+☐  Purple accent ring on coach-edited cards
+☐  Timestamp on coach edits (with timezone)
+☐  Test: USA athlete + India coach cross-timezone flow
+
+PHASE 6  Polish & Launch
+▸ Week 6  |  Test everything, submit to stores, go live
+TESTING
+☐  End-to-end: sign up → create routine → log workout → view progress
+☐  End-to-end: body weight logging + measurement tracking
+☐  End-to-end: AI import → diff → apply → revert
+☐  End-to-end: invite coach → accept → edit → revoke
+☐  Test ghost values across multiple sessions
+☐  Test PR detection across multiple exercises
+☐  Test offline logging + sync on reconnect
+☐  Test on iPhone SE (smallest screen)
+☐  Test on iPad (should still be 390px centered)
+☐  Test on Android (various screen sizes)
+☐  Test on Chrome, Safari, Firefox (web)
+PERFORMANCE
+☐  Audit: workout start loads in < 1 second
+☐  Audit: set completion UI updates in < 100ms
+☐  Audit: exercise search responds in < 200ms
+☐  Add lazy loading for Progress charts (Recharts)
+☐  Verify Supabase query plans (no full table scans)
+APP STORE: IOS
+☐  Create App Store Connect listing
+☐  App name: Theryn
+☐  Description + keywords
+☐  Screenshots (6.7", 6.5", 5.5")
+☐  Privacy policy URL
+☐  App icon (1024x1024)
+☐  Submit to TestFlight for beta testing
+☐  Submit for App Store review
+APP STORE: ANDROID
+☐  Create Google Play Console listing
+☐  App name: Theryn
+☐  Store listing + screenshots
+☐  Generate signed APK/AAB
+☐  Submit to internal testing track
+☐  Submit for Play Store review
+WEB DEPLOY
+☐  Connect GitHub repo to Vercel
+☐  Set environment variables in Vercel
+☐  Configure custom domain (theryn.app or similar)
+☐  Verify PWA install works
+☐  Set up Vercel analytics (free tier)
+CI/CD
+☐  Create .github/workflows/deploy.yml
+☐  Auto-build web on push to main → Vercel
+☐  Auto-run npx cap sync on push
+☐  Auto-generate TypeScript types from schema
+
+Total tasks: 148  |  6 phases  |  ~6 weeks
+Check off tasks as you complete them. Items marked with ▸ are notes/context.

@@ -1,0 +1,99 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   THERYN — Global Styles
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset & Box Model ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif;
+  background: #080808;
+  color: #F0F0F0;
+  overflow-x: hidden;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+}
+
+/* Prevent iOS from zooming on input focus (font-size must be ≥16px) */
+input, select, textarea {
+  font-size: 16px;
+  font-family: inherit;
+}
+
+/* Remove iOS tap highlight */
+button, a, input, textarea, select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Responsive App Shell ───────────────────────────────────────────── */
+#root {
+  max-width: 430px;
+  width: 100%;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  position: relative;
+}
+
+/* ── Input Focus Highlights ─────────────────────────────────────────── */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #C8FF00 !important;
+  box-shadow: 0 0 0 2px rgba(200, 255, 0, 0.15), 0 0 12px rgba(200, 255, 0, 0.08) !important;
+  outline: none !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Subtle placeholder styling */
+input::placeholder,
+textarea::placeholder {
+  color: #585858;
+  opacity: 1;
+}
+
+/* ── Scrollbar (WebKit) ─────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2C2C2C;
+  border-radius: 2px;
+}
+
+/* ── Utility Animations ─────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* ── Safe area insets for notch devices ──────────────────────────────── */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
