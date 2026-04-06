@@ -119,11 +119,15 @@ export async function removeCoachLink(linkId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+import { loadBodyWeights, loadMeasurements } from "./useBody";
+
 // ── Load an athlete's full data for the coach view ────────────────────────────
 export async function loadAthleteData(athleteId: string) {
-  const [routine, history] = await Promise.all([
+  const [routine, history, weights, measurements] = await Promise.all([
     loadRoutine(athleteId),
     loadWorkoutHistory(athleteId),
+    loadBodyWeights(athleteId),
+    loadMeasurements(athleteId)
   ]);
-  return { routine, history };
+  return { routine, history, weights, measurements };
 }

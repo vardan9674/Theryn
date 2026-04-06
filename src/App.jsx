@@ -2,12 +2,35 @@ import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { supabase } from "./lib/supabase";
 import { Capacitor } from "@capacitor/core";
+import { Haptics } from "@capacitor/haptics";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { ensureInviteCode, findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData } from "./hooks/useCoach";
+import { requestNotificationPermissions, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification } from "./hooks/useNotifications";
+
+export function playRestTimerBeep() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(440, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+  
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+  
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.5);
+}
 
 // ── TOKENS ──────────────────────────────────────────────────────────────
 const A   = "#C8FF00";
@@ -71,6 +94,10 @@ const getDefaultRest = () => 15;
 
 // Returns true if an exercise name should use distance/duration inputs
 const isCardioExercise = (name) => CARDIO_EXERCISES.has(name);
+
+// Timed Exercises use stopwatch overlays (and rely on "Sec" instead of "Reps")
+const TIMED_EXERCISES = new Set(["Plank", "Wall Sit", "Farmer's Carry", "L-Sit", "Hollow Hold", "Static Hang", "Dead Hang", "Stretching"]);
+const isTimedExercise = (name) => TIMED_EXERCISES.has(name);
 
 // Profile avatar colors
 const PROFILE_COLORS = ["#C8FF00","#4ECDC4","#FF8C42","#C77DFF","#FFD166","#FF5C5C","#06D6A0","#4A90D9"];
@@ -171,6 +198,35 @@ function TabIcon({ id, active }) {
 // ════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ════════════════════════════════════════════════════════════════════════
+const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
+  const [time, setTime] = useState(0);
+  const [running, setRunning] = useState(false);
+  
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setTime(tl => tl + 1), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
+  return (
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"#000", zIndex:1000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ color:A, fontSize:"24px", fontWeight:"700", marginBottom:"40px", textTransform:"uppercase", letterSpacing:"0.1em" }}>{targetName}</div>
+      <div style={{ fontSize:"96px", fontWeight:"800", color:"#FFF", fontVariantNumeric:"tabular-nums", marginBottom:"80px" }}>
+        {fmtTimer(time)}
+      </div>
+      <div style={{ display:"flex", gap:"24px" }}>
+        <button onClick={() => setRunning(!running)} style={{ width:"88px", height:"88px", borderRadius:"50%", border:`3px solid ${running ? RED : A}`, background:"transparent", color:running ? RED : A, fontSize:"18px", fontWeight:"800", cursor:"pointer" }}>
+          {running ? "PAUSE" : "START"}
+        </button>
+        <button onClick={() => onSave(time)} style={{ width:"88px", height:"88px", borderRadius:"50%", border:"none", background:"#FFF", color:"#000", fontSize:"18px", fontWeight:"800", cursor:"pointer" }}>
+          SAVE
+        </button>
+      </div>
+      <button onClick={onCancel} style={{ position:"absolute", top:"48px", right:"32px", color:SB, background:"none", border:"none", fontSize:"16px", fontWeight:"700", cursor:"pointer", padding:"8px" }}>✕ CANCEL</button>
+    </div>
+  );
+};
+
 export default function GymApp() {
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
@@ -207,6 +263,8 @@ export default function GymApp() {
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
+  // AthleteView lifted here so it renders outside the animated screen-enter wrapper
+  const [athleteView, setAthleteView] = useState(null);
 
   // ── Supabase auth listener ────────────────────────────────────────────
   useEffect(() => {
@@ -320,6 +378,8 @@ export default function GymApp() {
 
   // Flag to skip auto-save when we receive an external update (e.g. from coach)
   const skipAutoSaveRef = useRef(false);
+  const routineSaveRef = useRef(null);
+  const isLocalSaveRef = useRef(0);
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
@@ -347,6 +407,7 @@ export default function GymApp() {
       if (routine) {
         setTemplates(routine);
         setTodayType(routine[getToday()]?.type || 'Custom');
+        scheduleDailyRoutine(routine);
       }
       // Allow auto-save after initial load settles
       setTimeout(() => { skipAutoSaveRef.current = false; }, 3000);
@@ -357,14 +418,15 @@ export default function GymApp() {
       setCoachLinks(links);
       setCoachLinksLoaded(true);
     }).catch(() => setCoachLinksLoaded(true));
-
-    // ── Realtime subscription: re-fetch routine when coach updates it ──
     const channel = supabase
       .channel('routine-updates')
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'routines', filter: `user_id=eq.${uid}` },
         () => {
+          if (Date.now() - isLocalSaveRef.current < 5000) return; // Ignore echo of local save
+
+          triggerCoachEditNotification();
           // Coach saved a change — re-fetch the full routine
           skipAutoSaveRef.current = true;
           loadRoutine(uid).then(routine => {
@@ -381,15 +443,15 @@ export default function GymApp() {
     return () => { supabase.removeChannel(channel); };
   }, [authUser?.id]);
 
-  // ── Auto-save routine when templates change (debounced 2s) ────────────
-  const routineSaveRef = useRef(null);
   useEffect(() => {
     if (!authUser) return;
     // Don't auto-save if this change came from a coach update or initial load
     if (skipAutoSaveRef.current) return;
     clearTimeout(routineSaveRef.current);
     routineSaveRef.current = setTimeout(() => {
+      isLocalSaveRef.current = Date.now();
       saveRoutine(authUser.id, templates).catch(console.error);
+      scheduleDailyRoutine(templates);
     }, 2000);
     return () => clearTimeout(routineSaveRef.current);
   }, [templates, authUser?.id]);
@@ -478,12 +540,35 @@ export default function GymApp() {
       fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif",
       color:TX, position:"relative", paddingBottom:"76px" }}>
 
-      {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
-      {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded}/>}
-      {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
-      {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"}/>}
-      {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
-      {tab==="profile"  && <ProfileScreen profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }}/>}
+      <style>{`
+        @keyframes screenIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .screen-enter { animation: screenIn 0.18s ease forwards; }
+        .press-scale { -webkit-tap-highlight-color: transparent; }
+        .press-scale:active { opacity: 0.75; }
+        *::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: none; -ms-overflow-style: none; }
+      `}</style>
+
+      <div key={tab} className="screen-enter">
+        {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
+        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} onOpenAthlete={(view) => setAthleteView(view)} athleteView={athleteView}/>}
+        {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
+        {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"}/>}
+        {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
+        {tab==="profile"  && <ProfileScreen profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }}/>}
+      </div>
+
+      {/* AthleteView rendered outside animation wrapper so position:fixed works correctly */}
+      {athleteView && (
+        <AthleteView
+          athleteView={athleteView}
+          setAthleteView={setAthleteView}
+          athleteId={coachLinks.find(l => l.athlete_name === athleteView.name && l.coach_id === authUser?.id)?.athlete_id}
+          todayDay={getToday()}
+          onRoutineUpdated={(newRoutine) => setAthleteView(p => ({ ...p, routine: newRoutine }))}
+        />
+      )}
 
       {/* ── SAVE PROMPT (only for exercise add/remove) ── */}
       {showPrompt && (
@@ -520,10 +605,12 @@ export default function GymApp() {
       {showTour && <TourOverlay onDone={() => { setShowTour(false); setTab("routine"); }}/>}
 
       {/* ── TAB BAR ── */}
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.96)", backdropFilter:"blur(16px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"18px", zIndex:100 }}>
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.97)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"22px", zIndex:100 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => handleTabClick(t.id)} style={{ flex:1, background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", color:tab===t.id?A:SB, fontSize:"12px", fontWeight:tab===t.id?"600":"400", letterSpacing:"0.05em", textTransform:"uppercase" }}>
-            <TabIcon id={t.id} active={tab===t.id}/>
+          <button key={t.id} onClick={() => handleTabClick(t.id)} style={{ flex:1, background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", color:tab===t.id?A:SB, fontSize:"11px", fontWeight:tab===t.id?"700":"400", letterSpacing:"0.05em", textTransform:"uppercase", transition:"color 0.15s", WebkitTapHighlightColor:"transparent", padding:"2px 0" }}>
+            <div style={{ transform: tab===t.id ? "scale(1.08)" : "scale(1)", transition:"transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}>
+              <TabIcon id={t.id} active={tab===t.id}/>
+            </div>
             {t.label}
           </button>
         ))}
@@ -561,8 +648,19 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   // Rest timer state (local to LogScreen)
   const [restTimer, setRestTimer] = useState(null); // { total, remaining, exName, active }
   const [customRest, setCustomRest] = useState({}); // exId → override seconds
+  const [activeStopwatch, setActiveStopwatch] = useState(null); // { exId, setId, name }
   const restRef = useRef(null);
   const notifTimeoutRef = useRef(null);
+
+  const handleStopwatchSave = (timeInSecs) => {
+    if (!activeStopwatch) return;
+    const { exId, setId } = activeStopwatch;
+    setSession(p => p.map(ex => {
+      if (ex.id !== exId) return ex;
+      return { ...ex, sets: ex.sets.map(s => s.id === setId ? { ...s, r: timeInSecs, done: true } : s) };
+    }));
+    setActiveStopwatch(null);
+  };
 
   // Workout timer
   useEffect(() => {
@@ -592,12 +690,14 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   // Request notification permission once
   useEffect(() => {
+    requestNotificationPermissions();
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
   }, []);
 
-  const fireRestNotification = (exName) => {
+  const fireRestNotification = async (exName) => {
+    playRestTimerBeep();
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification("Rest complete — time to lift!", {
         body: `Your rest after ${exName} is done. Get back to it!`,
@@ -605,8 +705,15 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         silent: false,
       });
     }
-    // Vibrate if available (mobile)
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    // High-fidelity native haptics
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Haptics.vibrate();
+        setTimeout(() => Haptics.vibrate().catch(()=>{}), 300);
+      } else {
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }
+    } catch(e) {}
   };
 
   const startRest = (exId, exName) => {
@@ -691,7 +798,23 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         totalSets: doneSets,
         totalVolume: totalVol,
       };
-      setWorkoutHistory(p => [entry, ...p]);
+      setWorkoutHistory(p => {
+        const newHistory = [entry, ...p];
+        
+        let streak = 1;
+        for (let i = 0; i < newHistory.length - 1; i++) {
+          const d1 = new Date(newHistory[i].date).getTime();
+          const d2 = new Date(newHistory[i+1].date).getTime();
+          const diffDays = Math.floor((d1 - d2) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 2) streak++; // Allow skipping 1 day
+          else break;
+        }
+        scheduleStreakReminder(streak);
+        
+        return newHistory;
+      });
+
+      scheduleReflection(completedExercises);
 
       // Save to Supabase in background (if user is logged in)
       if (authUser) {
@@ -774,7 +897,14 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const toggleSet = (exId, setId) => {
     const targetEx = session.find(ex => ex.id === exId);
     const targetSet = targetEx?.sets.find(s => s.id === setId);
-    const isCompleting = targetSet && !targetSet.done;
+    if (!targetEx || !targetSet) return;
+
+    const isCompleting = !targetSet.done;
+    if (isCompleting) {
+      const isCardio = isCardioExercise(targetEx.name);
+      const isEmpty = isCardio ? (!targetSet.dist && !targetSet.dur) : (!targetSet.w && !targetSet.r);
+      if (isEmpty) return; // Block clicking if completely empty
+    }
 
     setSession(p => {
       const updated = p.map(ex => {
@@ -1044,40 +1174,55 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         )}
       </div>
 
-      {/* ── Exercise Progress Bar (fixed above tab bar) ── */}
+      {/* ── Exercise Progress Bar — flush on top of tab bar ── */}
       {workoutActive && session.length > 0 && (() => {
         const doneEx = session.filter(ex => ex.sets.length > 0 && ex.sets.every(s => s.done)).length;
         const pct = doneEx / session.length;
         return (
-          <div style={{ position:"fixed", bottom:"76px", left:0, right:0, width:"100%", zIndex:105, height:"3px", background:MT }}>
-            <div style={{ height:"100%", width:`${pct * 100}%`, background:A, borderRadius:"0 2px 2px 0", transition:"width 0.5s ease", boxShadow: pct > 0 ? `0 0 8px ${A}88` : "none" }}/>
+          <div style={{ position:"fixed", bottom:"79px", left:0, right:0, width:"100%", zIndex:105, height:"4px", background:MT }}>
+            <div style={{
+              height:"100%",
+              width:`${pct * 100}%`,
+              background: `linear-gradient(90deg, ${A}cc, ${A})`,
+              borderRadius:"0 3px 3px 0",
+              transition:"width 0.6s cubic-bezier(0.4,0,0.2,1)",
+              boxShadow: pct > 0 ? `0 0 12px ${A}99, 0 0 4px ${A}66` : "none",
+            }}/>
           </div>
         );
       })()}
 
-      {/* ── Rest Timer Bar (fixed above tab bar) ── */}
+      {/* ── Rest Timer — slides up above the tab bar ── */}
       {restTimer && (
-        <div style={{ position:"fixed", bottom:"76px", left:0, right:0, width:"100%", zIndex:110, padding:"0 12px", boxSizing:"border-box" }}>
-          <div style={{ background:S2, border:`1px solid ${restTimer.remaining <= 5 ? RED : BD}`, borderRadius:"12px", padding:"10px 14px", display:"flex", alignItems:"center", gap:"8px" }}>
+        <div style={{ position:"fixed", bottom:"88px", left:0, right:0, width:"100%", zIndex:110, padding:"0 12px", boxSizing:"border-box" }}>
+          <div style={{
+            background:`rgba(16,16,16,0.97)`,
+            backdropFilter:"blur(16px)",
+            WebkitBackdropFilter:"blur(16px)",
+            border:`1px solid ${restTimer.remaining <= 5 ? RED+"88" : BD}`,
+            borderRadius:"16px",
+            padding:"12px 14px",
+            display:"flex", alignItems:"center", gap:"10px",
+            boxShadow:`0 -4px 24px rgba(0,0,0,0.5), 0 0 0 1px ${restTimer.remaining <= 5 ? RED+"33" : A+"11"}`,
+          }}>
             {/* Progress ring */}
-            <svg width="34" height="34" style={{ flexShrink:0, transform:"rotate(-90deg)" }}>
-              <circle cx="17" cy="17" r="13" fill="none" stroke={MT} strokeWidth="3"/>
-              <circle cx="17" cy="17" r="13" fill="none" stroke={restTimer.remaining <= 5 ? RED : A} strokeWidth="3"
-                strokeDasharray={2 * Math.PI * 13}
-                strokeDashoffset={2 * Math.PI * 13 * (1 - restTimer.remaining / restTimer.total)}
+            <svg width="36" height="36" style={{ flexShrink:0, transform:"rotate(-90deg)" }}>
+              <circle cx="18" cy="18" r="14" fill="none" stroke={MT} strokeWidth="3"/>
+              <circle cx="18" cy="18" r="14" fill="none" stroke={restTimer.remaining <= 5 ? RED : A} strokeWidth="3"
+                strokeDasharray={2 * Math.PI * 14}
+                strokeDashoffset={2 * Math.PI * 14 * (1 - restTimer.remaining / restTimer.total)}
                 strokeLinecap="round" style={{ transition:"stroke-dashoffset 1s linear" }}
               />
             </svg>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:"13px", color:SB, marginBottom:"1px" }}>Rest — {restTimer.exName}</div>
-              <div style={{ fontSize:"20px", fontWeight:"700", fontVariantNumeric:"tabular-nums", color: restTimer.remaining <= 5 ? RED : TX }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:"12px", color:SB, marginBottom:"1px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Rest — {restTimer.exName}</div>
+              <div style={{ fontSize:"22px", fontWeight:"700", fontVariantNumeric:"tabular-nums", color: restTimer.remaining <= 5 ? RED : TX, letterSpacing:"-0.02em" }}>
                 {fmtTimer(restTimer.remaining)}
               </div>
             </div>
-            {/* -15 / +15 adjust buttons */}
-            <button onClick={() => adjustRest(-15)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"6px 11px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>−15</button>
-            <button onClick={() => adjustRest(+15)} style={{ background:"none", border:`1px solid ${A}55`, borderRadius:"8px", color:A, cursor:"pointer", padding:"6px 11px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>+15</button>
-            <button onClick={skipRest} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"6px 12px", fontSize:"13px", flexShrink:0 }}>Skip</button>
+            <button onClick={() => adjustRest(-15)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>−15</button>
+            <button onClick={() => adjustRest(+15)} style={{ background:`${A}15`, border:`1px solid ${A}44`, borderRadius:"8px", color:A, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>+15</button>
+            <button onClick={skipRest} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"7px 13px", fontSize:"13px", flexShrink:0 }}>Skip</button>
           </div>
         </div>
       )}
@@ -1110,6 +1255,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
               const exDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
               const isCol = collapsed[ex.id];
               const exIsCardio = isCardioExercise(ex.name);
+              const exIsTimed = isTimedExercise(ex.name);
               const defaultRest = customRest[ex.id] ?? getDefaultRest();
               return (
                 <div key={ex.id} style={{ ...card, borderColor: exDone ? A : BD, opacity: isCol ? 0.7 : 1 }}>
@@ -1136,7 +1282,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                   {!isCol && (
                     <>
                       {/* Column headers — per exercise type */}
-                      <div style={{ display:"grid", gridTemplateColumns:"24px 1fr 1fr 44px 20px", gap:"8px", alignItems:"center", padding:"0 0 8px" }}>
+                      <div style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"0 0 8px" }}>
                         <span style={{ fontSize:"14px", color:MT, textAlign:"center" }}>#</span>
                         {exIsCardio ? (
                           <>
@@ -1146,16 +1292,17 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                         ) : (
                           <>
                             <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Weight</span>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Reps</span>
+                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>{exIsTimed ? "Sec" : "Reps"}</span>
                           </>
                         )}
                         <span/>
+                        {exIsTimed && <span/>}
                         <span/>
                       </div>
 
                       {/* Set rows */}
                       {ex.sets.map((set, si) => (
-                        <div key={set.id} style={{ display:"grid", gridTemplateColumns:"24px 1fr 1fr 44px 20px", gap:"8px", alignItems:"center", padding:"10px 0", borderBottom: si < ex.sets.length-1 ? `1px solid ${MT}` : "none" }}>
+                        <div key={set.id} style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"10px 0", borderBottom: si < ex.sets.length-1 ? `1px solid ${MT}` : "none" }}>
                           <span style={{ fontSize:"16px", color: set.done ? A : MT, fontWeight:"600", textAlign:"center" }}>{si+1}</span>
 
                           {exIsCardio ? (
@@ -1183,7 +1330,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                               />
                               <input
                                 style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="numeric" placeholder="reps"
+                                type="number" inputMode="numeric" placeholder={exIsTimed ? "sec" : "reps"}
                                 value={set.r} onChange={e => updateSet(ex.id, set.id, "r", e.target.value)}
                                 readOnly={set.done}
                               />
@@ -1198,6 +1345,18 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                           }}>
                             {set.done ? "✓" : ""}
                           </button>
+
+                          {exIsTimed && (
+                            <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background: S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                              ⏱
+                            </button>
+                          )}
+
+                          {exIsTimed && (
+                            <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background: S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
+                              ⏱
+                            </button>
+                          )}
 
                           <button onClick={() => removeSet(ex.id, set.id)} style={{ background:"none", border:"none", color:MT, cursor:"pointer", fontSize:"16px", padding:0, textAlign:"center", lineHeight:1 }}>✕</button>
                         </div>
@@ -1335,20 +1494,20 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 // ════════════════════════════════════════════════════════════════════════
 // ROUTINE SCREEN
 // ════════════════════════════════════════════════════════════════════════
-function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, profile, onProfileTap, onCustomized, authUser, coachLinks, setCoachLinks, coachLinksLoaded }) {
+function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, profile, onProfileTap, onCustomized, authUser, coachLinks, setCoachLinks, coachLinksLoaded, onOpenAthlete, athleteView }) {
   const [expanded,      setExpanded]      = useState(null);
   const [editingType,   setEditingType]   = useState(null);
   const [newEx,         setNewEx]         = useState("");
   const [showCoach,     setShowCoach]     = useState(false);
-  const [athleteView,   setAthleteView]   = useState(null); // { name, routine, history }
   const [athleteLoading, setAthleteLoading] = useState(false);
+  const [expandedAthlete, setExpandedAthlete] = useState(null); // for multi-athlete collapse
   const todayDay = getToday();
 
   const openAthleteView = async (link) => {
     setAthleteLoading(true);
     try {
       const data = await loadAthleteData(link.athlete_id);
-      setAthleteView({ name: link.athlete_name, ...data });
+      onOpenAthlete({ name: link.athlete_name, ...data });
     } catch (e) {
       console.error(e);
     } finally {
@@ -1452,20 +1611,9 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
           );
         })}
 
-        {/* ── Athlete View (coach looking at athlete's routine) ── */}
-        {athleteView && (
-          <AthleteView
-            athleteView={athleteView}
-            setAthleteView={setAthleteView}
-            athleteId={myAthletes.find(l => l.athlete_name === athleteView.name)?.athlete_id}
-            todayDay={todayDay}
-            onRoutineUpdated={(newRoutine) => setAthleteView(p => ({ ...p, routine: newRoutine }))}
-          />
-        )}
-
         {/* Coach Access Card */}
         <div style={{ background:`linear-gradient(135deg, ${S1} 0%, #0d1a00 100%)`, borderRadius:"12px", border:`1px solid ${isConnected ? A : A+"22"}`, padding:"20px 18px", marginBottom:"8px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             <span style={{ fontSize:"16px", fontWeight:"700", color:TX }}>Coach Access</span>
             {isConnected && (
@@ -1473,35 +1621,82 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
             )}
           </div>
 
-          {/* Athletes I'm coaching — show View buttons */}
-          {myAthletes.length > 0 && (
-            <div style={{ marginBottom:"14px" }}>
-              <div style={{ ...subLbl, marginBottom:"8px" }}>Your Athletes</div>
-              {myAthletes.map(l => (
-                <div key={l.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${MT}` }}>
-                  <span style={{ fontSize:"16px", fontWeight:"500", color:TX }}>{l.athlete_name}</span>
-                  <button
-                    onClick={() => openAthleteView(l)}
-                    disabled={athleteLoading}
-                    style={{ background:A, border:"none", borderRadius:"8px", color:"#000", fontWeight:"700", fontSize:"13px", padding:"8px 16px", cursor:"pointer" }}
-                  >
-                    {athleteLoading ? "Loading…" : "View"}
-                  </button>
+          {/* Athletes I'm coaching — dynamic: 1 = full-screen button, multiple = inline collapse */}
+          {myAthletes.length === 1 && (
+            <button
+              onClick={() => openAthleteView(myAthletes[0])}
+              disabled={athleteLoading}
+              style={{ width:"100%", background:S2, border:`1px solid ${A}44`, borderRadius:"12px", padding:"14px 16px", marginBottom:"12px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}
+            >
+              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <div style={{ width:"36px", height:"36px", borderRadius:"50%", background:`${A}22`, border:`1px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"15px", fontWeight:"700", color:A }}>
+                  {myAthletes[0].athlete_name?.[0]?.toUpperCase() || "?"}
                 </div>
-              ))}
+                <div style={{ textAlign:"left" }}>
+                  <div style={{ fontSize:"16px", fontWeight:"600", color:TX }}>{myAthletes[0].athlete_name}</div>
+                  <div style={{ fontSize:"12px", color:A, display:"flex", alignItems:"center", gap:"4px", marginTop:"2px" }}>
+                    <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:A }}/>Active
+                  </div>
+                </div>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:"6px", color:A, fontSize:"14px", fontWeight:"700" }}>
+                {athleteLoading ? <div style={{ width:"14px", height:"14px", borderRadius:"50%", border:`2px solid ${MT}`, borderTopColor:A, animation:"spin 0.7s linear infinite" }}/> : null}
+                View
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </button>
+          )}
+
+          {myAthletes.length > 1 && (
+            <div style={{ marginBottom:"12px" }}>
+              <div style={{ ...subLbl, marginBottom:"8px" }}>Your Athletes ({myAthletes.length})</div>
+              {myAthletes.map(l => {
+                const isExpanded = expandedAthlete === l.id;
+                return (
+                  <div key={l.id} style={{ marginBottom:"6px", background:S2, borderRadius:"12px", border:`1px solid ${isExpanded ? A+"44" : MT}`, overflow:"hidden", transition:"border-color 0.2s" }}>
+                    <button
+                      onClick={() => setExpandedAthlete(isExpanded ? null : l.id)}
+                      style={{ width:"100%", background:"none", border:"none", padding:"12px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}
+                    >
+                      <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                        <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:`${A}22`, border:`1px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"13px", fontWeight:"700", color:A }}>
+                          {l.athlete_name?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <span style={{ fontSize:"15px", fontWeight:"600", color:TX }}>{l.athlete_name}</span>
+                      </div>
+                      <span style={{ color:SB, fontSize:"14px", transform: isExpanded ? "rotate(180deg)" : "none", transition:"transform 0.2s", display:"block" }}>⌄</span>
+                    </button>
+                    {isExpanded && (
+                      <div style={{ borderTop:`1px solid ${BD}`, padding:"12px 14px 14px" }}>
+                        <button
+                          onClick={() => openAthleteView(l)}
+                          disabled={athleteLoading}
+                          style={{ ...btnPrim, width:"100%", padding:"12px", fontSize:"15px" }}
+                        >
+                          {athleteLoading ? "Loading…" : `Open ${l.athlete_name}'s Profile`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {!isConnected && (
+          {coachLinksLoaded && !isConnected && (
             <div style={{ fontSize:"14px", color:SB, lineHeight:"1.5", marginBottom:"16px" }}>
               Connect with a coach to share your progress, or coach someone else.
             </div>
           )}
 
-          <button onClick={() => { setShowCoach(true); loadCoachLinks(authUser?.id).then(setCoachLinks).catch(()=>{}); }} style={{ ...(isConnected ? btnGhost : btnPrim), display:"flex", alignItems:"center", gap:"6px" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isConnected ? SB : "#000"} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            {isConnected ? "Manage Connections" : "Connect Coach"}
-          </button>
+          {!coachLinksLoaded ? (
+            <div style={{ height:"48px", background:MT, borderRadius:"10px", opacity:0.5 }}/>
+          ) : (
+            <button onClick={() => { setShowCoach(true); loadCoachLinks(authUser?.id).then(setCoachLinks).catch(()=>{}); }} style={{ ...(isConnected ? btnGhost : btnPrim), display:"flex", alignItems:"center", gap:"6px", transition:"background 0.2s, color 0.2s" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isConnected ? SB : "#000"} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+              {isConnected ? "Manage Connections" : "Connect Coach"}
+            </button>
+          )}
         </div>
 
         {showCoach && (
@@ -1572,6 +1767,12 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
         </button>
       </div>
 
+      {/* Coach Tabs */}
+      <div style={{ display:"flex", gap:"8px", padding:"16px", background:BG, position:"sticky", top:"80px", zIndex:9, borderBottom:`1px solid ${BD}` }}>
+        <button onClick={() => setEditingType("TAB_ROUTINE")} style={{ flex:1, padding:"8px", background: editingType !== "TAB_BODY" ? A : S2, color: editingType !== "TAB_BODY" ? "#000" : SB, border:`1px solid ${editingType !== "TAB_BODY" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Routine & Log</button>
+        <button onClick={() => setEditingType("TAB_BODY")} style={{ flex:1, padding:"8px", background: editingType === "TAB_BODY" ? A : S2, color: editingType === "TAB_BODY" ? "#000" : SB, border:`1px solid ${editingType === "TAB_BODY" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Body Stats</button>
+      </div>
+
       <div style={{ padding:"14px" }}>
         {saveMsg && (
           <div style={{ background: saveMsg.ok ? `${A}15` : `${RED}15`, border:`1px solid ${saveMsg.ok ? A : RED}`, borderRadius:"10px", padding:"12px 16px", fontSize:"14px", color: saveMsg.ok ? A : RED, marginBottom:"14px" }}>
@@ -1579,86 +1780,116 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
           </div>
         )}
 
-        {/* Editable routine */}
-        <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"10px" }}>Weekly Routine</div>
-        {DAYS.map(day => {
-          const t = editRoutine[day] || { type: "Rest", exercises: [] };
-          const isOpen = expandedDay === day;
-          const isToday = day === todayDay;
-          return (
-            <div key={day} style={{ ...card, padding:0, overflow:"hidden", marginBottom:"10px" }}>
-              <button onClick={() => toggleDay(day)} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                  <span style={{ fontSize:"17px", fontWeight:isToday?"700":"500", color:isToday?A:TX, width:"36px" }}>{day}</span>
-                  <span style={{ fontSize:"15px", fontWeight:"600", color:TYPE_COLORS[t.type]||TX }}>{t.type}</span>
-                  {t.exercises.length > 0 && <span style={{ fontSize:"13px", color:SB }}>{t.exercises.length} ex.</span>}
-                  {isToday && <span style={{ fontSize:"9px", background:A, color:"#000", borderRadius:"4px", padding:"2px 6px", fontWeight:"700" }}>TODAY</span>}
+        {editingType === "TAB_BODY" ? (
+          <div>
+            <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"10px" }}>Weight Log</div>
+            {athleteView.weights && athleteView.weights.length > 0 ? athleteView.weights.slice(0, 5).map((w, i) => (
+              <div key={i} style={{ ...card, display:"flex", justifyContent:"space-between", padding:"14px 18px", marginBottom:"6px" }}>
+                <span style={{ fontSize:"15px", color:SB }}>{fmtDate(w.date)}</span>
+                <span style={{ fontSize:"16px", fontWeight:"700", color:A }}>{w.weight}</span>
+              </div>
+            )) : <div style={{ fontSize:"14px", color:MT, padding:"10px" }}>No weight logs found.</div>}
+
+            <div style={{ ...subLbl, paddingLeft:"4px", marginTop:"24px", marginBottom:"10px" }}>Recent Measurements</div>
+            {athleteView.measurements && athleteView.measurements.length > 0 ? athleteView.measurements.slice(0, 5).map((m, i) => (
+              <div key={i} style={{ ...card, padding:"14px 18px", marginBottom:"6px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"6px" }}>
+                  <span style={{ fontSize:"15px", color:SB }}>{fmtDate(m.date)}</span>
                 </div>
-                <span style={{ color:SB, fontSize:"14px", transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>⌄</span>
-              </button>
-
-              {isOpen && (
-                <div style={{ borderTop:`1px solid ${BD}`, padding:"14px 18px 16px" }}>
-                  {/* Type picker */}
-                  {editingType === day ? (
-                    <div style={{ marginBottom:"14px" }}>
-                      <div style={{ ...subLbl, marginBottom:"8px" }}>Workout Type</div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:"6px" }}>
-                        {WORKOUT_TYPES.map(wt => (
-                          <button key={wt} onClick={() => setType(day, wt)} style={{ background:t.type===wt?A:S2, color:t.type===wt?"#000":SB, border:`1px solid ${t.type===wt?A:MT}`, borderRadius:"6px", padding:"5px 12px", fontSize:"12px", cursor:"pointer", fontWeight:t.type===wt?"700":"400" }}>{wt}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => setEditingType(day)} style={{ ...btnGhost, fontSize:"13px", padding:"6px 14px", marginBottom:"14px" }}>Change Type</button>
-                  )}
-
-                  {t.exercises.length === 0 && t.type !== "Rest" && (
-                    <div style={{ fontSize:"13px", color:MT, marginBottom:"10px" }}>No exercises yet.</div>
-                  )}
-
-                  {t.exercises.map((ex, i) => (
-                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom: i < t.exercises.length - 1 ? `1px solid ${MT}` : "none" }}>
-                      <span style={{ fontSize:"15px" }}>{ex}</span>
-                      <button onClick={() => removeEx(day, i)} style={{ background:"none", border:"none", color:SB, cursor:"pointer", fontSize:"16px", padding:"0 4px" }}>✕</button>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:"10px" }}>
+                  {Object.entries(m.data || {}).map(([key, val]) => (
+                    <div key={key} style={{ background:S2, border:`1px solid ${MT}`, padding:"6px 10px", borderRadius:"6px", fontSize:"13px" }}>
+                      <span style={{ color:SB, marginRight:"6px" }}>{key}</span><span style={{ fontWeight:"600", color:TX }}>{String(val)}</span>
                     </div>
                   ))}
+                </div>
+              </div>
+            )) : <div style={{ fontSize:"14px", color:MT, padding:"10px" }}>No measurements found.</div>}
+          </div>
+        ) : (
+          <div>
+            {/* Editable routine */}
+            <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"10px" }}>Weekly Routine</div>
+            {DAYS.map(day => {
+              const t = editRoutine[day] || { type: "Rest", exercises: [] };
+              const isOpen = expandedDay === day;
+              const isToday = day === todayDay;
+              return (
+                <div key={day} style={{ ...card, padding:0, overflow:"hidden", marginBottom:"10px" }}>
+                  <button onClick={() => toggleDay(day)} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                      <span style={{ fontSize:"17px", fontWeight:isToday?"700":"500", color:isToday?A:TX, width:"36px" }}>{day}</span>
+                      <span style={{ fontSize:"15px", fontWeight:"600", color:TYPE_COLORS[t.type]||TX }}>{t.type}</span>
+                      {t.exercises.length > 0 && <span style={{ fontSize:"13px", color:SB }}>{t.exercises.length} ex.</span>}
+                      {isToday && <span style={{ fontSize:"9px", background:A, color:"#000", borderRadius:"4px", padding:"2px 6px", fontWeight:"700" }}>TODAY</span>}
+                    </div>
+                    <span style={{ color:SB, fontSize:"14px", transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>⌄</span>
+                  </button>
 
-                  {t.type !== "Rest" && (
-                    <div style={{ display:"flex", gap:"8px", marginTop:"12px" }}>
-                      <input style={{ ...inputSt, flex:1 }} placeholder="Add exercise…" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => e.key === "Enter" && addEx(day)}/>
-                      <button onClick={() => addEx(day)} style={{ ...btnPrim, padding:"10px 18px" }}>+</button>
+                  {isOpen && (
+                    <div style={{ borderTop:`1px solid ${BD}`, padding:"14px 18px 16px" }}>
+                      {/* Type picker */}
+                      {editingType === day ? (
+                        <div style={{ marginBottom:"14px" }}>
+                          <div style={{ ...subLbl, marginBottom:"8px" }}>Workout Type</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:"6px" }}>
+                            {WORKOUT_TYPES.map(wt => (
+                              <button key={wt} onClick={() => setType(day, wt)} style={{ background:t.type===wt?A:S2, color:t.type===wt?"#000":SB, border:`1px solid ${t.type===wt?A:MT}`, borderRadius:"6px", padding:"5px 12px", fontSize:"12px", cursor:"pointer", fontWeight:t.type===wt?"700":"400" }}>{wt}</button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setEditingType(day)} style={{ ...btnGhost, fontSize:"13px", padding:"6px 14px", marginBottom:"14px" }}>Change Type</button>
+                      )}
+
+                      {t.exercises.length === 0 && t.type !== "Rest" && (
+                        <div style={{ fontSize:"13px", color:MT, marginBottom:"10px" }}>No exercises yet.</div>
+                      )}
+
+                      {t.exercises.map((ex, i) => (
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom: i < t.exercises.length - 1 ? `1px solid ${MT}` : "none" }}>
+                          <span style={{ fontSize:"15px" }}>{ex}</span>
+                          <button onClick={() => removeEx(day, i)} style={{ background:"none", border:"none", color:SB, cursor:"pointer", fontSize:"16px", padding:"0 4px" }}>✕</button>
+                        </div>
+                      ))}
+
+                      {t.type !== "Rest" && (
+                        <div style={{ display:"flex", gap:"8px", marginTop:"12px" }}>
+                          <input style={{ ...inputSt, flex:1 }} placeholder="Add exercise…" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => e.key === "Enter" && addEx(day)}/>
+                          <button onClick={() => addEx(day)} style={{ ...btnPrim, padding:"10px 18px" }}>+</button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
 
-        {/* Recent workouts — read only */}
-        <div style={{ ...subLbl, paddingLeft:"4px", marginTop:"20px", marginBottom:"10px" }}>Recent Workouts</div>
-        {athleteView.history && athleteView.history.length > 0 ? athleteView.history.slice(0, 10).map(w => (
-          <div key={w.id} style={{ ...card, padding:"14px 18px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
-              <div>
-                <div style={{ fontSize:"16px", fontWeight:"600" }}>{fmtDate(w.date)}</div>
-                <div style={{ fontSize:"13px", color:TYPE_COLORS[w.type]||SB, fontWeight:"600", marginTop:"2px" }}>{w.type}</div>
+            {/* Recent workouts — read only */}
+            <div style={{ ...subLbl, paddingLeft:"4px", marginTop:"20px", marginBottom:"10px" }}>Recent Workouts</div>
+            {athleteView.history && athleteView.history.length > 0 ? athleteView.history.slice(0, 10).map(w => (
+              <div key={w.id} style={{ ...card, padding:"14px 18px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+                  <div>
+                    <div style={{ fontSize:"16px", fontWeight:"600" }}>{fmtDate(w.date)}</div>
+                    <div style={{ fontSize:"13px", color:TYPE_COLORS[w.type]||SB, fontWeight:"600", marginTop:"2px" }}>{w.type}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:"18px", fontWeight:"700", color:A }}>{fmtTimer(w.duration)}</div>
+                    <div style={{ fontSize:"12px", color:SB }}>{w.totalSets} sets</div>
+                  </div>
+                </div>
+                {w.exercises.map((ex, ei) => (
+                  <div key={ei} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", borderTop: ei === 0 ? `1px solid ${MT}` : "none" }}>
+                    <span style={{ fontSize:"14px", color:TX }}>{ex.name}</span>
+                    <span style={{ fontSize:"13px", color:SB }}>{ex.sets.length} sets</span>
+                  </div>
+                ))}
               </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:"18px", fontWeight:"700", color:A }}>{fmtTimer(w.duration)}</div>
-                <div style={{ fontSize:"12px", color:SB }}>{w.totalSets} sets</div>
-              </div>
-            </div>
-            {w.exercises.map((ex, ei) => (
-              <div key={ei} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", borderTop: ei === 0 ? `1px solid ${MT}` : "none" }}>
-                <span style={{ fontSize:"14px", color:TX }}>{ex.name}</span>
-                <span style={{ fontSize:"13px", color:SB }}>{ex.sets.length} sets</span>
-              </div>
-            ))}
+            )) : (
+              <div style={{ ...card, textAlign:"center", padding:"30px", color:SB, fontSize:"14px" }}>No workouts recorded yet.</div>
+            )}
           </div>
-        )) : (
-          <div style={{ ...card, textAlign:"center", padding:"30px", color:SB, fontSize:"14px" }}>No workouts recorded yet.</div>
         )}
       </div>
     </div>
@@ -2855,6 +3086,14 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut }) {
           </div>
         </div>
       </div>
+
+      {activeStopwatch && (
+        <StopwatchOverlay
+          targetName={activeStopwatch.name}
+          onSave={handleStopwatchSave}
+          onCancel={() => setActiveStopwatch(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2913,10 +3152,8 @@ function LoginScreen({ authError, onClearError }) {
       padding:"48px 32px", boxSizing:"border-box",
     }}>
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"16px" }}>
-        <div style={{ width:"72px", height:"72px", borderRadius:"20px", background:S2, border:`1px solid ${BD}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6.5 6.5h11M6.5 17.5h11M4 12h16M4 12a2 2 0 01-2-2V8a2 2 0 012-2h1M20 12a2 2 0 002-2V8a2 2 0 00-2-2h-1M4 12a2 2 0 00-2 2v2a2 2 0 002 2h1M20 12a2 2 0 012 2v2a2 2 0 01-2 2h-1"/>
-          </svg>
+        <div style={{ width:"88px", height:"88px", borderRadius:"50%", background:"#080808", border:`1px solid ${A}22`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", boxShadow:`0 0 32px ${A}22` }}>
+          <img src="/theryn-logo.svg" width="88" height="88" alt="Theryn Logo" style={{ objectFit: "contain" }} />
         </div>
         <div style={{ textAlign:"center" }}>
           <div style={{ fontSize:"38px", fontWeight:"800", letterSpacing:"-0.05em", color:A, lineHeight:1 }}>Theryn</div>

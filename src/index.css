@@ -14,15 +14,18 @@ html {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
   font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif;
   background: #080808;
   color: #F0F0F0;
-  overflow-x: hidden;
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* Prevent iOS from zooming on input focus (font-size must be ≥16px) */
@@ -40,10 +43,12 @@ button, a, input, textarea, select {
 #root {
   max-width: 430px;
   width: 100%;
+  height: 100%;
   margin: 0 auto;
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Input Focus Highlights ─────────────────────────────────────────── */
@@ -65,14 +70,11 @@ textarea::placeholder {
 
 /* ── Scrollbar (WebKit) ─────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 4px;
+  display: none !important;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #2C2C2C;
-  border-radius: 2px;
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 /* ── Utility Animations ─────────────────────────────────────────────── */
