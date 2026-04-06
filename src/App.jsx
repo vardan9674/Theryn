@@ -96,8 +96,12 @@ const getDefaultRest = () => 15;
 const isCardioExercise = (name) => CARDIO_EXERCISES.has(name);
 
 // Timed Exercises use stopwatch overlays (and rely on "Sec" instead of "Reps")
-const TIMED_EXERCISES = new Set(["Plank", "Wall Sit", "Farmer's Carry", "L-Sit", "Hollow Hold", "Static Hang", "Dead Hang", "Stretching"]);
-const isTimedExercise = (name) => TIMED_EXERCISES.has(name);
+const TIMED_EXERCISES_LIST = ["Plank", "Wall Sit", "Farmer", "L-Sit", "Hollow Hold", "Static Hang", "Dead Hang", "Stretching", "Hold"];
+const isTimedExercise = (name) => {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  return TIMED_EXERCISES_LIST.some(ex => n.includes(ex.toLowerCase()));
+};
 
 // Profile avatar colors
 const PROFILE_COLORS = ["#C8FF00","#4ECDC4","#FF8C42","#C77DFF","#FFD166","#FF5C5C","#06D6A0","#4A90D9"];
@@ -196,24 +200,111 @@ function TabIcon({ id, active }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// EXERCISE PICKER OVERLAY (Global Database Search)
+// ════════════════════════════════════════════════════════════════════════
+let EXDB_CACHE = null;
+
+function ExercisePicker({ onClose, onSelect }) {
+  const [db, setDb] = useState(EXDB_CACHE || []);
+  const [q, setQ]     = useState("");
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
+
+  useEffect(() => {
+    if (EXDB_CACHE) return;
+    fetch("/exercises.json").then(r => r.json()).then(data => {
+      EXDB_CACHE = data;
+      setDb(data);
+    }).catch(e => console.error("DB Load Error", e));
+  }, []);
+
+  const closeOverlay = () => {
+    setVisible(false);
+    setTimeout(onClose, 280);
+  };
+
+  const results = q.trim() ? db.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 30) : [];
+  
+  return (
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background: visible ? "rgba(0,0,0,0.75)" : "rgba(0,0,0,0)", zIndex:500, display:"flex", alignItems:"flex-end", transition:"background 0.28s ease" }} onClick={closeOverlay}>
+      <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"24px 24px 0 0", width:"100%", height:"85vh", borderTop:`1px solid ${BD}`, display:"flex", flexDirection:"column", transform: visible ? "translateY(0)" : "translateY(100%)", transition:"transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)" }}>
+        
+        {/* Header & Search */}
+        <div style={{ padding:"16px 20px" }}>
+          <div style={{ width:"40px", height:"5px", background:MT, borderRadius:"3px", margin:"0 auto 16px" }}/>
+          <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"12px" }}>
+            <input autoFocus style={{ ...inputSt, flex:1, fontSize:"16px", padding:"14px 16px" }} placeholder="Search exercises..." value={q} onChange={e => setQ(e.target.value)} />
+            <button onClick={closeOverlay} style={{ background:"none", border:"none", color:SB, fontSize:"15px", fontWeight:"600", cursor:"pointer", padding:"10px" }}>Cancel</button>
+          </div>
+        </div>
+
+        {/* Results List */}
+        <div style={{ flex:1, overflowY:"auto", padding:"0 20px 40px" }}>
+          {q.trim() && results.length === 0 && (
+            <button onClick={() => { onSelect(q.trim()); closeOverlay(); }} style={{ width:"100%", textAlign:"left", background:S2, border:`1px solid ${A}`, borderRadius:"12px", padding:"16px", cursor:"pointer", marginBottom:"8px" }}>
+              <div style={{ fontSize:"16px", fontWeight:"700", color:A }}>+ Add custom "{q.trim()}"</div>
+              <div style={{ fontSize:"13px", color:SB, marginTop:"4px" }}>Create your own exercise</div>
+            </button>
+          )}
+
+          {results.map(ex => (
+            <button key={ex.id} onClick={() => { onSelect(ex.name); closeOverlay(); }} style={{ width:"100%", textAlign:"left", background:S2, border:`1px solid ${BD}`, borderRadius:"12px", padding:"14px 16px", cursor:"pointer", marginBottom:"8px", display:"flex", flexDirection:"column", gap:"4px" }}>
+              <div style={{ fontSize:"16px", fontWeight:"600", color:TX }}>{ex.name}</div>
+              <div style={{ fontSize:"12px", color:SB, textTransform:"uppercase", letterSpacing:"0.04em" }}>
+                {ex.primaryMuscles?.[0] || ex.category} • {ex.equipment}
+              </div>
+            </button>
+          ))}
+          
+          {!q.trim() && db.length > 0 && (
+            <div style={{ textAlign:"center", padding:"40px 20px", color:MT, fontSize:"14px" }}>
+              Type to search over 800+ exercises across all equipment types and muscle groups.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ════════════════════════════════════════════════════════════════════════
 const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
   const [time, setTime] = useState(0);
   const [running, setRunning] = useState(false);
+  const startTimeRef = useRef(null);
   
   useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setTime(tl => tl + 1), 1000);
+    if (!running) {
+      startTimeRef.current = null;
+      return;
+    }
+    startTimeRef.current = Date.now() - (time * 1000); // Anchor start time accounting for existing accumulated time
+    
+    const t = setInterval(() => {
+      const now = Date.now();
+      setTime(Math.floor((now - startTimeRef.current) / 1000));
+    }, 200); // Run tighter loop to sync UI smoothly on wakeup
+    
     return () => clearInterval(t);
   }, [running]);
 
   return (
     <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"#000", zIndex:1000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
       <div style={{ color:A, fontSize:"24px", fontWeight:"700", marginBottom:"40px", textTransform:"uppercase", letterSpacing:"0.1em" }}>{targetName}</div>
-      <div style={{ fontSize:"96px", fontWeight:"800", color:"#FFF", fontVariantNumeric:"tabular-nums", marginBottom:"80px" }}>
-        {fmtTimer(time)}
+      
+      <div style={{ display:"flex", alignItems:"center", gap:"20px", marginBottom:"80px" }}>
+        <button onClick={() => { setRunning(false); setTime(t => Math.max(0, t - 15)); }} style={{ background:"none", border:"none", color:SB, fontSize:"32px", cursor:"pointer", padding:"20px" }}>-</button>
+        
+        <div style={{ fontSize:"96px", fontWeight:"800", color:"#FFF", fontVariantNumeric:"tabular-nums", width:"240px", textAlign:"center" }}>
+          {fmtTimer(time)}
+        </div>
+        
+        <button onClick={() => { setRunning(false); setTime(t => t + 15); }} style={{ background:"none", border:"none", color:SB, fontSize:"32px", cursor:"pointer", padding:"20px" }}>+</button>
       </div>
+
       <div style={{ display:"flex", gap:"24px" }}>
         <button onClick={() => setRunning(!running)} style={{ width:"88px", height:"88px", borderRadius:"50%", border:`3px solid ${running ? RED : A}`, background:"transparent", color:running ? RED : A, fontSize:"18px", fontWeight:"800", cursor:"pointer" }}>
           {running ? "PAUSE" : "START"}
@@ -424,7 +515,7 @@ export default function GymApp() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'routines', filter: `user_id=eq.${uid}` },
         () => {
-          if (Date.now() - isLocalSaveRef.current < 5000) return; // Ignore echo of local save
+          if (Date.now() - isLocalSaveRef.current < 15000) return; // Ignore echo of local save (up to 15s delay)
 
           triggerCoachEditNotification();
           // Coach saved a change — re-fetch the full routine
@@ -651,6 +742,23 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const [activeStopwatch, setActiveStopwatch] = useState(null); // { exId, setId, name }
   const restRef = useRef(null);
   const notifTimeoutRef = useRef(null);
+
+  const getPrevTime = (exName) => {
+    for (let i = workoutHistory.length - 1; i >= 0; i--) {
+      const w = workoutHistory[i];
+      if (!w.session) continue;
+      const match = w.session.find(e => e.name.toLowerCase() === exName.toLowerCase());
+      if (match && match.sets) {
+        let maxT = 0;
+        for (const s of match.sets) {
+          if (s.done && s.r) maxT = Math.max(maxT, Number(s.r));
+        }
+        if (maxT > 0) return maxT;
+      }
+    }
+    return null;
+  };
+
 
   const handleStopwatchSave = (timeInSecs) => {
     if (!activeStopwatch) return;
@@ -1289,10 +1397,15 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                             <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Distance</span>
                             <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Duration</span>
                           </>
+                        ) : exIsTimed ? (
+                          <>
+                            <span style={{ fontSize:"12px", color:MT, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Prev Time</span>
+                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Time</span>
+                          </>
                         ) : (
                           <>
                             <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Weight</span>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>{exIsTimed ? "Sec" : "Reps"}</span>
+                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Reps</span>
                           </>
                         )}
                         <span/>
@@ -1320,6 +1433,15 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                                 readOnly={set.done}
                               />
                             </>
+                          ) : exIsTimed ? (
+                            <>
+                              <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: MT, background: "transparent", border: "none" }}>
+                                {getPrevTime(ex.name) ? fmtTimer(getPrevTime(ex.name)) : "-:--"}
+                              </div>
+                              <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}`, borderRadius: "10px", lineHeight: "19px" }}>
+                                {fmtTimer(set.r ? Number(set.r) : 0)}
+                              </div>
+                            </>
                           ) : (
                             <>
                               <input
@@ -1330,7 +1452,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                               />
                               <input
                                 style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="numeric" placeholder={exIsTimed ? "sec" : "reps"}
+                                type="number" inputMode="numeric" placeholder="reps"
                                 value={set.r} onChange={e => updateSet(ex.id, set.id, "r", e.target.value)}
                                 readOnly={set.done}
                               />
@@ -1345,12 +1467,6 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                           }}>
                             {set.done ? "✓" : ""}
                           </button>
-
-                          {exIsTimed && (
-                            <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background: S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
-                              ⏱
-                            </button>
-                          )}
 
                           {exIsTimed && (
                             <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background: S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
@@ -1373,20 +1489,22 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             </div>{/* end greyed-out wrapper */}
 
             {/* Add exercise */}
-            {showAddEx ? (
-              <div style={card}>
-                <div style={{ ...subLbl, marginBottom:"8px" }}>Add to today's session</div>
-                <input style={{ ...inputSt, width:"100%", marginBottom:"10px" }} placeholder="e.g. Bicep Curl" value={newExName} onChange={e => setNewExName(e.target.value)} onKeyDown={e => e.key==="Enter" && addExercise()}/>
-                <div style={{ display:"flex", gap:"8px" }}>
-                  <button onClick={addExercise} style={{ ...btnPrim, flex:1 }}>Add</button>
-                  <button onClick={() => setShowAddEx(false)} style={{ ...btnGhost, flex:1 }}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowAddEx(true)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"16px", fontSize:"16px", marginBottom:"16px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
-                <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
-              </button>
+            {showAddEx && (
+              <ExercisePicker onClose={() => setShowAddEx(false)} onSelect={(name) => {
+                const exStr = name.trim();
+                setShowAddEx(false);
+                if (!exStr) return;
+                setSession(p => {
+                  const x = { id:Date.now(), name:exStr, sets:[{ id:1, w:"", r:"", done:false }] };
+                  return [...p, x];
+                });
+                setExercisesChanged(true);
+              }}/>
             )}
+            
+            <button onClick={() => setShowAddEx(true)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"16px", fontSize:"16px", marginBottom:"16px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
+              <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
+            </button>
           </div>
         </>
       )}
@@ -1443,7 +1561,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       {/* ── Update routine after workout ── */}
       {showTemplatePrompt && (
         <div style={{ position:"fixed", top:0, bottom:0, left:0, right:0, width:"100%", background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"flex-end", zIndex:210 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"20px 20px 0 0", padding:"24px 24px 40px", width:"100%", border:`1px solid ${BD}`, boxSizing:"border-box" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"20px 20px 0 0", padding:"24px 24px 110px", width:"100%", border:`1px solid ${BD}`, boxSizing:"border-box" }}>
             <div style={{ width:"36px", height:"4px", background:MT, borderRadius:"2px", margin:"0 auto 22px" }}/>
             <div style={{ fontSize:"20px", fontWeight:"700", marginBottom:"10px" }}>Save to Routine?</div>
             <div style={{ fontSize:"15px", color:SB, lineHeight:"1.6", marginBottom:"24px" }}>
@@ -1465,7 +1583,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       {/* ── Auto-end confirmation popup ── */}
       {showEndConfirm && (
         <div onClick={() => setShowEndConfirm(false)} style={{ position:"fixed", top:0, bottom:0, left:0, right:0, width:"100%", background:"rgba(0,0,0,0.8)", display:"flex", alignItems:"flex-end", zIndex:200 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"20px 20px 0 0", padding:"20px 24px 34px", width:"100%", border:`1px solid ${BD}`, boxSizing:"border-box" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"20px 20px 0 0", padding:"20px 24px 110px", width:"100%", border:`1px solid ${BD}`, boxSizing:"border-box" }}>
             <div style={{ width:"36px", height:"4px", background:MT, borderRadius:"2px", margin:"0 auto 20px" }}/>
             <div style={{ fontSize:"17px", fontWeight:"700", marginBottom:"8px" }}>Finish Workout?</div>
             <div style={{ fontSize:"13px", color:SB, lineHeight:"1.6", marginBottom:"8px" }}>
@@ -1487,17 +1605,24 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
           </div>
         </div>
       )}
+
+      {activeStopwatch && (
+        <StopwatchOverlay
+          targetName={activeStopwatch.name}
+          onSave={handleStopwatchSave}
+          onCancel={() => setActiveStopwatch(null)}
+        />
+      )}
     </div>
   );
 }
-
 // ════════════════════════════════════════════════════════════════════════
 // ROUTINE SCREEN
 // ════════════════════════════════════════════════════════════════════════
 function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, profile, onProfileTap, onCustomized, authUser, coachLinks, setCoachLinks, coachLinksLoaded, onOpenAthlete, athleteView }) {
   const [expanded,      setExpanded]      = useState(null);
   const [editingType,   setEditingType]   = useState(null);
-  const [newEx,         setNewEx]         = useState("");
+  const [pickingExDay,  setPickingExDay]  = useState(null);
   const [showCoach,     setShowCoach]     = useState(false);
   const [athleteLoading, setAthleteLoading] = useState(false);
   const [expandedAthlete, setExpandedAthlete] = useState(null); // for multi-athlete collapse
@@ -1534,11 +1659,10 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
     showUndo("Exercise removed");
     onCustomized?.();
   };
-  const addEx    = (d) => {
-    if(!newEx.trim()) return;
+  const addEx    = (d, name) => {
+    if(!name.trim()) return;
     setPrevTemplates({ ...templates });
-    setTemplates(p => ({ ...p, [d]:{ ...p[d], exercises:[...p[d].exercises, newEx.trim()] } }));
-    setNewEx("");
+    setTemplates(p => ({ ...p, [d]:{ ...p[d], exercises:[...p[d].exercises, name.trim()] } }));
     showUndo("Exercise added");
     onCustomized?.();
   };
@@ -1600,9 +1724,10 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
                   ))}
 
                   {t.type!=="Rest" && (
-                    <div style={{ display:"flex", gap:"8px", marginTop:"12px" }}>
-                      <input style={{ ...inputSt, flex:1 }} placeholder="Add exercise…" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => e.key==="Enter" && addEx(day)}/>
-                      <button onClick={() => addEx(day)} style={{ ...btnPrim, padding:"9px 16px" }}>+</button>
+                    <div style={{ padding:"12px 0 0" }}>
+                      <button onClick={() => setPickingExDay(day)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"14px", fontSize:"15px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
+                        <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1610,6 +1735,10 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
             </div>
           );
         })}
+
+        {pickingExDay && (
+           <ExercisePicker onClose={() => setPickingExDay(null)} onSelect={(name) => addEx(pickingExDay, name)} />
+        )}
 
         {/* Coach Access Card */}
         <div style={{ background:`linear-gradient(135deg, ${S1} 0%, #0d1a00 100%)`, borderRadius:"12px", border:`1px solid ${isConnected ? A : A+"22"}`, padding:"20px 18px", marginBottom:"8px" }}>
@@ -1714,7 +1843,7 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
   const [editRoutine,  setEditRoutine]  = useState(athleteView.routine ? JSON.parse(JSON.stringify(athleteView.routine)) : { ...DEFAULT_TEMPLATES });
   const [expandedDay,  setExpandedDay]  = useState(null);
   const [editingType,  setEditingType]  = useState(null);
-  const [newEx,        setNewEx]        = useState("");
+  const [pickingExDay, setPickingExDay] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveMsg,      setSaveMsg]      = useState(null);
 
@@ -1729,10 +1858,9 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
     setEditRoutine(p => ({ ...p, [day]: { ...p[day], exercises: p[day].exercises.filter((_, j) => j !== i) } }));
   };
 
-  const addEx = (day) => {
-    if (!newEx.trim()) return;
-    setEditRoutine(p => ({ ...p, [day]: { ...p[day], exercises: [...p[day].exercises, newEx.trim()] } }));
-    setNewEx("");
+  const addEx = (day, name) => {
+    if (!name.trim()) return;
+    setEditRoutine(p => ({ ...p, [day]: { ...p[day], exercises: [...p[day].exercises, name.trim()] } }));
   };
 
   const handleSave = async () => {
@@ -1797,7 +1925,7 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
                   <span style={{ fontSize:"15px", color:SB }}>{fmtDate(m.date)}</span>
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:"10px" }}>
-                  {Object.entries(m.data || {}).map(([key, val]) => (
+                  {Object.entries(m).filter(([key, val]) => val != null && key !== "id" && key !== "date").map(([key, val]) => (
                     <div key={key} style={{ background:S2, border:`1px solid ${MT}`, padding:"6px 10px", borderRadius:"6px", fontSize:"13px" }}>
                       <span style={{ color:SB, marginRight:"6px" }}>{key}</span><span style={{ fontWeight:"600", color:TX }}>{String(val)}</span>
                     </div>
@@ -1854,9 +1982,10 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
                       ))}
 
                       {t.type !== "Rest" && (
-                        <div style={{ display:"flex", gap:"8px", marginTop:"12px" }}>
-                          <input style={{ ...inputSt, flex:1 }} placeholder="Add exercise…" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => e.key === "Enter" && addEx(day)}/>
-                          <button onClick={() => addEx(day)} style={{ ...btnPrim, padding:"10px 18px" }}>+</button>
+                        <div style={{ padding:"12px 0 0" }}>
+                          <button onClick={() => setPickingExDay(day)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"14px", fontSize:"15px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
+                            <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1864,6 +1993,10 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
                 </div>
               );
             })}
+
+            {pickingExDay && (
+              <ExercisePicker onClose={() => setPickingExDay(null)} onSelect={(name) => addEx(pickingExDay, name)} />
+            )}
 
             {/* Recent workouts — read only */}
             <div style={{ ...subLbl, paddingLeft:"4px", marginTop:"20px", marginBottom:"10px" }}>Recent Workouts</div>
@@ -1991,7 +2124,7 @@ function CoachModal({ authUser, onClose }) {
         onClick={e => e.stopPropagation()}
         style={{
           background: S1, borderRadius:"24px 24px 0 0", width:"100%",
-          border:`1px solid ${BD}`, boxSizing:"border-box", maxHeight:"88vh", overflowY:"auto",
+          border:`1px solid ${BD}`, boxSizing:"border-box", padding:"32px 24px 110px", maxHeight:"88vh", overflowY:"auto",
           transform: visible ? "translateY(0)" : "translateY(100%)",
           transition: "transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)",
         }}
@@ -2274,7 +2407,6 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
   // ── Measurement helpers ──
   const activeFields = measureFields.map(label => ({ key:toKey(label), label }));
   const mSorted      = [...measureLog].sort((a,b) => b.date.localeCompare(a.date));
-  const mTodayEntry  = measureLog.find(e => e.date===todayStr());
   const mHasAnyInput = activeFields.some(f => mInputs[f.key] && mInputs[f.key] !== "");
 
   const addField = (label) => {
@@ -2290,11 +2422,8 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
     if (!mHasAnyInput) return;
     const entry = { id:Date.now(), date:todayStr() };
     activeFields.forEach(f => { const v = parseFloat(mInputs[f.key]); if (!isNaN(v)) entry[f.key] = v; });
-    if (mTodayEntry) {
-      setMeasureLog(p => p.map(e => e.date===todayStr() ? { ...e, ...entry, id:e.id } : e));
-    } else {
-      setMeasureLog(p => [entry, ...p]);
-    }
+    setMeasureLog(p => [entry, ...p]);
+    
     // Save to Supabase in background
     if (authUser) {
       const measureData = {};
@@ -2322,8 +2451,6 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
     setMeasureLog(p => p.filter(e => e.id!==id));
     if (authUser) deleteMeasurement(id).catch(console.error);
   };
-
-  const mHistory = mSorted.filter(e => e.date !== todayStr());
 
   return (
     <div>
@@ -2472,80 +2599,34 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
                 <div style={{ textAlign:"center", padding:"20px 0", color:MT, fontSize:"13px" }}>Tap "+ Add" above to choose which body parts to track.</div>
               )}
 
-              {/* ── Today's measurement card ── */}
+              {/* ── Add New Measurement ── */}
               {activeFields.length > 0 && (
                 <div style={{ ...card, background:S2, marginBottom:"12px" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
                     <div style={{ ...subLbl, marginBottom:0 }}>
-                      Today · {new Date().toLocaleDateString("en-US",{ month:"short", day:"numeric" })}
+                      Log Measurement
                     </div>
-                    {mTodayEntry && mEditingId!==mTodayEntry.id && (
-                      <div style={{ display:"flex", gap:"6px" }}>
-                        <button onClick={() => startMEdit(mTodayEntry)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"6px", color:SB, cursor:"pointer", padding:"3px 12px", fontSize:"11px" }}>Edit</button>
-                        <button onClick={() => deleteMEntry(mTodayEntry.id)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"6px", color:RED, cursor:"pointer", padding:"3px 12px", fontSize:"11px" }}>Delete</button>
-                      </div>
-                    )}
                   </div>
 
-                  {mTodayEntry && mEditingId===mTodayEntry.id ? (
-                    <div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"10px" }}>
-                        {activeFields.map(f => (
-                          <div key={f.key}>
-                            <div style={{ ...subLbl, marginBottom:"4px" }}>{f.label}</div>
-                            <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder="—" value={mEditInputs[f.key]||""} onChange={e => setMEditInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display:"flex", gap:"8px" }}>
-                        <button onClick={() => saveMEdit(mTodayEntry.id)} style={{ ...btnPrim, flex:1 }}>Save</button>
-                        <button onClick={() => setMEditingId(null)} style={{ ...btnGhost, flex:1 }}>Cancel</button>
-                      </div>
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"10px" }}>
+                      {activeFields.map(f => (
+                        <div key={f.key}>
+                          <div style={{ ...subLbl, marginBottom:"4px" }}>{f.label}</div>
+                          <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder="—" value={mInputs[f.key]||""} onChange={e => setMInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
+                        </div>
+                      ))}
                     </div>
-                  ) : mTodayEntry ? (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 12px" }}>
-                      {activeFields.map(f => {
-                        const val = mTodayEntry[f.key];
-                        const prevEntry = mHistory[0];
-                        const prevVal = prevEntry?.[f.key];
-                        const d2 = (val != null && prevVal != null) ? (val - prevVal).toFixed(1) : null;
-                        const dn2 = d2 ? parseFloat(d2) : 0;
-                        return (
-                          <div key={f.key} style={{ padding:"4px 0" }}>
-                            <div style={{ fontSize:"12px", color:SB, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:"2px" }}>{f.label}</div>
-                            <div style={{ display:"flex", alignItems:"baseline", gap:"4px" }}>
-                              <span style={{ fontSize:"18px", fontWeight:"700", letterSpacing:"-0.03em", color:val!=null?TX:MT }}>{val!=null?val:"—"}</span>
-                              <span style={{ fontSize:"12px", color:SB }}>{mLabel}</span>
-                              {d2 && dn2!==0 && (
-                                <span style={{ fontSize:"12px", fontWeight:"600", color:dn2>0?A:dn2<0?"#4ECDC4":SB }}>{dn2>0?"+":""}{d2}</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontSize:"13px", color:SB, marginBottom:"10px" }}>Log your measurements for today</div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"10px" }}>
-                        {activeFields.map(f => (
-                          <div key={f.key}>
-                            <div style={{ ...subLbl, marginBottom:"4px" }}>{f.label}</div>
-                            <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder="—" value={mInputs[f.key]||""} onChange={e => setMInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
-                          </div>
-                        ))}
-                      </div>
-                      <button onClick={logMeasurements} style={{ ...btnPrim, width:"100%" }}>Log Measurements</button>
-                    </div>
-                  )}
+                    <button onClick={logMeasurements} style={{ ...btnPrim, width:"100%" }}>Log Measurements</button>
+                  </div>
                 </div>
               )}
 
               {/* ── Measurement History ── */}
-              {mHistory.length > 0 && <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"8px" }}>Measurement History</div>}
+              {mSorted.length > 0 && <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"8px" }}>Measurement History</div>}
 
-              {mHistory.map((entry, idx) => {
-                const prevEntry = mHistory[idx + 1];
+              {mSorted.map((entry, idx) => {
+                const prevEntry = mSorted[idx + 1];
                 // show all keys that have data in this entry, not just current activeFields
                 const entryFields = activeFields.filter(f => entry[f.key] != null);
                 // also include any keys from the entry not in activeFields
@@ -3086,14 +3167,6 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut }) {
           </div>
         </div>
       </div>
-
-      {activeStopwatch && (
-        <StopwatchOverlay
-          targetName={activeStopwatch.name}
-          onSave={handleStopwatchSave}
-          onCancel={() => setActiveStopwatch(null)}
-        />
-      )}
     </div>
   );
 }
