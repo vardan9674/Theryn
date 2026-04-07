@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { supabase } from "./lib/supabase";
 import { Capacitor } from "@capacitor/core";
@@ -8,9 +8,12 @@ import { Browser } from "@capacitor/browser";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
-import { ensureInviteCode, findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData } from "./hooks/useCoach";
+import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode } from "./hooks/useCoach";
 import { requestNotificationPermissions, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification } from "./hooks/useNotifications";
-
+import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 export function playRestTimerBeep() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
@@ -184,6 +187,136 @@ function ScreenHeader({ sup, title, profile, onProfileTap }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── SWIPE-TO-DELETE ROW ──────────────────────────────────────────────────
+function SwipeRow({ children, onDelete, rowStyle, bgColor }) {
+  const [swiped, setSwiped] = useState(false); // true = delete button revealed
+  const controls = useAnimation();
+  const x = useMotionValue(0);
+
+  const handleDragEnd = async (e, info) => {
+    const offset = info.offset.x;
+    const velocity = info.velocity.x;
+
+    // Long swipe or fast flick → instant delete
+    if (offset < -160 || (offset < -80 && velocity < -600)) {
+      Haptics.impact({ style: "medium" }).catch(() => {});
+      await controls.start({ x: -window.innerWidth, transition: { duration: 0.18, ease: "easeIn" } });
+      onDelete();
+    // Partial swipe → reveal delete button 
+    } else if (offset < -60) {
+      Haptics.impact({ style: "light" }).catch(() => {});
+      setSwiped(true);
+      controls.start({ x: -80, transition: { type: "spring", stiffness: 400, damping: 30 } });
+    // Tiny drag → snap back
+    } else {
+      setSwiped(false);
+      controls.start({ x: 0, transition: { type: "spring", stiffness: 400, damping: 30 } });
+    }
+  };
+
+  const handleDelete = () => {
+    controls.start({ x: -window.innerWidth, transition: { duration: 0.18 } });
+    setTimeout(onDelete, 180);
+  };
+
+  const bg = bgColor || BG;
+
+  return (
+    <div style={{ position: "relative", overflow: "hidden", flex: 1, ...rowStyle }}>
+      {/* Delete zone — only visible width when swiped */}
+      <div
+        onClick={handleDelete}
+        style={{
+          position: "absolute", right: 0, top: 0, bottom: 0,
+          width: "80px",
+          display: "flex", justifyContent: "center", alignItems: "center",
+          background: RED, cursor: "pointer",
+        }}
+      >
+        <span style={{ color: "#fff", fontSize: "13px", fontWeight: "700" }}>Delete</span>
+      </div>
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -80, right: 0 }}
+        dragElastic={{ left: 0.3, right: 0 }}
+        style={{ x, position: "relative", zIndex: 1, background: bg, touchAction: "pan-y", width: "100%", height: "100%", display: "flex", flexDirection: "column" }}
+        animate={controls}
+        onDragEnd={handleDragEnd}
+        onClick={swiped ? () => { setSwiped(false); controls.start({ x: 0, transition: { type: "spring", stiffness: 400, damping: 30 } }); } : undefined}
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+// ── SORTABLE EXERCISE ROW FOR DND-KIT (Routines & AthleteView) ───────────────
+function SortableExerciseRow({ id, onRemove, children }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? undefined : transition,
+    zIndex: isDragging ? 100 : "auto",
+    opacity: isDragging ? 0.5 : 1,
+    willChange: "transform",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div style={{ display:"flex", alignItems:"stretch", borderBottom: `1px solid ${MT}`, position: "relative" }}>
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          style={{ padding:"14px 10px", color:SB, fontSize:"20px", cursor:"grab", touchAction:"none", flexShrink:0, display:"flex", alignItems:"center", userSelect:"none" }}
+        >
+          ≡
+        </div>
+        {/* bgColor=S1 so the sliding motion.div matches the card surface, hiding the red delete zone */}
+        <SwipeRow onDelete={onRemove} bgColor={S1}>
+          {children}
+        </SwipeRow>
+      </div>
+    </div>
+  );
+}
+
+// ── SORTABLE LOG EXERCISE CARD (Log tab) ─────────────────────────────────────
+// Render-prop pattern: children(dragHandle) so the drag handle lands inside the card header
+function LogSortableItem({ id, onDelete, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const dragHandle = (
+    <div
+      {...attributes}
+      {...listeners}
+      style={{ padding:"4px 10px 4px 0", color:SB, fontSize:"20px", cursor:"grab", touchAction:"none", flexShrink:0, lineHeight:1, userSelect:"none" }}
+    >
+      ≡
+    </div>
+  );
+  return (
+    <div ref={setNodeRef} style={{
+      transform: CSS.Transform.toString(transform),
+      transition: isDragging ? undefined : transition,
+      zIndex: isDragging ? 50 : "auto",
+      opacity: isDragging ? 0.5 : 1,
+      willChange: "transform",
+    }}>
+      <SwipeRow onDelete={onDelete} bgColor={S1}>
+        {children(dragHandle)}
+      </SwipeRow>
     </div>
   );
 }
@@ -629,7 +762,7 @@ export default function GymApp() {
   return (
     <div style={{ background:BG, minHeight:"100vh",
       fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      color:TX, position:"relative", paddingBottom:"76px" }}>
+      color:TX, position:"relative", paddingBottom:"110px" }}>
 
       <style>{`
         @keyframes screenIn { from { opacity:0; } to { opacity:1; } }
@@ -714,14 +847,15 @@ export default function GymApp() {
 // LOG SCREEN
 // ════════════════════════════════════════════════════════════════════════
 function LogScreen({ session, setSession, templates, setTemplates, exercisesChanged, setExercisesChanged, todayType, setTodayType, setPrevTemplates, showUndo, workoutActive, setWorkoutActive, workoutPaused, setWorkoutPaused, workoutElapsed, setWorkoutElapsed, workoutStartTime, setWorkoutStartTime, workoutHistory, setWorkoutHistory, profile, onProfileTap, units, hasCustomizedRoutine, setHasCustomizedRoutine, authUser }) {
-  const [showAddEx,        setShowAddEx]        = useState(false);
-  const [newExName,        setNewExName]        = useState("");
-  const [showTypePick,     setShowTypePick]     = useState(false);
-  const [collapsed,        setCollapsed]        = useState({});
-  const [showHistory,      setShowHistory]      = useState(false);
-  const [showEndConfirm,   setShowEndConfirm]   = useState(false);
+  const [showAddEx,          setShowAddEx]          = useState(false);
+  const [newExName,          setNewExName]          = useState("");
+  const [showTypePick,       setShowTypePick]       = useState(false);
+  const [collapsed,          setCollapsed]          = useState({});
+  const [showHistory,        setShowHistory]        = useState(false);
+  const [showEndConfirm,     setShowEndConfirm]     = useState(false);
   const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
-  const [removeConfirmId,  setRemoveConfirmId]  = useState(null);
+  const [pendingUndo,        setPendingUndo]        = useState(null); // { msg, action }
+  const [pendingUndoTimer,   setPendingUndoTimer]   = useState(null);
   const timerRef = useRef(null);
 
   const wUnit = units === "metric" ? "kg" : "lbs";
@@ -803,6 +937,28 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       Notification.requestPermission();
     }
   }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+  );
+
+  const handleLogDragEnd = (event) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSession((p) => {
+        const arr = [...p];
+        const oldIndex = arr.findIndex((ex) => ex.id === active.id);
+        const newIndex = arr.findIndex((ex) => ex.id === over.id);
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const removed = arr.splice(oldIndex, 1)[0];
+          arr.splice(newIndex, 0, removed);
+        }
+        return arr;
+      });
+      markExChange();
+    }
+  };
 
   const fireRestNotification = async (exName) => {
     playRestTimerBeep();
@@ -953,12 +1109,19 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   const resetSession = (exercises) => {
     setSession(
-      exercises.map((name, i) => ({
-        id: Date.now() + i, name,
-        sets: isCardioExercise(name)
-          ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done: false }]
-          : Array.from({ length: 3 }, (_, si) => ({ id: `${Date.now()+i}-${si}`, w:"", r:"", done: false })),
-      }))
+      exercises.map((ex, i) => {
+        const name = typeof ex === "string" ? ex : ex.name;
+        const targetSets = typeof ex === "string" ? 3 : (ex.sets || 3);
+        const targetReps = typeof ex === "string" ? "" : (ex.reps || "");
+        const targetWeight = typeof ex === "string" ? "" : (ex.weight || "");
+
+        return {
+          id: Date.now() + i, name,
+          sets: isCardioExercise(name)
+            ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done: false }]
+            : Array.from({ length: targetSets }, (_, si) => ({ id: `${Date.now()+i}-${si}`, w: targetWeight, r: targetReps, done: false })),
+        };
+      })
     );
   };
 
@@ -1085,7 +1248,19 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     }));
   };
 
-  const removeExercise = (id) => { setSession(p => p.filter(ex => ex.id !== id)); markExChange(); };
+  const removeExercise = (id) => {
+    const removed = session.find(ex => ex.id === id);
+    const removedIdx = session.findIndex(ex => ex.id === id);
+    setSession(p => p.filter(ex => ex.id !== id));
+    markExChange();
+    // Undo toast — re-insert exercise at original position
+    setPendingUndo({ msg: "Exercise removed", action: () => {
+      setSession(p => { const arr = [...p]; arr.splice(removedIdx, 0, removed); return arr; });
+      markExChange();
+    }});
+    const t = setTimeout(() => setPendingUndo(null), 5000);
+    setPendingUndoTimer(t);
+  };
 
   // Add exercise — per-exercise type detection
   const addExercise = () => {
@@ -1358,153 +1533,117 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
               </div>
             )}
 
-            <div style={{ opacity: workoutActive ? 1 : 0.35, pointerEvents: workoutActive ? "auto" : "none", transition:"opacity 0.3s" }}>
-            {session.map(ex => {
-              const exDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
-              const isCol = collapsed[ex.id];
-              const exIsCardio = isCardioExercise(ex.name);
-              const exIsTimed = isTimedExercise(ex.name);
-              const defaultRest = customRest[ex.id] ?? getDefaultRest();
-              return (
-                <div key={ex.id} style={{ ...card, borderColor: exDone ? A : BD, opacity: isCol ? 0.7 : 1 }}>
-                  {/* Exercise header */}
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: isCol ? 0 : "10px" }}>
-                    <button onClick={() => toggleCollapse(ex.id)} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:"6px", padding:0 }}>
-                      <span style={{ fontSize:"20px", fontWeight:"600", color: exDone ? A : TX }}>{ex.name}</span>
-                      {exIsCardio && <span style={{ fontSize:"9px", background:"#06D6A0", color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>CARDIO</span>}
-                      {exDone && <span style={{ fontSize:"9px", background:A, color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>DONE</span>}
-                      <span style={{ fontSize:"10px", color:SB, transform: isCol ? "none" : "rotate(180deg)", transition:"transform 0.2s" }}>⌄</span>
-                    </button>
-                    {/* Remove with inline confirmation */}
-                    {removeConfirmId === ex.id ? (
-                      <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                        <span style={{ fontSize:"11px", color:SB }}>Remove?</span>
-                        <button onClick={() => { removeExercise(ex.id); setRemoveConfirmId(null); }} style={{ background:"none", border:`1px solid ${RED}`, borderRadius:"6px", color:RED, cursor:"pointer", fontSize:"11px", padding:"3px 10px", fontWeight:"600" }}>Yes</button>
-                        <button onClick={() => setRemoveConfirmId(null)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"6px", color:SB, cursor:"pointer", fontSize:"11px", padding:"3px 10px" }}>No</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setRemoveConfirmId(ex.id)} style={{ background:"none", border:"none", color:SB, cursor:"pointer", fontSize:"11px", padding:"3px 8px" }}>Remove</button>
-                    )}
-                  </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLogDragEnd}>
+              <SortableContext items={session.map(ex => ex.id)} strategy={verticalListSortingStrategy}>
+                <div style={{ opacity: workoutActive ? 1 : 0.4, pointerEvents: workoutActive ? "auto" : "none", transition:"opacity 0.25s" }}>
+                  {session.map((ex) => {
+                    const exDone = ex.sets.length > 0 && ex.sets.every(s => s.done);
+                    const isCol = collapsed[ex.id];
+                    const exIsCardio = isCardioExercise(ex.name);
+                    const exIsTimed = isTimedExercise(ex.name);
+                    const defaultRest = customRest[ex.id] ?? getDefaultRest();
+                    return (
+                      <LogSortableItem key={ex.id} id={ex.id} onDelete={() => removeExercise(ex.id)}>
+                        {(dragHandle) => (
+                          <div style={{ ...card, marginBottom:0, borderRadius:"12px", borderColor: exDone ? A : BD, opacity: isCol ? 0.75 : 1 }}>
+                            {/* Exercise header */}
+                            <div style={{ display:"flex", alignItems:"center", marginBottom: isCol ? 0 : "10px" }}>
+                              {dragHandle}
+                              <button onClick={() => toggleCollapse(ex.id)} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:"6px", padding:0, flex:1 }}>
+                                <span style={{ fontSize:"19px", fontWeight:"600", color: exDone ? A : TX }}>{ex.name}</span>
+                                {exIsCardio && <span style={{ fontSize:"9px", background:"#06D6A0", color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>CARDIO</span>}
+                                {exDone && <span style={{ fontSize:"9px", background:A, color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>DONE</span>}
+                                <span style={{ fontSize:"10px", color:SB, transform: isCol ? "none" : "rotate(180deg)", transition:"transform 0.2s" }}>⌄</span>
+                              </button>
+                            </div>
 
-                  {!isCol && (
-                    <>
-                      {/* Column headers — per exercise type */}
-                      <div style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"0 0 8px" }}>
-                        <span style={{ fontSize:"14px", color:MT, textAlign:"center" }}>#</span>
-                        {exIsCardio ? (
-                          <>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Distance</span>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Duration</span>
-                          </>
-                        ) : exIsTimed ? (
-                          <>
-                            <span style={{ fontSize:"12px", color:MT, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Prev Time</span>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Time</span>
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Weight</span>
-                            <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Reps</span>
-                          </>
+                            {!isCol && (
+                              <>
+                                {/* Column headers */}
+                                <div style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"0 0 8px" }}>
+                                  <span style={{ fontSize:"14px", color:MT, textAlign:"center" }}>#</span>
+                                  {exIsCardio ? (<>
+                                    <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Distance</span>
+                                    <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Duration</span>
+                                  </>) : exIsTimed ? (<>
+                                    <span style={{ fontSize:"12px", color:MT, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Prev</span>
+                                    <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Time</span>
+                                  </>) : (<>
+                                    <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Weight</span>
+                                    <span style={{ fontSize:"14px", color:SB, textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"center" }}>Reps</span>
+                                  </>)}
+                                  <span/>{exIsTimed && <span/>}<span/>
+                                </div>
+
+                                {/* Set rows */}
+                                {ex.sets.map((set, si) => (
+                                  <div key={set.id} style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"10px 0", borderBottom: si < ex.sets.length-1 ? `1px solid ${MT}` : "none" }}>
+                                    <span style={{ fontSize:"16px", color: set.done ? A : MT, fontWeight:"600", textAlign:"center" }}>{si+1}</span>
+
+                                    {exIsCardio ? (<>
+                                      <input style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }} type="number" inputMode="decimal" placeholder={dUnit} value={set.dist} onChange={e => updateSet(ex.id, set.id, "dist", e.target.value)} readOnly={set.done}/>
+                                      <input style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }} type="number" inputMode="numeric" placeholder="min" value={set.dur} onChange={e => updateSet(ex.id, set.id, "dur", e.target.value)} readOnly={set.done}/>
+                                    </>) : exIsTimed ? (<>
+                                      <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color:MT }}>{getPrevTime(ex.name) ? fmtTimer(getPrevTime(ex.name)) : "-:--"}</div>
+                                      <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}`, borderRadius:"10px" }}>{fmtTimer(set.r ? Number(set.r) : 0)}</div>
+                                    </>) : (<>
+                                      <input style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }} type="number" inputMode="decimal" placeholder={wUnit} value={set.w} onChange={e => updateSet(ex.id, set.id, "w", e.target.value)} readOnly={set.done}/>
+                                      <input style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }} type="number" inputMode="numeric" placeholder="reps" value={set.r} onChange={e => updateSet(ex.id, set.id, "r", e.target.value)} readOnly={set.done}/>
+                                    </>)}
+
+                                    <button onClick={() => toggleSet(ex.id, set.id)} style={{ width:"44px", height:"44px", borderRadius:"10px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", background: set.done ? A : "none", border: set.done ? "none" : `2px solid ${SB}`, color: set.done ? "#000" : SB, fontSize:"18px", fontWeight:"700" }}>
+                                      {set.done ? "✓" : ""}
+                                    </button>
+
+                                    {exIsTimed && (
+                                      <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background:S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>⏱</button>
+                                    )}
+
+                                    <button onClick={() => removeSet(ex.id, set.id)} style={{ background:"none", border:"none", color:MT, cursor:"pointer", fontSize:"16px", padding:0, textAlign:"center", lineHeight:1 }}>✕</button>
+                                  </div>
+                                ))}
+
+                                <button onClick={() => addSetToEx(ex.id)} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", color:SB, fontSize:"15px", padding:"10px 0 2px", textAlign:"center" }}>+ Add Set</button>
+                              </>
+                            )}
+                          </div>
                         )}
-                        <span/>
-                        {exIsTimed && <span/>}
-                        <span/>
-                      </div>
-
-                      {/* Set rows */}
-                      {ex.sets.map((set, si) => (
-                        <div key={set.id} style={{ display:"grid", gridTemplateColumns: exIsTimed ? "24px 1fr 1fr 44px 44px 20px" : "24px 1fr 1fr 44px 20px", gap: exIsTimed ? "4px" : "8px", alignItems:"center", padding:"10px 0", borderBottom: si < ex.sets.length-1 ? `1px solid ${MT}` : "none" }}>
-                          <span style={{ fontSize:"16px", color: set.done ? A : MT, fontWeight:"600", textAlign:"center" }}>{si+1}</span>
-
-                          {exIsCardio ? (
-                            <>
-                              <input
-                                style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="decimal" placeholder={dUnit}
-                                value={set.dist} onChange={e => updateSet(ex.id, set.id, "dist", e.target.value)}
-                                readOnly={set.done}
-                              />
-                              <input
-                                style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="numeric" placeholder="min"
-                                value={set.dur} onChange={e => updateSet(ex.id, set.id, "dur", e.target.value)}
-                                readOnly={set.done}
-                              />
-                            </>
-                          ) : exIsTimed ? (
-                            <>
-                              <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: MT, background: "transparent", border: "none" }}>
-                                {getPrevTime(ex.name) ? fmtTimer(getPrevTime(ex.name)) : "-:--"}
-                              </div>
-                              <div style={{ width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}`, borderRadius: "10px", lineHeight: "19px" }}>
-                                {fmtTimer(set.r ? Number(set.r) : 0)}
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <input
-                                style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="decimal" placeholder={wUnit}
-                                value={set.w} onChange={e => updateSet(ex.id, set.id, "w", e.target.value)}
-                                readOnly={set.done}
-                              />
-                              <input
-                                style={{ ...inputSt, width:"100%", fontSize:"19px", padding:"11px 6px", textAlign:"center", color: set.done ? A : TX, background: set.done ? "transparent" : S2, border: set.done ? `1px solid ${MT}` : `1px solid ${BD}` }}
-                                type="number" inputMode="numeric" placeholder="reps"
-                                value={set.r} onChange={e => updateSet(ex.id, set.id, "r", e.target.value)}
-                                readOnly={set.done}
-                              />
-                            </>
-                          )}
-
-                          <button onClick={() => toggleSet(ex.id, set.id)} style={{
-                            width:"44px", height:"44px", borderRadius:"10px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                            background: set.done ? A : "none",
-                            border: set.done ? "none" : `2px solid ${SB}`,
-                            color: set.done ? "#000" : SB, fontSize:"18px", fontWeight:"700",
-                          }}>
-                            {set.done ? "✓" : ""}
-                          </button>
-
-                          {exIsTimed && (
-                            <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background: S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
-                              ⏱
-                            </button>
-                          )}
-
-                          <button onClick={() => removeSet(ex.id, set.id)} style={{ background:"none", border:"none", color:MT, cursor:"pointer", fontSize:"16px", padding:0, textAlign:"center", lineHeight:1 }}>✕</button>
-                        </div>
-                      ))}
-
-                      <button onClick={() => addSetToEx(ex.id)} style={{ width:"100%", background:"none", border:"none", cursor:"pointer", color:SB, fontSize:"15px", padding:"10px 0 2px", textAlign:"center" }}>
-                        + Add Set
-                      </button>
-                    </>
-                  )}
+                      </LogSortableItem>
+                    );
+                  })}
                 </div>
-              );
-            })}
-            </div>{/* end greyed-out wrapper */}
+              </SortableContext>
+            </DndContext>
 
-            {/* Add exercise */}
+            {/* Add exercise — always visible, outside workout guard */}
             {showAddEx && (
               <ExercisePicker onClose={() => setShowAddEx(false)} onSelect={(name) => {
                 const exStr = name.trim();
                 setShowAddEx(false);
                 if (!exStr) return;
+                const exIsCardio = isCardioExercise(exStr);
                 setSession(p => {
-                  const x = { id:Date.now(), name:exStr, sets:[{ id:1, w:"", r:"", done:false }] };
-                  return [...p, x];
+                  const newEx = { id: Date.now(), name: exStr, sets: exIsCardio
+                    ? [{ id: `${Date.now()}-0`, dist:"", dur:"", done:false }]
+                    : Array.from({ length: 3 }, (_, si) => ({ id: `${Date.now()}-${si}`, w:"", r:"", done:false })) };
+                  return [...p, newEx];
                 });
-                setExercisesChanged(true);
+                markExChange();
               }}/>
             )}
-            
-            <button onClick={() => setShowAddEx(true)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"16px", fontSize:"16px", marginBottom:"16px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
-              <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
-            </button>
+            {workoutActive && (
+              <button onClick={() => setShowAddEx(true)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"16px", fontSize:"16px", marginTop:"8px", marginBottom:"8px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
+                <span style={{ fontSize:"18px", color:A }}>+</span> Add Exercise
+              </button>
+            )}
+
+            {/* Undo toast for exercise deletion */}
+            {pendingUndo && (
+              <div style={{ position:"fixed", bottom:"88px", left:"16px", right:"16px", background:S1, border:`1px solid ${BD}`, borderRadius:"12px", padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", zIndex:300, boxShadow:"0 4px 20px rgba(0,0,0,0.4)" }}>
+                <span style={{ fontSize:"14px", color:TX }}>{pendingUndo.msg}</span>
+                <button onClick={() => { clearTimeout(pendingUndoTimer); pendingUndo.action(); setPendingUndo(null); }} style={{ background:A, border:"none", borderRadius:"8px", color:"#000", fontWeight:"700", fontSize:"13px", padding:"6px 14px", cursor:"pointer" }}>Undo</button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -1617,6 +1756,163 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   );
 }
 // ════════════════════════════════════════════════════════════════════════
+// ROUTINE EXERCISE CARD (Editable config)
+// ════════════════════════════════════════════════════════════════════════
+function RoutineExerciseCard({ ex, updateEx }) {
+  const [expanded, setExpanded] = useState(false);
+  const name = typeof ex === "string" ? ex : ex.name;
+  const sets = typeof ex === "string" ? "" : ex.sets || "";
+  const reps = typeof ex === "string" ? "" : ex.reps || "";
+  const weight = typeof ex === "string" ? "" : ex.weight || "";
+
+  return (
+    <div style={{ padding:"8px 4px 8px 0", flex:1, touchAction: "pan-y" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span style={{ fontSize:"16px", fontWeight:"500", color:TX }}>{name}</span>
+        <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} style={{ background:"none", border:"none", color:A, fontSize:"13px", fontWeight:"600", padding:"4px", cursor:"pointer" }}>
+          {expanded ? "Done" : "Config"}
+        </button>
+      </div>
+      {expanded && (
+        <div style={{ display:"flex", gap:"8px", marginTop:"10px", paddingBottom: "4px" }} onClick={e => e.stopPropagation()}>
+          <div style={{ flex:1 }}>
+            <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Sets</label>
+            <input type="number" placeholder="Optional" value={sets} onChange={e => updateEx({ name, sets: e.target.value ? Number(e.target.value) : "", reps, weight })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
+          </div>
+          <div style={{ flex:1 }}>
+            <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Reps</label>
+            <input type="text" placeholder="e.g. 8-12" value={reps} onChange={e => updateEx({ name, sets, reps: e.target.value, weight })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
+          </div>
+          <div style={{ flex:1 }}>
+            <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Lbs</label>
+            <input type="number" placeholder="Optional" value={weight} onChange={e => updateEx({ name, sets, reps, weight: e.target.value ? Number(e.target.value) : "" })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
+          </div>
+        </div>
+      )}
+      {!expanded && (sets || reps || weight) && typeof ex !== "string" && (
+        <div style={{ fontSize:"12px", color:SB, marginTop:"4px", display:"flex", gap:"10px", fontWeight: "500" }}>
+          <span>
+            {[
+              sets ? `${sets} Sets` : null,
+              weight ? `${weight} lbs` : null
+            ].filter(Boolean).join(", ")}
+            {reps ? (sets || weight ? ` * ${reps} reps` : `${reps} reps`) : ""}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// COACH ATHLETE ROW DASHBOARD
+// ════════════════════════════════════════════════════════════════════════
+function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAthleteView, athleteLoading }) {
+  const [data, setData] = useState(null);
+  const isExpanded = expandedAthlete === athlete.id;
+
+  useEffect(() => {
+    loadAthleteData(athlete.athlete_id).then(setData).catch(console.error);
+  }, [athlete.athlete_id]);
+
+  let statusText = "No workout in 4d";
+  let streakText = "—";
+
+  if (data) {
+    const { history, routine } = data;
+    
+    // Calculate Streak
+    const workedOutDays = new Set(history.map(w => w.date));
+    let streak = 0;
+    let check = new Date();
+    check.setHours(0,0,0,0);
+    const todayStr = check.toISOString().split("T")[0];
+    const yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr = yestDate.toISOString().split("T")[0];
+
+    // if today broke streak, see if yesterday hit it
+    if (!workedOutDays.has(todayStr)) {
+      if (!workedOutDays.has(yestStr)) {
+        streak = 0; // truly broken
+      } else {
+        check.setDate(check.getDate() - 1); // streak still alive from yesterday
+      }
+    }
+
+    if (workedOutDays.has(check.toISOString().split("T")[0])) {
+      while (true) {
+        const iso = check.toISOString().split("T")[0];
+        if (workedOutDays.has(iso)) {
+          streak++;
+          check.setDate(check.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (streak > 0) {
+      if (streak >= 7) {
+        streakText = `${Math.floor(streak / 7)}-week streak`;
+      } else {
+        streakText = `${streak}-day streak`;
+      }
+    }
+
+    // Last workout status
+    if (history.length > 0) {
+      const last = history[0];
+      const typeLow = last.type ? last.type.toLowerCase() : "";
+      const isPush = typeLow.includes("push");
+      const isPull = typeLow.includes("pull");
+      const verb = isPush ? "Pushed" : isPull ? "Pulled" : `Trained ${last.type}`;
+      
+      const lastDate = new Date(last.date + "T12:00:00");
+      const todayT = new Date(); todayT.setHours(12,0,0,0);
+      const diffDays = Math.round((todayT - lastDate) / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) statusText = `${verb} today`;
+      else if (diffDays === 1) statusText = `${verb} yesterday`;
+      else statusText = `No workout in ${diffDays}d`;
+    } else {
+      const todayKey = getToday();
+      const tDay = routine && routine[todayKey];
+      if (tDay && tDay.type === "Rest") {
+        statusText = "Rest day";
+      } else {
+        statusText = "No workouts yet";
+      }
+    }
+  }
+
+  return (
+    <div style={{ marginBottom:"6px", background:S2, borderRadius:"12px", border:`1px solid ${isExpanded ? A+"44" : MT}`, overflow:"hidden", transition:"border-color 0.2s" }}>
+      <button onClick={() => setExpandedAthlete(isExpanded ? null : athlete.id)} style={{ width:"100%", background:"none", border:"none", padding:"12px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"14px", flex: 1 }}>
+          <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: SB, flexShrink: 0 }} />
+          <span style={{ fontSize:"15px", fontWeight:"600", color:TX, width: "130px", textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {athlete.athlete_name}
+          </span>
+          <span style={{ fontSize:"13px", color:SB, flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {data ? statusText : "Loading..."}
+          </span>
+          <span style={{ fontSize:"13px", color:TX, width: "80px", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0 }}>
+            {streakText}
+          </span>
+        </div>
+      </button>
+      {isExpanded && (
+        <div style={{ borderTop:`1px solid ${BD}`, padding:"12px 14px 14px" }}>
+          <button onClick={() => openAthleteView(athlete)} disabled={!data || athleteLoading} style={{ ...btnPrim, width:"100%", padding:"12px", fontSize:"15px" }}>
+            {athleteLoading ? "Loading…" : `Open ${athlete.athlete_name}'s Profile`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // ROUTINE SCREEN
 // ════════════════════════════════════════════════════════════════════════
 function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, profile, onProfileTap, onCustomized, authUser, coachLinks, setCoachLinks, coachLinksLoaded, onOpenAthlete, athleteView }) {
@@ -1625,7 +1921,12 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
   const [pickingExDay,  setPickingExDay]  = useState(null);
   const [showCoach,     setShowCoach]     = useState(false);
   const [athleteLoading, setAthleteLoading] = useState(false);
-  const [expandedAthlete, setExpandedAthlete] = useState(null); // for multi-athlete collapse
+  const [expandedAthlete, setExpandedAthlete] = useState(null);
+  const [newEx,         setNewEx]         = useState("");
+  const [dragOverIdx,   setDragOverIdx]   = useState(-1);
+  const dragInfo        = useRef(null); // { day, from, over }
+  const exListRef       = useRef(null); // ref to open day's exercise list container
+  const moveExRef       = useRef(null);
   const todayDay = getToday();
 
   const openAthleteView = async (link) => {
@@ -1665,6 +1966,39 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
     setTemplates(p => ({ ...p, [d]:{ ...p[d], exercises:[...p[d].exercises, name.trim()] } }));
     showUndo("Exercise added");
     onCustomized?.();
+  };
+
+  const updateEx = (d, i, newExData) => {
+    setPrevTemplates({ ...templates });
+    setTemplates(p => {
+      const exs = [...p[d].exercises];
+      exs[i] = newExData;
+      return { ...p, [d]: { ...p[d], exercises: exs } };
+    });
+    onCustomized?.();
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+  );
+
+  const handleDragEnd = (event, day) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setPrevTemplates({ ...templates });
+      setTemplates(p => {
+        const exs = [...p[day].exercises];
+        const oldIndex = exs.findIndex((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i === active.id);
+        const newIndex = exs.findIndex((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i === over.id);
+        if (oldIndex !== -1 && newIndex !== -1) {
+          const removed = exs.splice(oldIndex, 1)[0];
+          exs.splice(newIndex, 0, removed);
+        }
+        return { ...p, [day]: { ...p[day], exercises: exs } };
+      });
+      onCustomized?.();
+    }
   };
 
   return (
@@ -1716,12 +2050,21 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
                     <div style={{ fontSize:"12px", color:MT, marginBottom:"10px" }}>No exercises yet.</div>
                   )}
 
-                  {t.exercises.map((ex,i) => (
-                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:i<t.exercises.length-1?`1px solid ${MT}`:"none" }}>
-                      <span style={{ fontSize:"16px" }}>{ex}</span>
-                      <button onClick={() => removeEx(day,i)} style={{ background:"none", border:"none", color:SB, cursor:"pointer", fontSize:"15px", padding:"0 4px" }}>✕</button>
-                    </div>
-                  ))}
+                  {/* Exercise list with drag-to-reorder + swipe-to-delete */}
+                  <div>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, day)}>
+                      <SortableContext items={t.exercises.map((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i)} strategy={verticalListSortingStrategy}>
+                        {t.exercises.map((ex,i) => {
+                          const id = (typeof ex === "string" ? ex : ex.name)+"-"+i;
+                          return (
+                            <SortableExerciseRow key={id} id={id} onRemove={() => removeEx(day, i)}>
+                              <RoutineExerciseCard ex={ex} updateEx={(data) => updateEx(day, i, data)} />
+                            </SortableExerciseRow>
+                          );
+                        })}
+                      </SortableContext>
+                    </DndContext>
+                  </div>
 
                   {t.type!=="Rest" && (
                     <div style={{ padding:"12px 0 0" }}>
@@ -1750,65 +2093,20 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
             )}
           </div>
 
-          {/* Athletes I'm coaching — dynamic: 1 = full-screen button, multiple = inline collapse */}
-          {myAthletes.length === 1 && (
-            <button
-              onClick={() => openAthleteView(myAthletes[0])}
-              disabled={athleteLoading}
-              style={{ width:"100%", background:S2, border:`1px solid ${A}44`, borderRadius:"12px", padding:"14px 16px", marginBottom:"12px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                <div style={{ width:"36px", height:"36px", borderRadius:"50%", background:`${A}22`, border:`1px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"15px", fontWeight:"700", color:A }}>
-                  {myAthletes[0].athlete_name?.[0]?.toUpperCase() || "?"}
-                </div>
-                <div style={{ textAlign:"left" }}>
-                  <div style={{ fontSize:"16px", fontWeight:"600", color:TX }}>{myAthletes[0].athlete_name}</div>
-                  <div style={{ fontSize:"12px", color:A, display:"flex", alignItems:"center", gap:"4px", marginTop:"2px" }}>
-                    <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:A }}/>Active
-                  </div>
-                </div>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:"6px", color:A, fontSize:"14px", fontWeight:"700" }}>
-                {athleteLoading ? <div style={{ width:"14px", height:"14px", borderRadius:"50%", border:`2px solid ${MT}`, borderTopColor:A, animation:"spin 0.7s linear infinite" }}/> : null}
-                View
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </div>
-            </button>
-          )}
-
-          {myAthletes.length > 1 && (
+          {/* Athletes I'm coaching */}
+          {myAthletes.length > 0 && (
             <div style={{ marginBottom:"12px" }}>
-              <div style={{ ...subLbl, marginBottom:"8px" }}>Your Athletes ({myAthletes.length})</div>
-              {myAthletes.map(l => {
-                const isExpanded = expandedAthlete === l.id;
-                return (
-                  <div key={l.id} style={{ marginBottom:"6px", background:S2, borderRadius:"12px", border:`1px solid ${isExpanded ? A+"44" : MT}`, overflow:"hidden", transition:"border-color 0.2s" }}>
-                    <button
-                      onClick={() => setExpandedAthlete(isExpanded ? null : l.id)}
-                      style={{ width:"100%", background:"none", border:"none", padding:"12px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}
-                    >
-                      <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                        <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:`${A}22`, border:`1px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"13px", fontWeight:"700", color:A }}>
-                          {l.athlete_name?.[0]?.toUpperCase() || "?"}
-                        </div>
-                        <span style={{ fontSize:"15px", fontWeight:"600", color:TX }}>{l.athlete_name}</span>
-                      </div>
-                      <span style={{ color:SB, fontSize:"14px", transform: isExpanded ? "rotate(180deg)" : "none", transition:"transform 0.2s", display:"block" }}>⌄</span>
-                    </button>
-                    {isExpanded && (
-                      <div style={{ borderTop:`1px solid ${BD}`, padding:"12px 14px 14px" }}>
-                        <button
-                          onClick={() => openAthleteView(l)}
-                          disabled={athleteLoading}
-                          style={{ ...btnPrim, width:"100%", padding:"12px", fontSize:"15px" }}
-                        >
-                          {athleteLoading ? "Loading…" : `Open ${l.athlete_name}'s Profile`}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              <div style={{ ...subLbl, marginBottom:"8px" }}>Your Athletes</div>
+              {myAthletes.map(l => (
+                <CoachAthleteRow
+                  key={l.id}
+                  athlete={l}
+                  expandedAthlete={expandedAthlete}
+                  setExpandedAthlete={setExpandedAthlete}
+                  openAthleteView={openAthleteView}
+                  athleteLoading={athleteLoading}
+                />
+              ))}
             </div>
           )}
 
@@ -1846,6 +2144,12 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
   const [pickingExDay, setPickingExDay] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [saveMsg,      setSaveMsg]      = useState(null);
+  const [newEx,        setNewEx]        = useState("");
+  const [activeTab,    setActiveTab]    = useState("routine"); // "routine" | "body"
+  const [avDragOver,   setAvDragOver]   = useState(-1);
+  const avDragInfo  = useRef(null);
+  const avListRef   = useRef(null);
+  const avMoveRef   = useRef(null);
 
   const toggleDay = (d) => { setExpandedDay(expandedDay === d ? null : d); setEditingType(null); setNewEx(""); };
 
@@ -1879,6 +2183,35 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
     }
   };
 
+  const updateEx = (day, i, newExData) => {
+    setEditRoutine(p => {
+      const exs = [...(p[day]?.exercises || [])];
+      exs[i] = newExData;
+      return { ...p, [day]: { ...p[day], exercises: exs } };
+    });
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 5 } })
+  );
+
+  const handleDragEnd = (event, day) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setEditRoutine(p => {
+         const exs = [...(p[day]?.exercises || [])];
+         const oldIndex = exs.findIndex((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i === active.id);
+         const newIndex = exs.findIndex((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i === over.id);
+         if (oldIndex !== -1 && newIndex !== -1) {
+           const removed = exs.splice(oldIndex, 1)[0];
+           exs.splice(newIndex, 0, removed);
+         }
+         return { ...p, [day]: { ...p[day], exercises: exs } };
+      });
+    }
+  };
+
   return (
     <div style={{ position:"fixed", top:0, bottom:0, left:0, right:0, background:BG, zIndex:200, overflowY:"auto", paddingBottom:"100px" }}>
       {/* Header */}
@@ -1897,8 +2230,8 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
 
       {/* Coach Tabs */}
       <div style={{ display:"flex", gap:"8px", padding:"16px", background:BG, position:"sticky", top:"80px", zIndex:9, borderBottom:`1px solid ${BD}` }}>
-        <button onClick={() => setEditingType("TAB_ROUTINE")} style={{ flex:1, padding:"8px", background: editingType !== "TAB_BODY" ? A : S2, color: editingType !== "TAB_BODY" ? "#000" : SB, border:`1px solid ${editingType !== "TAB_BODY" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Routine & Log</button>
-        <button onClick={() => setEditingType("TAB_BODY")} style={{ flex:1, padding:"8px", background: editingType === "TAB_BODY" ? A : S2, color: editingType === "TAB_BODY" ? "#000" : SB, border:`1px solid ${editingType === "TAB_BODY" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Body Stats</button>
+        <button onClick={() => setActiveTab("routine")} style={{ flex:1, padding:"8px", background: activeTab === "routine" ? A : S2, color: activeTab === "routine" ? "#000" : SB, border:`1px solid ${activeTab === "routine" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Routine & Log</button>
+        <button onClick={() => setActiveTab("body")} style={{ flex:1, padding:"8px", background: activeTab === "body" ? A : S2, color: activeTab === "body" ? "#000" : SB, border:`1px solid ${activeTab === "body" ? A : MT}`, borderRadius:"8px", fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>Body Stats</button>
       </div>
 
       <div style={{ padding:"14px" }}>
@@ -1908,7 +2241,7 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
           </div>
         )}
 
-        {editingType === "TAB_BODY" ? (
+        {activeTab === "body" ? (
           <div>
             <div style={{ ...subLbl, paddingLeft:"4px", marginBottom:"10px" }}>Weight Log</div>
             {athleteView.weights && athleteView.weights.length > 0 ? athleteView.weights.slice(0, 5).map((w, i) => (
@@ -1974,12 +2307,21 @@ function AthleteView({ athleteView, setAthleteView, athleteId, todayDay, onRouti
                         <div style={{ fontSize:"13px", color:MT, marginBottom:"10px" }}>No exercises yet.</div>
                       )}
 
-                      {t.exercises.map((ex, i) => (
-                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom: i < t.exercises.length - 1 ? `1px solid ${MT}` : "none" }}>
-                          <span style={{ fontSize:"15px" }}>{ex}</span>
-                          <button onClick={() => removeEx(day, i)} style={{ background:"none", border:"none", color:SB, cursor:"pointer", fontSize:"16px", padding:"0 4px" }}>✕</button>
-                        </div>
-                      ))}
+                      {/* Exercise list with dnd-kit + swipe-to-delete */}
+                      <div>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, day)}>
+                          <SortableContext items={t.exercises.map((ex, i) => (typeof ex === "string" ? ex : ex.name)+"-"+i)} strategy={verticalListSortingStrategy}>
+                            {t.exercises.map((ex, i) => {
+                              const id = (typeof ex === "string" ? ex : ex.name)+"-"+i;
+                              return (
+                                <SortableExerciseRow key={id} id={id} onRemove={() => removeEx(day, i)}>
+                                  <RoutineExerciseCard ex={ex} updateEx={(data) => updateEx(day, i, data)} />
+                                </SortableExerciseRow>
+                              );
+                            })}
+                          </SortableContext>
+                        </DndContext>
+                      </div>
 
                       {t.type !== "Rest" && (
                         <div style={{ padding:"12px 0 0" }}>

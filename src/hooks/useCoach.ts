@@ -63,6 +63,18 @@ export async function sendCoachRequest(
   coachId: string,
   athleteId: string
 ): Promise<void> {
+  // Enforce rule: athlete can only have 1 active coach
+  const { data: activeCoach } = await supabase
+    .from("coach_athletes")
+    .select("id")
+    .eq("athlete_id", athleteId)
+    .eq("status", "accepted")
+    .single();
+
+  if (activeCoach) {
+    throw new Error("This athlete already has an active coach.");
+  }
+
   const { error } = await supabase.from("coach_athletes").insert({
     coach_id: coachId,
     athlete_id: athleteId,
@@ -103,11 +115,28 @@ export async function loadCoachLinks(userId: string): Promise<CoachLink[]> {
 
 // ── Accept a pending request (called by athlete) ──────────────────────────────
 export async function acceptCoachRequest(linkId: string): Promise<void> {
+  const { data: link, error: fetchErr } = await supabase
+    .from("coach_athletes")
+    .select("athlete_id")
+    .eq("id", linkId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+
   const { error } = await supabase
     .from("coach_athletes")
     .update({ status: "accepted" })
     .eq("id", linkId);
   if (error) throw new Error(error.message);
+
+  // Clean up any other pending requests for this athlete
+  if (link?.athlete_id) {
+    await supabase
+      .from("coach_athletes")
+      .delete()
+      .eq("athlete_id", link.athlete_id)
+      .neq("id", linkId)
+      .eq("status", "pending");
+  }
 }
 
 // ── Decline / remove a link ───────────────────────────────────────────────────
