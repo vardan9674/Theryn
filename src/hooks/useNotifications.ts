@@ -234,3 +234,33 @@ export async function triggerCoachEditNotification() {
     console.error('Failed to trigger coach edit notification', e);
   }
 }
+
+/**
+ * Triggers a notification for the Coach when their athlete completes a workout
+ */
+export async function triggerAthleteFinishedNotification(athleteName: string, workoutType: string) {
+  try {
+    const titles = [
+      `${athleteName} Put In The Work`, 
+      `${athleteName} Completed A Session`, 
+      `Athlete Update: ${athleteName}`
+    ];
+    
+    const bodies = [
+      `They just finished a solid ${workoutType} workout.`,
+      `Another ${workoutType} session in the books.`,
+      `Their ${workoutType} routine is complete for today.`
+    ];
+
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: Math.floor(Math.random() * 1000000) + 5000,
+        title: pick(titles),
+        body: pick(bodies),
+        channelId: 'theryn-alerts',
+      }]
+    });
+  } catch (e) {
+    console.error('Failed to trigger coach notification', e);
+  }
+}
