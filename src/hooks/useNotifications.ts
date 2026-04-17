@@ -1,36 +1,83 @@
 import { LocalNotifications, LocalNotificationSchema } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 
+// ── NOTIFICATION ID RANGES ────────────────────────────────────────────────
+// Reserved ranges (keep stable across app versions):
+//   1000 – 1099  Daily routine reminders (athlete)
+//   2000 – 2099  Reflection (post-workout)
+//   3000 – 3099  Streak reminder (athlete)
+//   4000 – 4099  Coach-edit push (athlete side)
+//   5000 – 5099  Athlete-finished push (coach side, realtime)
+//   6000 – 6099  Coach catch-up (app resume)
+//   7000         Coach daily digest
 const DAILY_ROUTINE_ID = 1000;
 const REFLECTION_ID = 2000;
 const STREAK_ID = 3000;
 const COACH_EDIT_ID = 4000;
+const ATHLETE_FINISHED_BASE = 5000;
+const COACH_CATCHUP_BASE = 6000;
+const COACH_DIGEST_ID = 7000;
+
+// ── CHANNELS (Android) ────────────────────────────────────────────────────
+const CH_REMINDERS = 'theryn-reminders';
+const CH_COACH = 'theryn-coach';
+const CH_STREAKS = 'theryn-streaks';
 
 // ── UTILITIES ─────────────────────────────────────────────────────────────
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
+const isNative = () => {
+  try { return Capacitor.isNativePlatform(); } catch { return false; }
+};
+
+async function createChannels() {
+  if (!isNative()) return;
+  const channels = [
+    { id: CH_REMINDERS, name: 'Workout Reminders', description: 'Daily routine and reflection reminders', importance: 4 },
+    { id: CH_COACH, name: 'Coach Updates', description: 'Coach edits and athlete completions', importance: 5 },
+    { id: CH_STREAKS, name: 'Streak Reminders', description: 'Streak protection nudges', importance: 4 },
+  ];
+  for (const ch of channels) {
+    try {
+      await LocalNotifications.createChannel({
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        importance: ch.importance as 1 | 2 | 3 | 4 | 5,
+        visibility: 1,
+      });
+    } catch {
+      // ignore on unsupported platforms
+    }
+  }
+}
+
 /**
- * Request notification permissions.
+ * Request notification permissions + ensure channels exist.
+ * Returns 'granted' | 'denied' | 'prompt' | 'unsupported'.
  */
-export async function requestNotificationPermissions() {
+export async function requestNotificationPermissions(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
   try {
     const permStatus = await LocalNotifications.requestPermissions();
     if (permStatus.display === 'granted') {
-      try {
-        await LocalNotifications.createChannel({
-          id: 'theryn-alerts',
-          name: 'Theryn Alerts',
-          description: 'Workout reminders and coach updates',
-          importance: 5,
-          visibility: 1, // public on lockscreen
-        });
-      } catch (cErr) {
-        // safe to ignore on unsupported platforms (web/iOS)
-      }
+      await createChannels();
     }
-    return permStatus.display === 'granted';
+    return (permStatus.display as any) || 'unsupported';
   } catch (e) {
     console.error('LocalNotifications not available', e);
-    return false;
+    return 'unsupported';
+  }
+}
+
+/**
+ * Check current permission state without prompting.
+ */
+export async function getNotificationPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
+  try {
+    const s = await LocalNotifications.checkPermissions();
+    return (s.display as any) || 'unsupported';
+  } catch {
+    return 'unsupported';
   }
 }
 
@@ -82,10 +129,10 @@ export async function scheduleDailyRoutine(routine: Record<string, { type: strin
           id: DAILY_ROUTINE_ID + index,
           title: pick(titles),
           body: pick(bodies),
-          channelId: 'theryn-alerts',
-          schedule: { 
-            on: { weekday: jsDay, hour: 8, minute: 0 }, 
-            allowWhileIdle: true 
+          channelId: CH_REMINDERS,
+          schedule: {
+            on: { weekday: jsDay, hour: 8, minute: 0 },
+            allowWhileIdle: true
           }
         });
       }
@@ -152,7 +199,7 @@ export async function scheduleReflection(exercises: any[]) {
         id: REFLECTION_ID,
         title: pick(titles),
         body: pick(bodies),
-        channelId: 'theryn-alerts',
+        channelId: CH_REMINDERS,
         schedule: { at: targetTime, allowWhileIdle: true }
       }]
     });
@@ -193,7 +240,7 @@ export async function scheduleStreakReminder(streakCount: number) {
         id: STREAK_ID,
         title: pick(titles),
         body: pick(bodies),
-        channelId: 'theryn-alerts',
+        channelId: CH_STREAKS,
         schedule: { at: targetTime, allowWhileIdle: true }
       }]
     });
@@ -227,7 +274,7 @@ export async function triggerCoachEditNotification() {
         id: COACH_EDIT_ID,
         title: pick(titles),
         body: pick(bodies),
-        channelId: 'theryn-alerts',
+        channelId: CH_COACH,
       }]
     });
   } catch (e) {
@@ -252,15 +299,150 @@ export async function triggerAthleteFinishedNotification(athleteName: string, wo
       `Their ${workoutType} routine is complete for today.`
     ];
 
+    // Use a stable ID range; cycling per-athlete avoids collisions
+    const hash = [...athleteName].reduce((a, c) => (a + c.charCodeAt(0)) % 100, 0);
     await LocalNotifications.schedule({
       notifications: [{
-        id: Math.floor(Math.random() * 1000000) + 5000,
+        id: ATHLETE_FINISHED_BASE + hash,
         title: pick(titles),
         body: pick(bodies),
-        channelId: 'theryn-alerts',
+        channelId: CH_COACH,
+        extra: { type: 'athlete_finished', athleteName, workoutType },
       }]
     });
   } catch (e) {
     console.error('Failed to trigger coach notification', e);
+  }
+}
+
+// ── COACH: DAILY DIGEST ───────────────────────────────────────────────────
+
+/**
+ * Schedule a daily 8am coach briefing summarizing which athletes need attention.
+ * Pass pre-computed signal counts from detectSignals().
+ */
+export async function scheduleCoachDailyDigest(
+  summary: { urgent: number; warn: number; celebrate: number; totalAthletes: number; topLines?: string[] }
+) {
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: COACH_DIGEST_ID }] });
+
+    if (summary.totalAthletes === 0) return;
+
+    // Schedule for tomorrow 8am (not today)
+    const target = new Date();
+    target.setDate(target.getDate() + 1);
+    target.setHours(8, 0, 0, 0);
+
+    let title = 'Coach Briefing';
+    let body: string;
+    if (summary.urgent > 0) {
+      title = `${summary.urgent} athlete${summary.urgent > 1 ? 's' : ''} need${summary.urgent === 1 ? 's' : ''} attention`;
+      body = summary.topLines?.[0] || 'Open Theryn to review urgent signals.';
+    } else if (summary.warn > 0) {
+      title = 'Coach Briefing';
+      body = `${summary.warn} athlete${summary.warn > 1 ? 's' : ''} off-track this week. Tap to review.`;
+    } else if (summary.celebrate > 0) {
+      title = 'Coach Briefing';
+      body = `${summary.celebrate} athlete${summary.celebrate > 1 ? 's' : ''} on a strong streak — send some recognition.`;
+    } else {
+      body = `All ${summary.totalAthletes} athlete${summary.totalAthletes > 1 ? 's' : ''} on track. Keep it going.`;
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: COACH_DIGEST_ID,
+        title,
+        body,
+        channelId: CH_COACH,
+        schedule: { at: target, allowWhileIdle: true, repeats: true, every: 'day' },
+        extra: { type: 'coach_digest' },
+      }]
+    });
+  } catch (e) {
+    console.error('Failed to schedule coach daily digest', e);
+  }
+}
+
+// ── COACH: CATCH-UP ON APP RESUME ─────────────────────────────────────────
+
+const COACH_LAST_SEEN_KEY = 'theryn_coach_last_seen';
+
+export function markCoachSeen() {
+  try { localStorage.setItem(COACH_LAST_SEEN_KEY, new Date().toISOString()); } catch {}
+}
+
+export function getCoachLastSeen(): Date | null {
+  try {
+    const v = localStorage.getItem(COACH_LAST_SEEN_KEY);
+    return v ? new Date(v) : null;
+  } catch { return null; }
+}
+
+/**
+ * Fire a single catch-up notification summarizing athletes that completed
+ * workouts while the coach app was backgrounded. Pass the list of sessions
+ * created since last-seen (caller fetches from Supabase).
+ */
+export async function triggerCoachCatchUp(
+  finishedSessions: Array<{ athleteName: string; workoutType: string }>
+) {
+  if (!finishedSessions || finishedSessions.length === 0) return;
+  try {
+    const uniqueAthletes = Array.from(new Set(finishedSessions.map(s => s.athleteName)));
+    const title = finishedSessions.length === 1
+      ? `${finishedSessions[0].athleteName} finished ${finishedSessions[0].workoutType}`
+      : `${finishedSessions.length} workouts completed`;
+    const body = finishedSessions.length === 1
+      ? `While you were away — a ${finishedSessions[0].workoutType} session.`
+      : `${uniqueAthletes.slice(0, 3).join(', ')}${uniqueAthletes.length > 3 ? ' and others' : ''} logged workouts.`;
+
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: COACH_CATCHUP_BASE + Math.floor(Math.random() * 100),
+        title,
+        body,
+        channelId: CH_COACH,
+        extra: { type: 'coach_catchup', count: finishedSessions.length },
+      }]
+    });
+  } catch (e) {
+    console.error('Failed to trigger coach catch-up', e);
+  }
+}
+
+// ── DEEP-LINK TAP HANDLER ─────────────────────────────────────────────────
+
+const DEEP_LINK_KEY = 'theryn_pending_deeplink';
+
+export function consumePendingDeepLink(): { type: string; [k: string]: any } | null {
+  try {
+    const v = localStorage.getItem(DEEP_LINK_KEY);
+    if (!v) return null;
+    localStorage.removeItem(DEEP_LINK_KEY);
+    return JSON.parse(v);
+  } catch { return null; }
+}
+
+let tapHandlerRegistered = false;
+
+/**
+ * Wire a listener so when the user taps a coach/athlete notification,
+ * the intended deep-link action is captured in localStorage and the
+ * app can consume it on render.
+ */
+export function registerNotificationTapHandlers() {
+  if (tapHandlerRegistered) return;
+  tapHandlerRegistered = true;
+  try {
+    LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+      const extra = action?.notification?.extra;
+      if (!extra || !extra.type) return;
+      try {
+        localStorage.setItem(DEEP_LINK_KEY, JSON.stringify(extra));
+      } catch {}
+    });
+  } catch (e) {
+    console.error('Failed to register notification tap handler', e);
   }
 }

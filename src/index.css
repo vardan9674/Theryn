@@ -84,6 +84,17 @@ textarea::placeholder {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes drawerUp {
+  from { transform: translate(-50%, 100%); }
+  to   { transform: translate(-50%, 0); }
+}
+
+/* All buttons inherit the app font by default (avoid Safari/Chrome default) */
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
@@ -150,7 +161,9 @@ textarea::placeholder {
 .content-scroll {
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 80px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: 96px;
   position: relative;
   z-index: 1;
 }
@@ -328,6 +341,33 @@ textarea::placeholder {
     z-index: 2;
   }
 
+  /* Athlete-card action links: brighten text on hover, nudge arrow right */
+  .coach-card-link:hover { color: #F0F0F0 !important; }
+  .coach-card-link:hover > span { color: #C8FF00 !important; transform: translateX(2px); }
+  .coach-card-link > span { display: inline-block; transition: transform 0.15s, color 0.15s; }
+}
+
+/* ── Coach athlete card — mobile touch feedback ─────────────────────────── */
+/* Active-press affordance for iOS/Android. The desktop hover lift is scoped
+   inside the min-width:768px block above, so mobile needs its own response. */
+.coach-athlete-card {
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.coach-athlete-card:active {
+  transform: scale(0.985);
+  background: #141414 !important;
+  border-color: #2C2C2C !important;
+}
+@media (max-width: 767px) {
+  /* Slightly tighter margins on mobile for denser list view */
+  .coach-athlete-card { margin-bottom: 12px; }
+}
+@media (min-width: 768px) {
+  /* On desktop, keep the card's existing hover lift from .crm-card:hover
+     and suppress the mobile active-press scale so it doesn't fight it. */
+  .coach-athlete-card:active { transform: none; }
+
   /* Expand panels and cards */
   .crm-limit-width {
     max-width: 640px !important;
@@ -342,11 +382,16 @@ textarea::placeholder {
     max-width: 340px;
   }
 
-  /* Any button using width:100% in most form-style controls → auto on desktop */
-  .content-scroll button[style*="width: 100%"],
-  .content-scroll button[style*="width:100%"] {
+  /* Any button using width:100% in most form-style controls → auto on desktop.
+     Rows that should always span their container opt in with .row-btn. */
+  .content-scroll button[style*="width: 100%"]:not(.row-btn),
+  .content-scroll button[style*="width:100%"]:not(.row-btn) {
     width: auto !important;
     min-width: 140px;
+  }
+
+  .content-scroll .row-btn {
+    width: 100% !important;
   }
 
   /* Save / confirm / action rows: flex-row, centered, compact */
@@ -366,10 +411,26 @@ textarea::placeholder {
   }
 }
 
-/* ── Safe area insets for notch devices ──────────────────────────────── */
-@supports (padding-top: env(safe-area-inset-top)) {
-  body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+/* ── Safe area insets for notch / status bar (iOS + Android edge-to-edge) ─ */
+/*
+ * Reserve the full status bar region on BOTH platforms.
+ * iOS: env() reports the notch. Android (Capacitor 8+ edge-to-edge on API 35+)
+ * also reports the status bar height. Non-edge-to-edge Android returns 0,
+ * which is fine because the WebView already sits below the system bar.
+ *
+ * We apply padding on `.app-shell` instead of `body` so fixed-position
+ * overlays (modals, drawers, floating buttons) can still reach the top of
+ * the viewport and respect insets via their own env() math.
+ */
+.app-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+
+/* When the user is on a native shell, reserve a consistent top region
+   (~ status bar height) so the floating profile button never overlaps
+   the first tab's title, even without @capacitor/status-bar installed. */
+.content-scroll {
+  padding-top: 8px;
 }

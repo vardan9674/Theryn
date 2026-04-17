@@ -10,12 +10,28 @@ const INDEX_TO_DAY: Record<number, string> = {
 };
 
 // ── Templates type ───────────────────────────────────────────────────────────
+// Exercises can be bare strings (legacy) OR objects carrying a coach note /
+// target overrides. All consumers must handle both shapes — see App.jsx.
+export interface ExerciseObject {
+  name: string;
+  coachNote?: string;
+  sets?: number | string;
+  reps?: string;
+  weight?: number | string;
+}
+
+export type ExerciseItem = string | ExerciseObject;
+
 export interface DayTemplate {
   type: string;
-  exercises: string[];
+  exercises: ExerciseItem[];
 }
 
 export type Templates = Record<string, DayTemplate>;
+
+function exerciseName(ex: ExerciseItem): string {
+  return typeof ex === "string" ? ex : ex.name;
+}
 
 import { enqueueAction } from "../lib/offlineQueue";
 
@@ -83,10 +99,20 @@ export async function loadRoutine(userId: string): Promise<Templates | null> {
       const dayKey = INDEX_TO_DAY[(day as any).day_index];
       if (!dayKey) continue;
       const sortedExercises = [...((day as any).routine_exercises || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
-      const exerciseNames = sortedExercises.map((ex: any) => idToName[ex.exercise_id]).filter(Boolean) as string[];
+      const exercises: ExerciseItem[] = [];
+      for (const ex of sortedExercises) {
+        const name = idToName[(ex as any).exercise_id];
+        if (!name) continue;
+        // Return the richer object shape when a coach note exists, plain string otherwise.
+        if ((ex as any).notes) {
+          exercises.push({ name, coachNote: (ex as any).notes });
+        } else {
+          exercises.push(name);
+        }
+      }
       templates[dayKey] = {
         type: (day as any).workout_type,
-        exercises: exerciseNames,
+        exercises,
       };
     }
     
@@ -158,11 +184,29 @@ export async function saveRoutine(
 
       if (!dayData.exercises || dayData.exercises.length === 0) continue;
 
-      const exerciseRows: Array<{ routine_day_id: string; exercise_id: string; sort_order: number; }> = [];
+      const exerciseRows: Array<{
+        routine_day_id: string;
+        exercise_id: string;
+        sort_order: number;
+        notes?: string | null;
+      }> = [];
       for (let i = 0; i < dayData.exercises.length; i++) {
+        const item = dayData.exercises[i];
+        // Accept both legacy strings and the new {name, coachNote, ...} shape.
+        const name = exerciseName(item);
+        if (!name || typeof name !== "string") continue;
+        const coachNote =
+          typeof item === "object" && item && typeof item.coachNote === "string"
+            ? item.coachNote.trim()
+            : "";
         try {
-          const exId = await getExerciseId(dayData.exercises[i], userId);
-          exerciseRows.push({ routine_day_id: dayId, exercise_id: exId, sort_order: i });
+          const exId = await getExerciseId(name, userId);
+          exerciseRows.push({
+            routine_day_id: dayId,
+            exercise_id: exId,
+            sort_order: i,
+            notes: coachNote ? coachNote : null,
+          });
         } catch (e) {}
       }
 

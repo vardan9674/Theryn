@@ -152,11 +152,64 @@ import { loadBodyWeights, loadMeasurements } from "./useBody";
 
 // ── Load an athlete's full data for the coach view ────────────────────────────
 export async function loadAthleteData(athleteId: string) {
-  const [routine, history, weights, measurements] = await Promise.all([
+  const [routine, history, weights, measurements, profileRes] = await Promise.all([
     loadRoutine(athleteId),
     loadWorkoutHistory(athleteId),
     loadBodyWeights(athleteId),
-    loadMeasurements(athleteId)
+    loadMeasurements(athleteId),
+    // Fetch the athlete's height + unit so the coach can compute BMI.
+    // RLS: the existing "coaches can read profile" policy must allow this for
+    // accepted coach_athletes links. Falls back to null silently on error.
+    supabase.from("profiles")
+      .select("height_cm, unit_system")
+      .eq("id", athleteId)
+      .maybeSingle(),
   ]);
-  return { routine, history, weights, measurements };
+  const profile = profileRes?.data
+    ? {
+        height_cm: profileRes.data.height_cm != null ? Number(profileRes.data.height_cm) : null,
+        unit_system: profileRes.data.unit_system || "imperial",
+      }
+    : { height_cm: null, unit_system: "imperial" };
+  return { routine, history, weights, measurements, profile };
+}
+
+// ── Fetch sessions finished by athletes since a timestamp (catch-up) ──────────
+export async function loadAthleteSessionsSince(
+  coachId: string,
+  sinceIso: string
+): Promise<Array<{ athleteName: string; workoutType: string; completedAt: string }>> {
+  // Get coach's accepted athletes
+  const { data: links } = await supabase
+    .from("coach_athletes")
+    .select("athlete_id")
+    .eq("coach_id", coachId)
+    .eq("status", "accepted");
+
+  const athleteIds = (links || []).map((l: any) => l.athlete_id);
+  if (athleteIds.length === 0) return [];
+
+  const [{ data: sessions }, { data: profiles }] = await Promise.all([
+    supabase
+      .from("workout_sessions")
+      .select("user_id, workout_type, completed_at")
+      .in("user_id", athleteIds)
+      .not("completed_at", "is", null)
+      .gte("completed_at", sinceIso)
+      .order("completed_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", athleteIds),
+  ]);
+
+  const nameMap: Record<string, string> = {};
+  for (const p of profiles || []) nameMap[p.id] = p.display_name || "Athlete";
+
+  return (sessions || []).map((s: any) => ({
+    athleteName: nameMap[s.user_id] || "Athlete",
+    workoutType: s.workout_type || "workout",
+    completedAt: s.completed_at,
+  }));
 }

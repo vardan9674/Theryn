@@ -10,8 +10,10 @@ import { Share } from "@capacitor/share";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
-import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode } from "./hooks/useCoach";
-import { requestNotificationPermissions, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification } from "./hooks/useNotifications";
+import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
+import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
+import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
+import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -601,25 +603,62 @@ export default function GymApp() {
   const [showTour, setShowTour] = useState(false);
   const [hasCustomizedRoutine, setHasCustomizedRoutine] = useState(false);
   const [role, setRole] = useState(null); // "athlete" | "coach" — null means not yet chosen
-  const [showNameSetup, setShowNameSetup] = useState(false);
+  // Onboarding status lives in profiles.onboarding_completed (Supabase = source
+  // of truth). Local state: 'loading' until the DB round-trip settles, then
+  // 'needed' or 'done'. We no longer use localStorage for this — it was the
+  // cause of the "re-prompts name on every device" bug.
+  const [onboardingStatus, setOnboardingStatus] = useState("loading");
 
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
   // AthleteView used only in CoachApp — removed from athlete root
 
-  // ── Supabase auth listener ────────────────────────────────────────────
+  // ── Check onboarding state on every sign-in (DB, not localStorage) ─────
   useEffect(() => {
-    if (authUser) {
-      if (!localStorage.getItem(`theryn_name_setup_${authUser.id}`)) {
-        setShowNameSetup(true);
-      }
+    if (!authUser?.id) {
+      setOnboardingStatus("loading");
+      return;
     }
-  }, [authUser]);
+    let cancelled = false;
+    supabase.from("profiles")
+      .select("display_name, height_cm, unit_system, onboarding_completed")
+      .eq("id", authUser.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data?.onboarding_completed) {
+          setOnboardingStatus("done");
+        } else {
+          setOnboardingStatus("needed");
+        }
+        // Hydrate profile state with anything already on the row. Initials
+        // are re-derived from display_name so the avatar reflects what the
+        // user actually entered at setup (not whatever Google handed us).
+        if (data?.display_name || data?.height_cm != null || data?.unit_system) {
+          let nextInitials;
+          if (data?.display_name) {
+            const words = data.display_name.trim().split(" ").filter(Boolean);
+            if (words.length > 0) {
+              nextInitials = (
+                words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")
+              ).toUpperCase();
+            }
+          }
+          setProfile(p => ({
+            ...p,
+            display_name: data.display_name || p.display_name,
+            initials: nextInitials || p.initials,
+            height_cm: data.height_cm != null ? Number(data.height_cm) : p.height_cm,
+            units: data.unit_system || p.units,
+          }));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.id]);
 
   function handleNameSetupComplete() {
-    if (authUser?.id) localStorage.setItem(`theryn_name_setup_${authUser.id}`, "1");
-    setShowNameSetup(false);
+    setOnboardingStatus("done");
   }
 
   useEffect(() => {
@@ -913,13 +952,21 @@ export default function GymApp() {
     <LoginScreen authError={authError} onClearError={() => setAuthError(null)}/>
   );
 
-  // ── Name Setup — shown once after first sign-in ────────────────────────
-  if (showNameSetup) return (
-    <FullNameSetup 
-      authUser={authUser} 
-      profile={profile} 
-      setProfile={setProfile} 
-      onComplete={handleNameSetupComplete} 
+  // While we check profiles.onboarding_completed, show the same spinner as
+  // auth loading — no flash of Role picker or app chrome.
+  if (onboardingStatus === "loading") return (
+    <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ width:"32px", height:"32px", borderRadius:"50%", border:`3px solid ${MT}`, borderTopColor:A, animation:"spin 0.8s linear infinite" }}/>
+    </div>
+  );
+
+  // ── Onboarding — collect name + height + weight ONCE (not per device) ──
+  if (onboardingStatus === "needed") return (
+    <FullNameSetup
+      authUser={authUser}
+      profile={profile}
+      setProfile={setProfile}
+      onComplete={handleNameSetupComplete}
     />
   );
 
@@ -2046,7 +2093,7 @@ function RoutineExerciseCard({ ex, updateEx }) {
 // ════════════════════════════════════════════════════════════════════════
 // COACH ATHLETE ROW DASHBOARD
 // ════════════════════════════════════════════════════════════════════════
-function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAthleteView, athleteLoading, isSelected, setTab, setAthleteCache }) {
+function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAthleteView, athleteLoading, isSelected, setTab, setAthleteCache, onSignals }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -2056,90 +2103,221 @@ function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAth
     }).catch(console.error);
   }, [athlete.athlete_id, setAthleteCache]);
 
-  let statusText = "Loading...";
-  let streakText = "—";
-  let suggestion = "New athlete. Tap Routine to build their first plan.";
-  let todayType = "Rest";
+  // Compute signals + numeric stats from the insights module
+  const { streak, signals, summary, lastType, stats } = React.useMemo(() => {
+    if (!data) return { streak: 0, signals: [], summary: { badges: [], primaryLine: null }, lastType: null, stats: null };
+    const { history, routine, weights, measurements } = data;
+    const s = calculateRoutineStreak(history, routine);
+    const sigs = detectSignals({ history, routine, weights, measurements, streak: s });
+    const sum = summarizeForRow(sigs);
+    const last = history && history.length > 0 ? (history[0].type || "Workout") : null;
+    const st = computeStats({ history, routine, weights, measurements });
+    return { streak: s, signals: sigs, summary: sum, lastType: last, stats: st };
+  }, [data]);
 
-  if (data) {
-    const { history, routine } = data;
-    const streak = calculateRoutineStreak(history, routine);
-    streakText = streak > 0 ? (streak >= 7 ? `${Math.floor(streak / 7)}-week streak` : `${streak}-day streak`) : "—";
-    
-    const todayKey = getToday();
-    const tDay = routine && routine[todayKey];
-    todayType = tDay ? tDay.type : "Rest";
+  // Bubble signals up to parent for "Needs Attention"
+  useEffect(() => {
+    if (onSignals && data) onSignals(athlete.athlete_id, { athlete, signals, streak });
+  }, [signals, data, athlete.athlete_id]);
 
-    const lastWorkout = history.length > 0 ? history[0] : null;
-    
-    if (lastWorkout) {
-        statusText = lastWorkout.type || "Workout";
-        const daysSinceLast = Math.floor((Date.now() - new Date(lastWorkout.date).getTime()) / (1000*60*60*24));
-        
-        if (daysSinceLast > 3) {
-            suggestion = `No recent activity (${daysSinceLast} days). Check in recommended.`;
-        } else if (streak >= 3) {
-            suggestion = `Consistent momentum with a ${streak}-day streak.`;
-        } else if (todayType === "Rest") {
-            suggestion = `Scheduled rest day today. Prioritize recovery.`;
-        } else {
-            const prevSameType = history.slice(1).find(w => w.type === lastWorkout.type);
-            if (prevSameType && lastWorkout.totalVolume > prevSameType.totalVolume) {
-                suggestion = `Lift volume increased on ${lastWorkout.type} day. Great progression.`;
-            } else {
-                suggestion = `Scheduled for ${todayType} today. Ready to execute.`;
-            }
-        }
-    } else {
-        statusText = "No workouts yet";
-        suggestion = "New athlete. Tap Routine to build their first plan.";
-    }
-  }
+  const streakText = streak > 0 ? (streak >= 7 ? `${Math.floor(streak / 7)}w streak` : `${streak}d streak`) : null;
+  const statusText = lastType || (data ? "No workouts yet" : "Loading...");
+
+  // Default line when no signals
+  const todayKey = data?.routine ? getToday() : null;
+  const todayType = data?.routine?.[todayKey]?.type || "Rest";
+  const fallbackLine = todayType === "Rest"
+    ? "Scheduled rest day today — prioritize recovery."
+    : `Scheduled for ${todayType} today.`;
+  const primaryLine = summary.primaryLine || fallbackLine;
+  const primaryColor = summary.primarySeverity
+    ? SEVERITY_COLORS[summary.primarySeverity]
+    : A;
 
   const navigateTo = (newTab) => {
+    try { Haptics.impact({ style: "light" }); } catch {}
     openAthleteView(athlete); // sets selectedAthlete
     if (setTab) setTab(newTab);
   };
+  // Tapping the card body (outside a text link) routes to the most relevant
+  // tab given active signals — defaults to Routines if nothing urgent.
+  const primaryTab = summary.primaryTab || "routines";
+  const handleCardTap = () => navigateTo(primaryTab);
+
+  // Derived values for the redesigned card
+  const fmtVol = (v) => v >= 1000 ? `${(v/1000).toFixed(v >= 10000 ? 0 : 1)}K` : String(v);
+  const currentWeight = data?.weights?.[0]?.weight;
+  const bwDelta = stats?.bwDelta;
+  const statItems = stats ? [
+    { label: "7d Volume",   value: stats.vol7 > 0 ? fmtVol(stats.vol7) : "—",                    color: TX },
+    {
+      label: "Body Weight",
+      value: currentWeight != null ? currentWeight : "—",
+      color: TX,
+      suffix: currentWeight != null ? "lb" : "",
+      // Fitness convention: weight loss shown lime (positive coaching outcome
+      // for a cut), gain shown sienna. Coach reads direction at a glance.
+      trend: bwDelta != null ? {
+        value: bwDelta,
+        color: bwDelta < 0 ? A : bwDelta > 0 ? SEVERITY_COLORS.urgent : SB,
+        arrow: bwDelta < 0 ? "↓" : bwDelta > 0 ? "↑" : "·",
+      } : null,
+    },
+    { label: "Avg Session", value: stats.sessionAvgMin ? `${stats.sessionAvgMin}m` : "—",        color: TX },
+  ] : null;
+  // Secondary signal chips (after the primary line)
+  const secondaryBadges = summary.badges.slice(1);
+
+  // Swallow taps inside the action-link row so they don't double-fire the
+  // card-level handler.
+  const stop = (e) => e.stopPropagation();
 
   return (
-    <div className="crm-card" style={{ marginBottom:"18px", background: S2, borderRadius:"20px", border:`1px solid ${MT}`, boxShadow: `0 4px 24px -6px ${MT}40`, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-      {/* Top Header */}
-      <div style={{ padding:"20px", borderBottom:`1px solid ${MT}` }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"16px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:"14px" }}>
-                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: A, display:"flex", alignItems:"center", justifyContent:"center", color: BG, fontSize:"17px", fontWeight:700 }}>
-                    {athlete.athlete_name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                    <div style={{ fontSize:"17px", fontWeight:"700", color:TX, letterSpacing:"-0.01em" }}>{athlete.athlete_name}</div>
-                    <div style={{ fontSize:"13px", color:SB, marginTop:"2px" }}>Last: {data ? statusText : "Loading..."}</div>
-                </div>
-            </div>
-            {streakText !== "—" && (
-                <div style={{ background: `${A}15`, color: A, padding:"6px 10px", borderRadius:"8px", fontSize:"12px", fontWeight:600, letterSpacing:"0.02em" }}>
-                    {streakText}
-                </div>
-            )}
+    <div
+      className="crm-card coach-athlete-card press-scale"
+      role="button"
+      tabIndex={0}
+      onClick={handleCardTap}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCardTap(); } }}
+      style={{
+        marginBottom: "16px",
+        background: S2,
+        borderRadius: "16px",
+        border: `1px solid ${BD}`,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
+      }}>
+      {/* — Identity — */}
+      <div style={{ padding: "20px 22px 16px", display: "flex", alignItems: "center", gap: "14px" }}>
+        <div style={{
+          width: "36px", height: "36px", borderRadius: "50%",
+          background: S1, border: `1px solid ${MT}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "14px", fontWeight: 700, color: A,
+          flexShrink: 0, letterSpacing: "-0.02em",
+        }}>
+          {athlete.athlete_name.charAt(0).toUpperCase()}
         </div>
-        
-        {/* Suggestion Box */}
-        <div style={{ background: S1, padding:"14px 16px", borderRadius:"12px" }}>
-           <div style={{ fontSize:"11px", color:A, marginBottom:"6px", textTransform:"uppercase", letterSpacing:"0.06em", fontWeight:800 }}>Insight</div>
-           <div style={{ fontSize:"14px", color:TX, lineHeight:1.5, fontWeight:400 }}>{data ? suggestion : "Analyzing athlete data..."}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontSize: "16px", fontWeight: 600, color: TX,
+            letterSpacing: "-0.01em",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {athlete.athlete_name}
+          </div>
+          <div style={{
+            fontSize: "12px", color: SB, marginTop: "3px",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            <span>Last: {statusText}</span>
+            {streakText && (
+              <>
+                <span style={{ color: MT, margin: "0 8px" }}>·</span>
+                <span style={{ color: A, fontWeight: 500 }}>{streakText}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
-      
-      {/* Quick Actions Footer */}
-      <div style={{ display:"flex", background:S2 }}>
-        <button onClick={() => navigateTo('routines')} style={{ flex:1, padding:"16px", background:"none", border:"none", borderRight:`1px solid ${MT}`, fontSize:"13px", color:TX, fontWeight:700, cursor:"pointer", transition:"opacity 0.2s" }} className="press-scale">
-            Routine
-        </button>
-        <button onClick={() => navigateTo('progress')} style={{ flex:1, padding:"16px", background:"none", border:"none", borderRight:`1px solid ${MT}`, fontSize:"13px", color:TX, fontWeight:700, cursor:"pointer", transition:"opacity 0.2s" }} className="press-scale">
-            Progress
-        </button>
-        <button onClick={() => navigateTo('body')} style={{ flex:1, padding:"16px", background:"none", border:"none", fontSize:"13px", color:TX, fontWeight:700, cursor:"pointer", transition:"opacity 0.2s" }} className="press-scale">
-            Body
-        </button>
+
+      {/* — Insight line — */}
+      <div style={{ padding: "14px 22px", borderTop: `1px solid ${BD}` }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+          {summary.primarySeverity && (
+            <div style={{
+              width: "6px", height: "6px", borderRadius: "50%",
+              background: primaryColor, flexShrink: 0, marginTop: "7px",
+            }}/>
+          )}
+          <div style={{ fontSize: "13px", color: TX, lineHeight: 1.55, flex: 1 }}>
+            {data ? primaryLine : "Analyzing athlete data…"}
+          </div>
+        </div>
+        {secondaryBadges.length > 0 && (
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px", marginLeft: summary.primarySeverity ? "16px" : 0 }}>
+            {secondaryBadges.map((b, i) => {
+              const c = SEVERITY_COLORS[b.severity];
+              return (
+                <span key={i} style={{
+                  fontSize: "10px", fontWeight: 600, color: c,
+                  letterSpacing: "0.03em",
+                  padding: "3px 9px", borderRadius: "10px",
+                  border: `1px solid ${c}44`,
+                  background: "transparent",
+                }}>
+                  {b.title}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* — Stats (unboxed, number-over-label) — */}
+      {statItems && (
+        <div style={{
+          display: "flex", padding: "16px 22px",
+          borderTop: `1px solid ${BD}`, gap: "12px",
+        }}>
+          {statItems.map(t => (
+            <div key={t.label} style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: "17px", fontWeight: 700, color: t.color,
+                letterSpacing: "-0.02em",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                display: "flex", alignItems: "baseline", gap: "2px",
+              }}>
+                <span>{t.value}</span>
+                {t.suffix ? (
+                  <span style={{ fontSize: "10px", color: SB, fontWeight: 500 }}>{t.suffix}</span>
+                ) : null}
+                {t.trend ? (
+                  <span style={{
+                    fontSize: "11px", color: t.trend.color, fontWeight: 700,
+                    marginLeft: "6px", letterSpacing: 0,
+                  }}>
+                    {t.trend.arrow}{Math.abs(t.trend.value).toFixed(1)}
+                  </span>
+                ) : null}
+              </div>
+              <div style={{
+                fontSize: "10px", color: SB, marginTop: "2px",
+                letterSpacing: "0.04em", fontWeight: 600,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {t.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* — Actions (text links, no dividers) — */}
+      <div style={{ display: "flex", borderTop: `1px solid ${BD}` }} onClick={stop}>
+        {["routines", "progress", "body"].map(t => {
+          const label = t === "routines" ? "View routine" : t === "progress" ? "View progress" : "View body";
+          return (
+            <button
+              key={t}
+              onClick={(e) => { e.stopPropagation(); navigateTo(t); }}
+              className="press-scale coach-card-link"
+              style={{
+                flex: 1, padding: "14px 10px",
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: "12px", color: SB, fontWeight: 500,
+                letterSpacing: "0.01em", whiteSpace: "nowrap",
+                transition: "color 0.15s",
+              }}
+            >
+              {label} <span style={{ color: MT, marginLeft: "2px" }}>→</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -3106,6 +3284,24 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
           </div>
         </div>
 
+        {/* ── BMI — shown whenever height + latest weight are both known ── */}
+        {(() => {
+          const bmi = computeBMI(latest, profile?.height_cm, units);
+          const cat = bmiCategory(bmi);
+          if (bmi == null) return null;
+          return (
+            <div style={{ ...card, background: S2, marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <div style={{ ...subLbl, marginBottom: 0 }}>BMI</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                  <span style={{ fontSize: "30px", fontWeight: 800, color: cat.color, letterSpacing: "-0.03em", lineHeight: 1 }}>{bmi}</span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: cat.color, letterSpacing: "0.06em", textTransform: "uppercase" }}>{cat.label}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Weight History (previous days only) ── */}
         {history.length > 0 && (
           <>
@@ -3891,76 +4087,41 @@ function TourOverlay({ onDone }) {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
 
+  // Three crisp slides. Straightforward copy, short words, big reach.
   const SLIDES = [
     {
       icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M6.5 6.5h11M6.5 17.5h11M4 12h16M4 12a2 2 0 01-2-2V8a2 2 0 012-2h1M20 12a2 2 0 002-2V8a2 2 0 00-2-2h-1M4 12a2 2 0 00-2 2v2a2 2 0 002 2h1M20 12a2 2 0 012 2v2a2 2 0 01-2 2h-1"/>
         </svg>
       ),
-      tag: Capacitor.getPlatform() === 'web' ? "Theryn — Coaching, Without the Chaos" : "Welcome to Theryn",
-      title: "Your Personal\nGym Tracker",
-      body: "Log workouts, track your body, and see your progress — all in one clean app built for lifters.",
+      tag: "Train",
+      title: "Every lift,\nlogged.",
+      body: "Start a session. Track sets. Done.",
     },
     {
       icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="3"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="14" y2="12"/><circle cx="17" cy="17" r="3" fill={`${A}30`} stroke={A}/><line x1="17" y1="15.5" x2="17" y2="17"/><line x1="17" y1="17" x2="18" y2="17"/>
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 17 9 11 13 15 21 7"/>
+          <polyline points="14 7 21 7 21 14"/>
         </svg>
       ),
-      tag: "Log Tab",
-      title: "Log Every\nWorkout",
-      body: "Hit Start Workout to kick off your session timer. Log sets with weight and reps as you go — it saves automatically.",
+      tag: "Track",
+      title: "See yourself\nchange.",
+      body: "Weight. BMI. PRs. One clean view.",
     },
     {
       icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="8" y1="18" x2="12" y2="18"/>
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
       ),
-      tag: "Routine Tab",
-      title: "Build Your\nWeekly Plan",
-      body: "Set the exercises for each day. Your routine loads automatically when you open the Log tab — no setup every morning.",
-    },
-    {
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="14"/><polyline points="8 11 12 14 16 11"/><line x1="9.5" y1="19" x2="12" y2="14"/><line x1="14.5" y1="19" x2="12" y2="14"/>
-        </svg>
-      ),
-      tag: "Body Tab",
-      title: "Track Your\nBody Changes",
-      body: "Log your weight and measurements like chest, waist, and arms. Watch your body composition shift week over week.",
-    },
-    {
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-      ),
-      tag: "Progress Tab",
-      title: "See Your\nStreak & Gains",
-      body: "View your workout streak calendar, weekly volume, and your best lifts — all from your real logged data.",
-    },
-    {
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-      ),
-      tag: "Coach Connection",
-      title: "Team Up &\nCrush Goals",
-      body: "Link up with your real-life coach. They can build your routine and track your weigh-ins directly while you focus on the heavy lifting.",
-    },
-    {
-      icon: (
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-        </svg>
-      ),
-      tag: "You're Ready",
-      title: "Hit PRs &\nTrack Them All",
-      body: "Your personal records are detected automatically from every workout you log. New max? It shows up instantly.",
+      tag: "Team up",
+      title: "Link your\ncoach.",
+      body: "They plan. You lift. Everything syncs.",
     },
   ];
 
@@ -4088,56 +4249,244 @@ function TourOverlay({ onDone }) {
 
 function FullNameSetup({ authUser, profile, setProfile, onComplete }) {
   const [name, setName] = useState(profile?.display_name || "");
+  const [units, setUnits] = useState(profile?.units || "imperial");
+  const [heightFt, setHeightFt] = useState("");
+  const [heightIn, setHeightIn] = useState("");
+  const [heightCm, setHeightCm] = useState(profile?.height_cm ? String(Math.round(profile.height_cm)) : "");
+  const [weight, setWeight] = useState("");
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  const isMetric = units === "metric";
+
+  // Height always stored metric. Imperial inputs are converted here.
+  const parsedHeightCm = (() => {
+    if (isMetric) {
+      const cm = parseFloat(heightCm);
+      return isNaN(cm) ? null : cm;
+    }
+    const ft = parseFloat(heightFt) || 0;
+    const inches = parseFloat(heightIn) || 0;
+    const total = ft * 12 + inches;
+    return total > 0 ? Number((total * 2.54).toFixed(1)) : null;
+  })();
+
+  // Weight is stored in the user's chosen unit — matches the existing
+  // body_weights convention (no server-side normalization).
+  const parsedWeight = (() => {
+    const w = parseFloat(weight);
+    return isNaN(w) || w <= 0 ? null : w;
+  })();
+
+  const nameValid = name.trim().length >= 2;
+  const heightValid = parsedHeightCm != null && parsedHeightCm >= 120 && parsedHeightCm <= 230;
+  const weightValid = parsedWeight != null && (
+    isMetric ? (parsedWeight >= 30 && parsedWeight <= 300)
+             : (parsedWeight >= 66 && parsedWeight <= 660)
+  );
+  const canSubmit = nameValid && heightValid && weightValid && !saving;
 
   async function handleSave() {
-    if (!name.trim()) return;
+    if (!canSubmit) return;
     setSaving(true);
-    
-    // Generate initials dynamically
-    const words = name.trim().split(" ").filter(w => w.length > 0);
-    let init = "";
-    if (words.length > 0) init += words[0][0].toUpperCase();
-    if (words.length > 1) init += words[words.length - 1][0].toUpperCase();
+    setErrorMsg(null);
 
-    const { error } = await supabase.from("profiles").update({ 
-      display_name: name.trim()
-    }).eq("id", authUser.id);
-    
-    setSaving(false);
-    if (!error) {
-      setProfile(p => ({ ...p, display_name: name.trim(), initials: init || p.initials }));
+    const trimmedName = name.trim();
+    const words = trimmedName.split(" ").filter(Boolean);
+    const initials = (
+      words[0][0] + (words.length > 1 ? words[words.length - 1][0] : "")
+    ).toUpperCase();
+
+    try {
+      const { error: profErr } = await supabase.from("profiles").update({
+        display_name: trimmedName,
+        height_cm: parsedHeightCm,
+        unit_system: units,
+        onboarding_completed: true,
+      }).eq("id", authUser.id);
+      if (profErr) throw profErr;
+
+      const todayIso = new Date().toISOString().split("T")[0];
+      const { error: weightErr } = await supabase.from("body_weights").upsert({
+        user_id: authUser.id,
+        weight: parsedWeight,
+        logged_at: todayIso,
+      }, { onConflict: "user_id,logged_at" });
+      if (weightErr) throw weightErr;
+
+      setProfile(p => ({
+        ...p,
+        display_name: trimmedName,
+        initials,
+        units,
+        height_cm: parsedHeightCm,
+      }));
       onComplete();
+    } catch (e) {
+      setErrorMsg(e.message || "Couldn't save — try again.");
+      setSaving(false);
     }
   }
 
+  const inputBase = {
+    width: "100%", background: S2, border: `1px solid ${BD}`,
+    borderRadius: "12px", padding: "14px 16px", color: TX, fontSize: "16px",
+    boxSizing: "border-box", outline: "none",
+    transition: "border-color 0.2s",
+  };
+  const labelStyle = {
+    fontSize: "11px", fontWeight: 700, color: SB, marginBottom: "8px",
+    letterSpacing: "0.08em", textTransform: "uppercase",
+  };
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: BG, display: "flex", flexDirection: "column", padding: "40px 24px" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        <div style={{ width: "48px", height: "48px", background: `${A}15`, borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "20px" }}>
-            <span style={{ fontSize: "24px" }}>👋</span>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999, background: BG,
+      display: "flex", flexDirection: "column",
+      padding: "max(40px, env(safe-area-inset-top)) 24px 24px",
+      overflowY: "auto",
+    }}>
+      <div style={{ maxWidth: "460px", width: "100%", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", paddingTop: "24px", paddingBottom: "24px" }}>
+        {/* Unit toggle — top right */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "24px" }}>
+          <div style={{ display: "inline-flex", background: S2, border: `1px solid ${BD}`, borderRadius: "10px", padding: "3px" }}>
+            {["imperial", "metric"].map(u => (
+              <button
+                key={u}
+                onClick={() => setUnits(u)}
+                style={{
+                  background: units === u ? A : "transparent",
+                  color: units === u ? BG : SB,
+                  border: "none", borderRadius: "7px",
+                  padding: "6px 14px", fontSize: "12px", fontWeight: 700,
+                  cursor: "pointer", letterSpacing: "0.02em",
+                  textTransform: "capitalize",
+                }}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
         </div>
-        <h1 style={{ fontSize: "28px", fontWeight: 800, color: TX, marginBottom: "12px", letterSpacing: "-0.02em" }}>Welcome to Theryn</h1>
-        <p style={{ fontSize: "15px", color: SB, marginBottom: "32px", lineHeight: 1.5 }}>
-          Please enter your full name so your coach and athletes can easily identify you on the platform.
+
+        {/* Logo mark */}
+        <div style={{
+          width: "52px", height: "52px", borderRadius: "14px",
+          background: `${A}12`, border: `1px solid ${A}33`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginBottom: "20px",
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="2" strokeLinecap="round">
+            <path d="M6.5 6.5h11M6.5 17.5h11M4 12h16"/>
+          </svg>
+        </div>
+
+        <h1 style={{ fontSize: "32px", fontWeight: 800, color: TX, marginBottom: "8px", letterSpacing: "-0.025em", lineHeight: 1.1 }}>
+          Welcome to Theryn
+        </h1>
+        <p style={{ fontSize: "15px", color: SB, marginBottom: "36px", lineHeight: 1.55 }}>
+          Quick setup. We'll use this for your profile, your trend charts, and your BMI.
         </p>
-        <div style={{ marginBottom: "24px" }}>
-            <div style={{ fontSize: "12px", fontWeight: 700, color: SB, marginBottom: "8px", letterSpacing: "0.04em", textTransform: "uppercase" }}>Full Name</div>
-            <input 
-              type="text" 
-              placeholder="e.g. John Doe" 
-              value={name} 
-              onChange={e => setName(e.target.value)} 
-              style={{ width: "100%", background: S2, border: `1px solid ${BD}`, borderRadius: "14px", padding: "16px", color: TX, fontSize: "16px", boxSizing: "border-box", outline: "none" }}
-            />
+
+        {/* Full name */}
+        <div style={{ marginBottom: "22px" }}>
+          <div style={labelStyle}>Full Name</div>
+          <input
+            type="text"
+            placeholder="e.g. John Doe"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            autoFocus
+            style={inputBase}
+          />
         </div>
-        <button 
-          onClick={handleSave} 
-          disabled={!name.trim() || saving} 
-          style={{ width: "100%", background: A, color: BG, border: "none", borderRadius: "14px", padding: "16px", fontSize: "16px", fontWeight: 700, opacity: (!name.trim() || saving) ? 0.5 : 1, cursor: (!name.trim() || saving) ? "default" : "pointer", transition: "opacity 0.2s" }}
+
+        {/* Height */}
+        <div style={{ marginBottom: "22px" }}>
+          <div style={labelStyle}>Height</div>
+          {isMetric ? (
+            <div style={{ position: "relative" }}>
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="178"
+                value={heightCm}
+                onChange={e => setHeightCm(e.target.value)}
+                style={inputBase}
+              />
+              <span style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", color: SB, fontSize: "14px", fontWeight: 600 }}>cm</span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="5"
+                  value={heightFt}
+                  onChange={e => setHeightFt(e.target.value)}
+                  style={inputBase}
+                />
+                <span style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", color: SB, fontSize: "14px", fontWeight: 600 }}>ft</span>
+              </div>
+              <div style={{ position: "relative", flex: 1 }}>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="10"
+                  value={heightIn}
+                  onChange={e => setHeightIn(e.target.value)}
+                  style={inputBase}
+                />
+                <span style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", color: SB, fontSize: "14px", fontWeight: 600 }}>in</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Weight */}
+        <div style={{ marginBottom: "28px" }}>
+          <div style={labelStyle}>Current Weight</div>
+          <div style={{ position: "relative" }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder={isMetric ? "82" : "180"}
+              value={weight}
+              onChange={e => setWeight(e.target.value)}
+              style={inputBase}
+            />
+            <span style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", color: SB, fontSize: "14px", fontWeight: 600 }}>
+              {isMetric ? "kg" : "lb"}
+            </span>
+          </div>
+        </div>
+
+        {errorMsg && (
+          <div style={{ background: `${SEVERITY_COLORS.urgent}15`, border: `1px solid ${SEVERITY_COLORS.urgent}44`, borderRadius: "10px", padding: "12px 14px", fontSize: "13px", color: SEVERITY_COLORS.urgent, marginBottom: "16px" }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={!canSubmit}
+          className="web-btn-primary"
+          style={{
+            width: "100%", background: A, color: BG, border: "none",
+            borderRadius: "14px", padding: "16px", fontSize: "16px", fontWeight: 700,
+            opacity: canSubmit ? 1 : 0.5,
+            cursor: canSubmit ? "pointer" : "default",
+            transition: "opacity 0.2s, transform 0.15s",
+            letterSpacing: "-0.01em",
+          }}
         >
-          {saving ? "Saving..." : "Continue"}
+          {saving ? "Saving…" : "Continue"}
         </button>
+
+        <div style={{ fontSize: "11px", color: MT, textAlign: "center", marginTop: "14px" }}>
+          You can change these later in Profile.
+        </div>
       </div>
     </div>
   );
@@ -4679,6 +5028,34 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   const [athleteData, setAthleteData] = React.useState(null);   // { routine, history, weights, measurements }
   const [loadingAthlete, setLoadingAthlete] = React.useState(false);
   const [showTour, setShowTour] = React.useState(false);
+  const [toast, setToast] = React.useState(null); // { message, variant }
+
+  // Register notification tap handler once (deep-link listener)
+  React.useEffect(() => {
+    registerNotificationTapHandlers();
+  }, []);
+
+  // ── Persist + restore selected athlete across reloads
+  const SELECTED_KEY = authUser?.id ? `theryn_coach_selected_${authUser.id}` : null;
+
+  React.useEffect(() => {
+    if (!SELECTED_KEY || !coachLinksLoaded || selectedAthlete) return;
+    const saved = localStorage.getItem(SELECTED_KEY);
+    if (!saved) return;
+    const match = coachLinks.find(
+      l => l.athlete_id === saved && l.coach_id === authUser?.id && l.status === "accepted"
+    );
+    if (match) setSelectedAthlete(match);
+  }, [coachLinksLoaded, SELECTED_KEY]);
+
+  React.useEffect(() => {
+    if (!SELECTED_KEY) return;
+    if (selectedAthlete?.athlete_id) {
+      localStorage.setItem(SELECTED_KEY, selectedAthlete.athlete_id);
+    } else {
+      localStorage.removeItem(SELECTED_KEY);
+    }
+  }, [selectedAthlete?.athlete_id, SELECTED_KEY]);
 
   React.useEffect(() => {
     if (!authUser?.id) return;
@@ -4686,38 +5063,52 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     if (!localStorage.getItem(tourKey)) setShowTour(true);
   }, [authUser?.id]);
 
-  const [athleteDataCache, setAthleteDataCache] = React.useState({});
+  // Ref-based cache: optimistic updates (e.g. coach-note save) must NOT retrigger
+  // the effect below — otherwise every save kicks off a full loadAthleteData and
+  // the tab repaints from the top down after the background fetch resolves.
+  const athleteDataCacheRef = React.useRef({});
+  const selectedAthleteRef = React.useRef(null);
+  React.useEffect(() => { selectedAthleteRef.current = selectedAthlete; }, [selectedAthlete]);
 
   const setAthleteCache = React.useCallback((id, data) => {
-    setAthleteDataCache(p => ({ ...p, [id]: data }));
+    athleteDataCacheRef.current[id] = data;
+    // If the updated athlete is the one currently on screen, push into state
+    // so the optimistic change is visible immediately.
+    if (selectedAthleteRef.current?.athlete_id === id) {
+      setAthleteData(data);
+    }
   }, []);
 
   // Load all athlete data whenever selection changes
   React.useEffect(() => {
     if (!selectedAthlete) { setAthleteData(null); return; }
-    
+    const athleteId = selectedAthlete.athlete_id;
+
     // Instant loading from Row cache
-    if (athleteDataCache[selectedAthlete.athlete_id]) {
-      setAthleteData(athleteDataCache[selectedAthlete.athlete_id]);
+    const cached = athleteDataCacheRef.current[athleteId];
+    if (cached) {
+      setAthleteData(cached);
       setLoadingAthlete(false);
-      // Background refresh
-      loadAthleteData(selectedAthlete.athlete_id).then(d => {
-        setAthleteDataCache(p => ({ ...p, [selectedAthlete.athlete_id]: d }));
-        setAthleteData(d);
+      // Background refresh — only overwrite if still viewing this athlete.
+      loadAthleteData(athleteId).then(d => {
+        athleteDataCacheRef.current[athleteId] = d;
+        if (selectedAthleteRef.current?.athlete_id === athleteId) setAthleteData(d);
       }).catch(()=>{});
       return;
     }
 
     setLoadingAthlete(true);
     setAthleteData(null);
-    loadAthleteData(selectedAthlete.athlete_id)
-      .then(d => { 
-        setAthleteData(d); 
-        setAthleteDataCache(p => ({ ...p, [selectedAthlete.athlete_id]: d }));
-        setLoadingAthlete(false); 
+    loadAthleteData(athleteId)
+      .then(d => {
+        athleteDataCacheRef.current[athleteId] = d;
+        if (selectedAthleteRef.current?.athlete_id === athleteId) {
+          setAthleteData(d);
+          setLoadingAthlete(false);
+        }
       })
       .catch(() => setLoadingAthlete(false));
-  }, [selectedAthlete?.athlete_id, athleteDataCache]);
+  }, [selectedAthlete?.athlete_id]);
 
   const myAthletes = React.useMemo(() => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"), [coachLinks, authUser?.id]);
 
@@ -4742,12 +5133,117 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     return () => { supabase.removeChannel(channel); };
   }, [authUser?.id, myAthletes]);
 
+  // ── App resume: fire catch-up notification for athletes finished while away
+  React.useEffect(() => {
+    if (!authUser?.id) return;
+
+    const runCatchUp = async () => {
+      const lastSeen = getCoachLastSeen();
+      markCoachSeen();
+      if (!lastSeen) return;
+      // Only if we were away > 15 min (avoid spamming on quick app switches)
+      const awayMs = Date.now() - lastSeen.getTime();
+      if (awayMs < 15 * 60 * 1000) return;
+      try {
+        const sessions = await loadAthleteSessionsSince(authUser.id, lastSeen.toISOString());
+        if (sessions.length > 0) {
+          await triggerCoachCatchUp(sessions);
+        }
+      } catch (e) {
+        console.error('Coach catch-up failed', e);
+      }
+    };
+
+    runCatchUp();
+
+    let resumeSub;
+    try {
+      resumeSub = CapApp.addListener('appStateChange', (state) => {
+        if (state.isActive) runCatchUp();
+        else markCoachSeen();
+      });
+    } catch {}
+    return () => { try { resumeSub?.remove?.(); } catch {} };
+  }, [authUser?.id]);
+
+  // ── Schedule coach daily digest based on current athlete signals
+  const digestAthleteSignals = React.useRef({});
+  const collectDigestSignals = React.useCallback((id, payload) => {
+    digestAthleteSignals.current[id] = payload;
+  }, []);
+
+  React.useEffect(() => {
+    if (!authUser?.id || myAthletes.length === 0) return;
+    // Wait a beat for rows to compute signals, then schedule digest
+    const t = setTimeout(() => {
+      const all = Object.values(digestAthleteSignals.current);
+      const urgent = all.filter(x => x.signals?.[0]?.severity === "urgent").length;
+      const warn = all.filter(x => x.signals?.[0]?.severity === "warn").length;
+      const celebrate = all.filter(x => x.signals?.some(s => s.severity === "celebrate")).length;
+      const topLines = all
+        .filter(x => x.signals?.[0]?.severity === "urgent" || x.signals?.[0]?.severity === "warn")
+        .slice(0, 2)
+        .map(x => `${x.athlete.athlete_name}: ${x.signals[0].message}`);
+      scheduleCoachDailyDigest({
+        urgent, warn, celebrate,
+        totalAthletes: myAthletes.length,
+        topLines,
+      }).catch(() => {});
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [authUser?.id, myAthletes.length, coachLinksLoaded]);
+
+  // ── Consume pending deep-link from a tapped notification
+  React.useEffect(() => {
+    if (!coachLinksLoaded || myAthletes.length === 0) return;
+    const link = consumePendingDeepLink();
+    if (!link) return;
+    if (link.type === 'athlete_finished' && link.athleteName) {
+      const match = myAthletes.find(l => l.athlete_name === link.athleteName);
+      if (match) {
+        setSelectedAthlete(match);
+        setTab('progress');
+      }
+    } else if (link.type === 'coach_digest' || link.type === 'coach_catchup') {
+      setTab('athletes');
+    }
+  }, [coachLinksLoaded, myAthletes]);
+
   function handleTourDone() {
     if (authUser?.id) localStorage.setItem(`theryn_coach_tour_done_${authUser.id}`, "1");
     setShowTour(false);
   }
 
   const [showProfile, setShowProfile] = React.useState(false);
+  const [coachInviteCode, setCoachInviteCode] = React.useState("⋯");
+  const [editingName, setEditingName] = React.useState(false);
+  const [editNameValue, setEditNameValue] = React.useState("");
+  const [savingName, setSavingName] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!authUser?.id) return;
+    ensureInviteCode(authUser.id).then(setCoachInviteCode).catch(() => {});
+  }, [authUser?.id]);
+
+  const coachDisplayName = profile?.display_name || authUser?.email?.split("@")[0] || "Coach";
+
+  async function handleSaveCoachName() {
+    if (!editNameValue.trim()) return;
+    setSavingName(true);
+    const words = editNameValue.trim().split(" ").filter(Boolean);
+    let init = "";
+    if (words.length > 0) init += words[0][0].toUpperCase();
+    if (words.length > 1) init += words[words.length - 1][0].toUpperCase();
+    const { error } = await supabase.from("profiles").update({
+      display_name: editNameValue.trim()
+    }).eq("id", authUser.id);
+    setSavingName(false);
+    if (!error) {
+      if (setProfile) setProfile(p => ({ ...p, display_name: editNameValue.trim(), initials: init || p?.initials }));
+      setEditingName(false);
+    }
+  }
+
   const COACH_TABS = ["athletes", "routines", "body", "progress", "connections"];
   const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", connections: "Connect" };
 
@@ -4802,6 +5298,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             setTab={setTab}
             showProfile={showProfile}
             setShowProfile={setShowProfile}
+            onDigestSignals={collectDigestSignals}
           />
         </div>
         {tab === "routines"  && <CoachRoutinesTab  {...sharedTabProps}/>}
@@ -4809,6 +5306,92 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
         {tab === "connections" && <CoachModal authUser={authUser} mode="coach" inline={true} onUpdate={() => loadCoachLinks(authUser.id).then(setCoachLinks)} />}
       </div>
+
+      {/* Floating profile avatar — visible on every tab (native only; web has its own top-right).
+          `max()` ensures a minimum 44px offset on Android (where env() may be 0)
+          and respects the iOS notch when present. */}
+      {Capacitor.getPlatform() !== "web" && (
+        <button
+          onClick={() => setShowProfile(true)}
+          aria-label="Open profile"
+          style={{
+            position: "fixed",
+            top: "max(calc(env(safe-area-inset-top, 0px) + 14px), 44px)",
+            right: "16px",
+            width: "40px", height: "40px", borderRadius: "50%",
+            background: profile?.setup ? profile.color : A,
+            border: `2px solid ${BG}`,
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "15px", fontWeight: 800, color: BG,
+            zIndex: 150,
+            boxShadow: `0 4px 14px rgba(0,0,0,0.5), 0 0 0 1px ${A}33`,
+          }}
+        >
+          {profile?.setup ? profile.initials : (profile?.initials || coachDisplayName[0]?.toUpperCase() || "C")}
+        </button>
+      )}
+
+      {/* Profile bottom sheet — available from every tab */}
+      {showProfile && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.6)" }} onClick={() => setShowProfile(false)}>
+          <div
+            style={{
+              position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+              width: "100%", maxWidth: 430,
+              background: S1, borderRadius: "20px 20px 0 0",
+              padding: "28px 20px 40px",
+              animation: "drawerUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+              <div style={{ width: "36px", height: "4px", borderRadius: "2px", background: MT }}/>
+              <button onClick={() => setShowProfile(false)} style={{ background: "none", border: "none", color: SB, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}>Dismiss</button>
+            </div>
+
+            {editingName ? (
+              <div style={{ marginBottom: "16px", display: "flex", gap: "8px" }}>
+                <input
+                  type="text"
+                  value={editNameValue}
+                  onChange={e => setEditNameValue(e.target.value)}
+                  autoFocus
+                  style={{ flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "10px", padding: "12px", color: TX, fontSize: "16px", boxSizing: "border-box" }}
+                />
+                <button
+                  onClick={handleSaveCoachName}
+                  disabled={savingName || !editNameValue.trim()}
+                  style={{ background: A, border: "none", borderRadius: "10px", padding: "0 16px", color: BG, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}
+                >
+                  {savingName ? "..." : "Save"}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <div style={{ fontSize: "18px", fontWeight: 800, color: TX }}>{coachDisplayName}</div>
+                <button onClick={() => { setEditNameValue(coachDisplayName); setEditingName(true); }} style={{ background: "none", border: "none", color: A, fontSize: "13px", fontWeight: 700, cursor: "pointer", padding: "4px" }}>
+                  Edit
+                </button>
+              </div>
+            )}
+
+            <div style={{ fontSize: "13px", color: SB, marginBottom: "16px" }}>{authUser?.email}</div>
+            <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "20px" }}>
+              <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px" }}>INVITE CODE</div>
+              <div style={{ fontSize: "22px", fontWeight: 800, color: A, letterSpacing: "0.1em" }}>{coachInviteCode}</div>
+            </div>
+            <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px" }}>
+              <button onClick={() => { setShowProfile(false); onSwitchRole(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", borderBottom: `1px solid ${BD}`, color: TX, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
+                <span>🏃</span> Switch to Athlete
+              </button>
+              <button onClick={() => { setShowProfile(false); onSignOut(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", color: RED, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
+                <span>🚪</span> Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4816,10 +5399,59 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 // ─────────────────────────────────────────────
 // COACH: ATHLETES TAB
 // ─────────────────────────────────────────────
-function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLinksLoaded, selectedAthlete, setSelectedAthlete, onSwitchRole, onSignOut, setTab, showProfile, setShowProfile, setAthleteCache }) {
+function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLinksLoaded, selectedAthlete, setSelectedAthlete, onSwitchRole, onSignOut, setTab, showProfile, setShowProfile, setAthleteCache, onDigestSignals }) {
   const [expandedAthlete, setExpandedAthlete] = React.useState(null);
   const [athleteLoading, setAthleteLoading] = React.useState(false);
   const [inviteCode, setInviteCode] = React.useState("⋯");
+  const [permState, setPermState] = React.useState("granted");
+  const [athleteSignals, setAthleteSignals] = React.useState({}); // { athleteId: { athlete, signals, streak } }
+
+  // ── Dismissed Needs-Attention entries (persist 24h per coach)
+  const DISMISS_KEY = authUser?.id ? `theryn_coach_dismiss_${authUser.id}` : null;
+  const [dismissed, setDismissed] = React.useState({}); // { athleteId: { kind, at } }
+  const DISMISS_TTL_MS = 24 * 60 * 60 * 1000;
+
+  React.useEffect(() => {
+    if (!DISMISS_KEY) return;
+    try {
+      const raw = localStorage.getItem(DISMISS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      // Prune expired entries on load
+      const now = Date.now();
+      const cleaned = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v && now - v.at < DISMISS_TTL_MS) cleaned[k] = v;
+      }
+      setDismissed(cleaned);
+    } catch {}
+  }, [DISMISS_KEY]);
+
+  const dismissSignal = React.useCallback((athleteId, kind) => {
+    setDismissed(prev => {
+      const next = { ...prev, [athleteId]: { kind, at: Date.now() } };
+      if (DISMISS_KEY) {
+        try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+  }, [DISMISS_KEY]);
+
+  const handleAthleteSignals = React.useCallback((id, payload) => {
+    setAthleteSignals(p => {
+      const prev = p[id];
+      // Avoid unnecessary re-renders when signals haven't meaningfully changed
+      if (prev && JSON.stringify(prev.signals) === JSON.stringify(payload.signals)) return p;
+      return { ...p, [id]: payload };
+    });
+    // Forward to parent for daily digest composition
+    if (onDigestSignals) onDigestSignals(id, payload);
+  }, [onDigestSignals]);
+
+  // Poll current permission state on mount
+  React.useEffect(() => {
+    getNotificationPermissionState().then(setPermState).catch(() => {});
+  }, []);
 
   const [editingName, setEditingName] = React.useState(false);
   const [editNameValue, setEditNameValue] = React.useState("");
@@ -4869,22 +5501,27 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
             {coachLinksLoaded ? `${myAthletes.length} athlete${myAthletes.length !== 1 ? "s" : ""}` : "Loading…"}
           </div>
         </div>
-        {/* Profile avatar — only on native (web has floating top-right button) */}
-        {Capacitor.getPlatform() !== "web" && (
-          <button
-            onClick={() => setShowProfile(true)}
-            style={{
-              width: "38px", height: "38px", borderRadius: "50%",
-              background: profile?.setup ? profile.color : A,
-              border: "none", cursor: "pointer", flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "15px", fontWeight: 800, color: BG,
-            }}
-          >
-            {profile?.setup ? profile.initials : (profile?.initials || displayName[0]?.toUpperCase() || "C")}
-          </button>
-        )}
       </div>
+
+      {/* Notification permission banner */}
+      {permState === "denied" && Capacitor.isNativePlatform() && (
+        <div style={{ background: `${SEVERITY_COLORS.warn}12`, border: `1px solid ${SEVERITY_COLORS.warn}44`, borderRadius: "12px", padding: "12px 14px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ fontSize: "20px" }}>🔔</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: TX }}>Notifications are off</div>
+            <div style={{ fontSize: "12px", color: SB, marginTop: "2px" }}>Turn them on to get coach briefings and athlete updates.</div>
+          </div>
+          <button
+            onClick={async () => {
+              const s = await requestNotificationPermissions();
+              setPermState(s);
+            }}
+            style={{ background: SEVERITY_COLORS.warn, border: "none", borderRadius: "8px", padding: "8px 12px", color: BG, fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+          >
+            Enable
+          </button>
+        </div>
+      )}
 
       {/* Selected athlete banner */}
       {selectedAthlete && (
@@ -4915,74 +5552,114 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
           </div>
         </div>
       ) : (
-        <div className="crm-grid">
-          {myAthletes.map(link => (
-            <CoachAthleteRow
-              key={link.id}
-              athlete={link}
-              expandedAthlete={expandedAthlete}
-              setExpandedAthlete={setExpandedAthlete}
-              openAthleteView={openAthleteView}
-              athleteLoading={athleteLoading}
-              isSelected={selectedAthlete?.id === link.id}
-              setTab={setTab}
-              setAthleteCache={setAthleteCache}
-            />
-          ))}
-        </div>
+        <>
+          {/* Needs Attention — surfaces top urgent/warn signals across athletes */}
+          {(() => {
+            const priority = { urgent: 4, warn: 3, celebrate: 2, info: 1 };
+            const now = Date.now();
+            const attention = Object.values(athleteSignals)
+              .filter(x => x.signals && x.signals.length > 0 && (x.signals[0].severity === "urgent" || x.signals[0].severity === "warn"))
+              // Skip any athlete whose top signal kind was dismissed within TTL
+              .filter(x => {
+                const d = dismissed[x.athlete.athlete_id];
+                if (!d) return true;
+                if (now - d.at > DISMISS_TTL_MS) return true;
+                return d.kind !== x.signals[0].kind;
+              })
+              .sort((a, b) => (priority[b.signals[0].severity] || 0) - (priority[a.signals[0].severity] || 0))
+              .slice(0, 3);
+            if (attention.length === 0) return null;
+            return (
+              <div style={{ marginBottom: "20px", background: S2, borderRadius: "16px", border: `1px solid ${MT}`, overflow: "hidden" }}>
+                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${MT}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: SEVERITY_COLORS.warn, letterSpacing: "0.08em" }}>NEEDS ATTENTION</div>
+                  <div style={{ fontSize: "11px", color: SB }}>{attention.length} of {myAthletes.length}</div>
+                </div>
+                {attention.map(({ athlete, signals }, i) => {
+                  const sig = signals[0];
+                  const c = SEVERITY_COLORS[sig.severity];
+                  return (
+                    <div
+                      key={athlete.id}
+                      style={{
+                        display: "flex", alignItems: "stretch",
+                        borderBottom: i < attention.length - 1 ? `1px solid ${MT}` : "none",
+                      }}
+                    >
+                      <button
+                        className="row-btn"
+                        onClick={() => {
+                          dismissSignal(athlete.athlete_id, sig.kind);
+                          openAthleteView(athlete);
+                          if (setTab && sig.suggestedTab) setTab(sig.suggestedTab);
+                        }}
+                        style={{
+                          flex: 1, width: "100%", padding: "12px 8px 12px 16px",
+                          display: "flex", alignItems: "center", gap: "12px",
+                          background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: A, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: "13px", fontWeight: 800, color: BG }}>
+                            {athlete.athlete_name?.[0]?.toUpperCase() || "?"}
+                          </span>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "13px", fontWeight: 700, color: TX, marginBottom: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {athlete.athlete_name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: SB, lineHeight: 1.4 }}>{sig.message}</div>
+                        </div>
+                        <div style={{
+                          fontSize: "9px", fontWeight: 800, letterSpacing: "0.06em",
+                          background: `${c}18`, color: c, padding: "3px 7px", borderRadius: "5px",
+                          border: `1px solid ${c}33`, textTransform: "uppercase", flexShrink: 0,
+                        }}>
+                          {sig.severity}
+                        </div>
+                      </button>
+                      <button
+                        aria-label="Dismiss"
+                        onClick={() => dismissSignal(athlete.athlete_id, sig.kind)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: "44px", flexShrink: 0,
+                          background: "none", border: "none", cursor: "pointer",
+                          color: SB,
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          <div className="crm-grid">
+            {myAthletes.map(link => (
+              <CoachAthleteRow
+                key={link.id}
+                athlete={link}
+                expandedAthlete={expandedAthlete}
+                setExpandedAthlete={setExpandedAthlete}
+                openAthleteView={openAthleteView}
+                athleteLoading={athleteLoading}
+                isSelected={selectedAthlete?.id === link.id}
+                setTab={setTab}
+                setAthleteCache={setAthleteCache}
+                onSignals={handleAthleteSignals}
+              />
+            ))}
+          </div>
+        </>
       )}
 
-      {/* Profile bottom sheet */}
-      {showProfile && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200 }} onClick={() => setShowProfile(false)}>
-          <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: S1, borderRadius: "20px 20px 0 0", padding: "28px 20px 40px" }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-              <div style={{ width: "36px", height: "4px", borderRadius: "2px", background: MT }}/>
-              <button onClick={() => setShowProfile(false)} style={{ background: "none", border: "none", color: SB, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}>Dismiss</button>
-            </div>
-            
-            {editingName ? (
-              <div style={{ marginBottom: "16px", display: "flex", gap: "8px" }}>
-                <input 
-                  type="text" 
-                  value={editNameValue} 
-                  onChange={e => setEditNameValue(e.target.value)} 
-                  autoFocus
-                  style={{ flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "10px", padding: "12px", color: TX, fontSize: "16px", boxSizing: "border-box" }}
-                />
-                <button 
-                  onClick={handleSaveName} 
-                  disabled={savingName || !editNameValue.trim()} 
-                  style={{ background: A, border: "none", borderRadius: "10px", padding: "0 16px", color: BG, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}
-                >
-                  {savingName ? "..." : "Save"}
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: TX }}>{displayName}</div>
-                <button onClick={() => { setEditNameValue(displayName); setEditingName(true); }} style={{ background: "none", border: "none", color: A, fontSize: "13px", fontWeight: 700, cursor: "pointer", padding: "4px" }}>
-                  Edit
-                </button>
-              </div>
-            )}
-            
-            <div style={{ fontSize: "13px", color: SB, marginBottom: "16px" }}>{authUser?.email}</div>
-            <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "20px" }}>
-              <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px" }}>INVITE CODE</div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: A, letterSpacing: "0.1em" }}>{inviteCode}</div>
-            </div>
-            <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px" }}>
-              <button onClick={() => { setShowProfile(false); onSwitchRole(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", borderBottom: `1px solid ${BD}`, color: TX, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
-                <span>🏃</span> Switch to Athlete
-              </button>
-              <button onClick={() => { setShowProfile(false); onSignOut(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", color: RED, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
-                <span>🚪</span> Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -4993,11 +5670,12 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
 const DAY_ORDER = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coachLinks, coachLinksLoaded, athleteData, loadingAthlete, setAthleteCache }) {
-  const [activeDay, setActiveDay] = React.useState("Mon");
+  const [activeDay, setActiveDay] = React.useState(() => getToday());
   const [editingNote, setEditingNote] = React.useState(null); // { day, exIndex }
   const [noteText, setNoteText] = React.useState("");         // controlled textarea value
   const [savingNote, setSavingNote] = React.useState(false);
   const [coachAthleteView, setCoachAthleteView] = React.useState(null);
+  const [noteToast, setNoteToast] = React.useState(null);
 
   const athleteName = selectedAthlete?.athlete_name || "Athlete";
   const routine = athleteData?.routine || null;
@@ -5005,9 +5683,23 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
   const workoutDays = DAY_ORDER.filter(d => routine?.[d] && routine[d].type !== "Rest" && routine[d].exercises?.length > 0);
   const allDays = DAY_ORDER.filter(d => routine?.[d]);
 
+  // Default to today if it's a workout day, else first workout day
   React.useEffect(() => {
-    if (workoutDays.length > 0 && !workoutDays.includes(activeDay)) setActiveDay(workoutDays[0]);
-  }, [selectedAthlete?.athlete_id]);
+    if (!routine) return;
+    const today = getToday();
+    if (workoutDays.includes(today)) {
+      setActiveDay(today);
+    } else if (workoutDays.length > 0 && !workoutDays.includes(activeDay)) {
+      setActiveDay(workoutDays[0]);
+    }
+  }, [selectedAthlete?.athlete_id, athleteData?.routine]);
+
+  // Auto-dismiss toast
+  React.useEffect(() => {
+    if (!noteToast) return;
+    const t = setTimeout(() => setNoteToast(null), 2400);
+    return () => clearTimeout(t);
+  }, [noteToast]);
 
   // When opening a note editor, seed noteText with existing note
   React.useEffect(() => {
@@ -5032,16 +5724,17 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
       exercises[exIndex] = { ...(typeof ex === "object" && ex ? ex : {}), name, coachNote: val.trim() };
       updated[day] = { ...updated[day], exercises };
       await saveRoutine(selectedAthlete.athlete_id, updated);
-      // Optimistically update only the routine field — don't disturb selectedAthlete
+      // Optimistically update only the routine field — don't disturb selectedAthlete.
+      // setAthleteCache is (id, data) => ...; passing a reducer here silently no-ops.
       const athleteId = selectedAthlete.athlete_id;
-      setAthleteCache?.(prev => ({
-        ...prev,
-        [athleteId]: { ...(prev?.[athleteId] || {}), routine: updated },
-      }));
+      setAthleteCache?.(athleteId, { ...(athleteData || {}), routine: updated });
       setEditingNote(null);
       setNoteText("");
+      setNoteToast({ type: "success", message: val.trim() ? "Note synced to athlete" : "Note removed" });
+      try { Haptics.impact({ style: "light" }); } catch {}
     } catch (e) {
       console.error("Failed to save coach note:", e);
+      setNoteToast({ type: "error", message: "Couldn't sync — try again" });
     } finally {
       setSavingNote(false);
     }
@@ -5058,6 +5751,20 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Routines</div>
         <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
       </div>
+
+      {/* Note save toast */}
+      {noteToast && (
+        <div style={{
+          position: "fixed", left: "50%", bottom: "84px", transform: "translateX(-50%)",
+          background: noteToast.type === "success" ? A : SEVERITY_COLORS.urgent,
+          color: BG, padding: "10px 16px", borderRadius: "10px",
+          fontSize: "13px", fontWeight: 700, zIndex: 300,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          animation: "fadeIn 0.2s ease",
+        }}>
+          {noteToast.message}
+        </div>
+      )}
 
       {loadingAthlete ? (
         <div style={{ textAlign: "center", color: SB, padding: "48px 0" }}>
@@ -5187,10 +5894,16 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
   const athleteName = selectedAthlete?.athlete_name || "Athlete";
   const weights = athleteData?.weights || [];       // BodyWeightEntry[]: { id, date, weight }
   const measurements = athleteData?.measurements || []; // MeasurementEntry[]: { id, date, chest?, waist?, ... }
+  const athleteProfile = athleteData?.profile;       // { height_cm, unit_system }
 
   const latest = weights[0];
   const prev = weights[1];
   const delta = latest && prev ? (latest.weight - prev.weight).toFixed(1) : null;
+  const bmi = latest && athleteProfile?.height_cm
+    ? computeBMI(latest.weight, athleteProfile.height_cm, athleteProfile.unit_system)
+    : null;
+  const bmiCat = bmiCategory(bmi);
+  const weightUnit = athleteProfile?.unit_system === "metric" ? "kg" : "lbs";
 
   if (!selectedAthlete) return (
     <CoachAthletePickerList coachLinks={coachLinks} coachLinksLoaded={coachLinksLoaded} onSelect={setSelectedAthlete}
@@ -5211,27 +5924,48 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
         </div>
       ) : (
         <>
-          {/* Weight card */}
-          <div style={{ background: S2, borderRadius: "16px", padding: "18px", border: `1px solid ${BD}`, marginBottom: "14px" }}>
-            <div style={{ fontSize: "11px", color: SB, letterSpacing: "0.07em", marginBottom: "10px" }}>BODY WEIGHT</div>
-            {latest ? (
-              <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
-                <div style={{ fontSize: "38px", fontWeight: 800, color: TX, lineHeight: 1 }}>
-                  {latest.weight}
-                  <span style={{ fontSize: "15px", color: SB, fontWeight: 400, marginLeft: "4px" }}>lbs</span>
-                </div>
-                {delta !== null && (
-                  <div style={{ fontSize: "14px", fontWeight: 700, color: Number(delta) > 0 ? RED : A, marginBottom: "4px" }}>
-                    {Number(delta) > 0 ? "+" : ""}{delta}
+          {/* Weight + BMI row */}
+          <div style={{ display: "flex", gap: "12px", marginBottom: "14px", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 220px", background: S2, borderRadius: "16px", padding: "18px", border: `1px solid ${BD}` }}>
+              <div style={{ fontSize: "11px", color: SB, letterSpacing: "0.07em", marginBottom: "10px" }}>BODY WEIGHT</div>
+              {latest ? (
+                <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
+                  <div style={{ fontSize: "38px", fontWeight: 800, color: TX, lineHeight: 1 }}>
+                    {latest.weight}
+                    <span style={{ fontSize: "15px", color: SB, fontWeight: 400, marginLeft: "4px" }}>{weightUnit}</span>
                   </div>
-                )}
-                <div style={{ marginLeft: "auto", fontSize: "12px", color: SB }}>
-                  {new Date(latest.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {delta !== null && (
+                    <div style={{ fontSize: "14px", fontWeight: 700, color: Number(delta) > 0 ? SEVERITY_COLORS.urgent : A, marginBottom: "4px" }}>
+                      {Number(delta) > 0 ? "↑" : "↓"}{Math.abs(Number(delta))}
+                    </div>
+                  )}
+                  <div style={{ marginLeft: "auto", fontSize: "12px", color: SB }}>
+                    {new Date(latest.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div style={{ color: SB, fontSize: "14px" }}>No weight logged yet</div>
-            )}
+              ) : (
+                <div style={{ color: SB, fontSize: "14px" }}>No weight logged yet</div>
+              )}
+            </div>
+
+            {/* BMI card — only shows when we have both height and weight */}
+            <div style={{ flex: "1 1 160px", background: S2, borderRadius: "16px", padding: "18px", border: `1px solid ${BD}` }}>
+              <div style={{ fontSize: "11px", color: SB, letterSpacing: "0.07em", marginBottom: "10px" }}>BMI</div>
+              {bmi != null ? (
+                <div style={{ display: "flex", alignItems: "flex-end", gap: "10px" }}>
+                  <div style={{ fontSize: "38px", fontWeight: 800, color: bmiCat.color, lineHeight: 1, letterSpacing: "-0.02em" }}>
+                    {bmi}
+                  </div>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: bmiCat.color, marginBottom: "6px", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    {bmiCat.label}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: SB, fontSize: "13px", lineHeight: 1.5 }}>
+                  {athleteProfile?.height_cm ? "No weight logged yet" : "Awaiting height from athlete"}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Weight history mini chart */}
@@ -5300,6 +6034,7 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
 function CoachProgressTab({ authUser, selectedAthlete, setSelectedAthlete, coachLinks, coachLinksLoaded, athleteData, loadingAthlete }) {
   const athleteName = selectedAthlete?.athlete_name || "Athlete";
   const history = athleteData?.history || []; // WorkoutHistoryEntry[]
+  const [drawerSession, setDrawerSession] = React.useState(null);
 
   // Streak: count consecutive days with at least one workout
   const streak = React.useMemo(() => {
@@ -5315,27 +6050,6 @@ function CoachProgressTab({ authUser, selectedAthlete, setSelectedAthlete, coach
       else if (i > 0) break;
     }
     return count;
-  }, [history]);
-
-  // Total volume per workout
-  const totalVolume = history.reduce((sum, h) => sum + (h.totalVolume || 0), 0);
-
-  // Last 6 weeks bar chart data
-  const weeklyBars = React.useMemo(() => {
-    const weeks = {};
-    history.forEach(h => {
-      const d = new Date(h.date);
-      const weekStart = new Date(d);
-      weekStart.setDate(d.getDate() - d.getDay());
-      const key = weekStart.toISOString().split("T")[0];
-      if (!weeks[key]) weeks[key] = { label: weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" }), sessions: 0, sets: 0 };
-      weeks[key].sessions++;
-      weeks[key].sets += h.totalSets || 0;
-    });
-    return Object.entries(weeks)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([, v]) => v);
   }, [history]);
 
   if (!selectedAthlete) return (
@@ -5357,61 +6071,83 @@ function CoachProgressTab({ authUser, selectedAthlete, setSelectedAthlete, coach
         </div>
       ) : (
         <>
-          {/* Stat cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "14px" }}>
+          {/* Edge-lit KPI strip */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "14px",
+          }}>
             {[
-              { label: "Streak", value: `${streak}d`, color: A },
-              { label: "Sessions", value: history.length },
-              { label: "Total Sets", value: history.reduce((a, h) => a + (h.totalSets || 0), 0) },
+              { label: "Streak", value: `${streak}d`, accent: A },
+              { label: "Sessions", value: history.length, accent: A },
+              { label: "Total Sets", value: history.reduce((a, h) => a + (h.totalSets || 0), 0), accent: A },
             ].map(s => (
-              <div key={s.label} style={{ background: S2, borderRadius: "14px", padding: "14px 10px", border: `1px solid ${BD}`, textAlign: "center" }}>
-                <div style={{ fontSize: "22px", fontWeight: 800, color: s.color || TX, lineHeight: 1.1 }}>{s.value}</div>
-                <div style={{ fontSize: "9px", color: SB, marginTop: "4px", letterSpacing: "0.05em" }}>{s.label.toUpperCase()}</div>
+              <div key={s.label} style={{
+                background: `linear-gradient(180deg, ${S2} 0%, ${S1} 100%)`,
+                borderRadius: "14px",
+                padding: "14px 10px",
+                border: `1px solid ${BD}`,
+                textAlign: "center",
+                position: "relative",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  position: "absolute", top: 0, left: "12%", right: "12%",
+                  height: "1px",
+                  background: `linear-gradient(90deg, transparent, ${s.accent}, transparent)`,
+                  opacity: 0.55,
+                }}/>
+                <div style={{ fontSize: "22px", fontWeight: 800, color: TX, lineHeight: 1.1, letterSpacing: "-0.01em" }}>{s.value}</div>
+                <div style={{ fontSize: "9px", color: SB, marginTop: "4px", letterSpacing: "0.08em", fontWeight: 600 }}>{s.label.toUpperCase()}</div>
               </div>
             ))}
           </div>
 
-          {/* Volume chart */}
-          {weeklyBars.length > 0 && (
-            <div style={{ background: S2, borderRadius: "16px", padding: "16px", border: `1px solid ${BD}`, marginBottom: "14px" }}>
-              <div style={{ fontSize: "11px", color: SB, letterSpacing: "0.07em", marginBottom: "14px" }}>WEEKLY SESSIONS</div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", height: "72px" }}>
-                {weeklyBars.map((w, i) => {
-                  const max = Math.max(...weeklyBars.map(x => x.sessions), 1);
-                  const h = Math.max((w.sessions / max) * 60, 4);
-                  const isLatest = i === weeklyBars.length - 1;
-                  return (
-                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                      <div style={{ width: "100%", height: `${h}px`, background: isLatest ? A : `${A}44`, borderRadius: "4px 4px 0 0" }}/>
-                      <div style={{ fontSize: "9px", color: SB, textAlign: "center", lineHeight: 1.2 }}>{w.label}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Dashboard depth: heatmap, volume trend, PR timeline */}
+          <AthleteAttendanceHeatmap
+            history={history}
+            onCellTap={(iso) => {
+              const match = history.find(h => h.date === iso);
+              if (match) setDrawerSession(match);
+            }}
+          />
+          <AthleteVolumeChart history={history}/>
+          <AthletePRTimeline history={history}/>
 
-          {/* Recent workouts */}
+          {/* Recent workouts — tappable */}
           <div style={{ background: S2, borderRadius: "16px", padding: "16px", border: `1px solid ${BD}` }}>
             <div style={{ fontSize: "11px", color: SB, letterSpacing: "0.07em", marginBottom: "12px" }}>RECENT WORKOUTS</div>
             {history.length === 0 ? (
               <div style={{ color: SB, fontSize: "14px" }}>No workouts logged yet.</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {history.slice(0, 10).map(h => {
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {history.slice(0, 10).map((h, i) => {
                   const mins = Math.round((h.duration || 0) / 60);
                   return (
-                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <button
+                      key={h.id}
+                      className="row-btn press-scale"
+                      onClick={() => setDrawerSession(h)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "12px",
+                        padding: "12px 0",
+                        background: "none", border: "none", cursor: "pointer",
+                        borderBottom: i < Math.min(history.length, 10) - 1 ? `1px solid ${BD}` : "none",
+                        textAlign: "left", width: "100%",
+                        fontFamily: "inherit", color: "inherit",
+                      }}
+                    >
                       <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: A, flexShrink: 0 }}/>
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: "13px", color: TX, fontWeight: 600 }}>{h.type || "Workout"}</div>
-                        <div style={{ fontSize: "11px", color: SB }}>
+                        <div style={{ fontSize: "11px", color: SB, marginTop: "2px" }}>
                           {new Date(h.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                           {" · "}{h.totalSets || 0} sets
                           {mins > 0 && ` · ${mins}m`}
                         </div>
                       </div>
-                    </div>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={SB} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
                   );
                 })}
               </div>
@@ -5419,6 +6155,8 @@ function CoachProgressTab({ authUser, selectedAthlete, setSelectedAthlete, coach
           </div>
         </>
       )}
+
+      <AthleteSessionDrawer session={drawerSession} onClose={() => setDrawerSession(null)}/>
     </div>
   );
 }
@@ -5516,26 +6254,53 @@ function CoachRecordsTab({ authUser, selectedAthlete, setSelectedAthlete, coachL
 // SHARED: ATHLETE PICKER LIST
 // ─────────────────────────────────────────────
 function CoachAthletePickerList({ coachLinks, coachLinksLoaded, onSelect, label, authUserId }) {
-  const filtered = authUserId
+  const [query, setQuery] = React.useState("");
+  const filtered = (authUserId
     ? coachLinks.filter(l => l.coach_id === authUserId && l.status === "accepted")
-    : coachLinks;
+    : coachLinks
+  );
+
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? filtered.filter(l => (l.athlete_name || "").toLowerCase().includes(q))
+    : filtered;
+
+  const showSearch = filtered.length >= 5;
 
   return (
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ textAlign: "center", color: SB, fontSize: "13px", marginBottom: "20px" }}>{label}</div>
+      {showSearch && (
+        <div style={{ marginBottom: "14px" }}>
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search athletes…"
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: S2, border: `1px solid ${BD}`, borderRadius: "12px",
+              padding: "12px 14px", color: TX, fontSize: "14px", outline: "none",
+            }}
+          />
+        </div>
+      )}
       {!coachLinksLoaded ? (
         <div style={{ textAlign: "center", color: SB, padding: "24px 0", fontSize: "14px" }}>Loading…</div>
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: "center", color: SB, padding: "24px 0", fontSize: "14px" }}>No athletes connected yet.</div>
+      ) : shown.length === 0 ? (
+        <div style={{ textAlign: "center", color: SB, padding: "24px 0", fontSize: "14px" }}>No matches.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {filtered.map(link => {
+          {shown.map(link => {
             const name = link.athlete_name || link.athlete_id?.slice(0, 8);
             return (
-              <button key={link.id} onClick={() => onSelect(link)} style={{
+              <button key={link.id} className="row-btn press-scale" onClick={() => onSelect(link)} style={{
                 background: S2, border: `1px solid ${BD}`, borderRadius: "14px",
                 padding: "14px 16px", display: "flex", alignItems: "center", gap: "14px",
                 cursor: "pointer", width: "100%", textAlign: "left",
+                fontFamily: "inherit", color: "inherit",
               }}>
                 <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: A, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <span style={{ fontSize: "16px", fontWeight: 800, color: BG }}>{name?.[0]?.toUpperCase() || "?"}</span>
