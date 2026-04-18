@@ -566,7 +566,18 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 };
 
 export default function GymApp() {
-  const [showLanding,     setShowLanding]     = useState(() => !Capacitor.isNativePlatform());
+  // Skip landing on native apps, or when returning from an OAuth redirect.
+  const [showLanding, setShowLanding] = useState(() => {
+    if (Capacitor.isNativePlatform()) return false;
+    if (typeof window === "undefined") return true;
+    const { pathname, search, hash } = window.location;
+    const isOAuthConsent = pathname === "/oauth/consent";
+    const hasOAuthParams =
+      /[?&](code|error|access_token|refresh_token)=/.test(search) ||
+      /[#&](access_token|refresh_token|error)=/.test(hash);
+    const hasPending = !!localStorage.getItem("theryn_pending_role_landing");
+    return !(isOAuthConsent || hasOAuthParams || hasPending);
+  });
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
   const [showPrompt,      setShowPrompt]      = useState(false);
@@ -611,6 +622,14 @@ export default function GymApp() {
   const [showTour, setShowTour] = useState(false);
   const [hasCustomizedRoutine, setHasCustomizedRoutine] = useState(false);
   const [role, setRole] = useState(null); // "athlete" | "coach" — null means not yet chosen
+  // Survives the OAuth page reload via localStorage so the role picker pre-
+  // selects what the user picked on the landing page before sign-in.
+  const [pendingRole, setPendingRole] = useState(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("theryn_pending_role_landing");
+  });
+  const pendingRoleRef = useRef(pendingRole);
+  useEffect(() => { pendingRoleRef.current = pendingRole; }, [pendingRole]);
   // Onboarding status lives in profiles.onboarding_completed (Supabase = source
   // of truth). Local state: 'loading' until the DB round-trip settles, then
   // 'needed' or 'done'. We no longer use localStorage for this — it was the
@@ -707,12 +726,14 @@ export default function GymApp() {
           if (error) console.error("Profile upsert error:", error.message);
         });
 
-        // Load stored role — if none, role stays null → RolePickerScreen will show
+        // Load stored role — if none, role stays null → RolePickerScreen will show.
+        // If the user is entering from a landing CTA (pendingRole set), we want
+        // the role picker to run regardless of stale stored state — skip restore.
         const storedRole = localStorage.getItem(`theryn_role_${user.id}`);
-        if (storedRole) setRole(storedRole);
+        if (storedRole && !pendingRoleRef.current) setRole(storedRole);
 
         // Show athlete tour on first-ever login (only for athlete role)
-        if (storedRole === "athlete") {
+        if (storedRole === "athlete" && !pendingRoleRef.current) {
           const tourKey = `theryn_tour_done_${user.id}`;
           if (!localStorage.getItem(tourKey)) {
             setShowTour(true);
@@ -951,7 +972,25 @@ export default function GymApp() {
   }, [tab]);
 
   if (showLanding) return (
-    <LandingPage onEnterApp={() => setShowLanding(false)} />
+    <LandingPage onEnterApp={async (intendedRole) => {
+      // Landing CTA must always run sign-in → role picker, even for users with
+      // an existing Supabase session. Otherwise the stored role silently routes
+      // into a screen that can blank out (e.g. stale `athlete_web`).
+      const wantRole = intendedRole === "athlete" || intendedRole === "coach" ? intendedRole : null;
+      setPendingRole(wantRole);
+      pendingRoleRef.current = wantRole;
+      // Persist across the OAuth page reload; React state is wiped on redirect back.
+      if (wantRole) localStorage.setItem("theryn_pending_role_landing", wantRole);
+      else localStorage.removeItem("theryn_pending_role_landing");
+      // Wipe every cached role key — we don't know which user signed in last.
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith("theryn_role_")) localStorage.removeItem(k);
+      });
+      setRole(null);
+      try { await supabase.auth.signOut(); } catch { /* ignore */ }
+      setAuthUser(null);
+      setShowLanding(false);
+    }} />
   );
 
   // Show a minimal loading screen while Supabase checks for an existing session
@@ -991,7 +1030,10 @@ export default function GymApp() {
     if (isWeb) {
       return (
         <RolePickerScreen
+          initialSelected={pendingRole}
           onSelect={(r) => {
+            setPendingRole(null);
+            localStorage.removeItem("theryn_pending_role_landing");
             if (r === "athlete" && isWeb) {
               // Athletes on web → download page
               setRole("athlete_web");
@@ -1006,7 +1048,9 @@ export default function GymApp() {
     }
     return (
       <RolePickerScreen
+        initialSelected={pendingRole}
         onSelect={(r) => {
+          setPendingRole(null);
           setRole(r);
           localStorage.setItem(`theryn_role_${authUser.id}`, r);
           if (r === "athlete") {
@@ -4041,7 +4085,7 @@ function LoginScreen({ authError, onClearError }) {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: { 
-            redirectTo: window.location.origin,
+            redirectTo: `${window.location.origin}/oauth/consent`,
             queryParams: { prompt: "select_account" }
           },
         });
@@ -4815,8 +4859,8 @@ function SidebarBrand() {
 // ─────────────────────────────────────────────
 // ROLE PICKER SCREEN
 // ─────────────────────────────────────────────
-function RolePickerScreen({ onSelect }) {
-  const [selected, setSelected] = React.useState(null);
+function RolePickerScreen({ onSelect, initialSelected = null }) {
+  const [selected, setSelected] = React.useState(initialSelected);
 
   const cards = [
     {

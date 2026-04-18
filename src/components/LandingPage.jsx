@@ -7,19 +7,108 @@ const BG  = "#080808";
 const S1  = "#101010";
 const S2  = "#181818";
 const BD  = "#1E1E1E";
-const TX  = "#F0F0F0";
-const SB  = "#585858";
+const TX  = "#F5F6F8";
+const SB  = "#A8AEB7";
+const SB2 = "#D0D4DA";
 const MT  = "#2C2C2C";
 const RED = "#FF5C5C";
 
+// Workout-type colors — mirrors TYPE_COLORS in App.jsx so the landing page
+// speaks the same visual language as the real app.
+const TYPE_COLORS = {
+  Push:      "#FF8C42",
+  Pull:      "#4ECDC4",
+  Legs:      "#A8E6CF",
+  Upper:     "#C77DFF",
+  Lower:     "#FFD166",
+  "Full Body": "#C8FF00",
+  Cardio:    "#06D6A0",
+  Core:      "#FFD166",
+  Run:       "#06D6A0",
+  Swim:      "#4ECDC4",
+  Bike:      "#FFD166",
+  HIIT:      "#FF8C42",
+  Yoga:      "#C77DFF",
+  Rest:      "#A8AEB7",
+};
+
+// Render an athlete's "last session" line with the workout type colored —
+// "Push Day · today" → "Push" in Push-orange, " Day · today" in secondary.
+function SessionLabel({ text, fontSize = 11, warn = false }) {
+  const m = text.match(/^([A-Za-z ]+?)(\s?Day)?(\s·\s.+)$/);
+  if (!m) return <span style={{ fontSize, color: warn ? TYPE_COLORS.Push : SB }}>{text}</span>;
+  const typeKey = m[1].trim();
+  const color = TYPE_COLORS[typeKey] || (warn ? TYPE_COLORS.Push : SB);
+  return (
+    <span style={{ fontSize, color: warn ? TYPE_COLORS.Push : SB }}>
+      <span style={{ color, fontWeight: 600 }}>{typeKey}</span>
+      {m[2] || ""}{m[3]}
+    </span>
+  );
+}
+
 // ── PHONE MOCKUP ─────────────────────────────────────────────────────────────
-function PhoneMockup({ screen = "log", style = {} }) {
+function StatusBar({ platform }) {
+  const isIOS = platform === "ios";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: isIOS ? "6px 18px 3px 18px" : "6px 12px 3px 12px",
+      height: 22,
+      fontSize: 9.5, color: TX, fontWeight: 600,
+      letterSpacing: "-0.01em",
+      position: "relative",
+      zIndex: 5,
+    }}>
+      <span style={{ minWidth: 26, textAlign: "left" }}>9:41</span>
+      <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+        {/* cell bars */}
+        <div style={{ display:"flex", gap:1.2, alignItems:"flex-end" }}>
+          {[3,5,7,9].map((h,i) => (
+            <div key={i} style={{ width:2, height:h, background:TX, borderRadius:0.5 }} />
+          ))}
+        </div>
+        {/* wifi arc */}
+        <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+          <path d="M5.5 7.5 L7 5.5 A2 2 0 0 0 4 5.5 Z" fill={TX}/>
+          <path d="M1 3 A6 6 0 0 1 10 3" stroke={TX} strokeWidth="1.2" fill="none" opacity="0.85"/>
+        </svg>
+        {/* battery */}
+        <div style={{ width:17, height:8, border:`1px solid ${TX}`, borderRadius:2.5, padding:1, boxSizing:"border-box", position:"relative", display:"flex" }}>
+          <div style={{ width:"72%", height:"100%", background:TX, borderRadius:1 }}/>
+          <div style={{ position:"absolute", right:-2.5, top:2, width:1.4, height:3, background:TX, borderRadius:"0 1px 1px 0" }}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeIndicator({ platform }) {
+  const isIOS = platform === "ios";
+  return (
+    <div style={{ display:"flex", justifyContent:"center", padding: isIOS ? "4px 0 7px" : "5px 0 7px" }}>
+      <div style={{
+        width: isIOS ? 92 : 78,
+        height: isIOS ? 4 : 3,
+        borderRadius: 3,
+        background: TX,
+        opacity: isIOS ? 0.7 : 0.55,
+      }} />
+    </div>
+  );
+}
+
+function PhoneMockup({ screen = "log", platform = "ios", style = {} }) {
   const screens = {
     log: <LogScreen />,
     body: <BodyScreen />,
     progress: <ProgressScreen />,
     coach: <CoachScreen />,
   };
+  const isIOS = platform === "ios";
+  const outerRadius = isIOS ? 42 : 30;
+  const innerRadius = isIOS ? 36 : 24;
+
   return (
     <div style={{
       position: "relative",
@@ -27,41 +116,86 @@ function PhoneMockup({ screen = "log", style = {} }) {
       height: 460,
       ...style,
     }}>
+      {/* Titanium / aluminum rim */}
       <div style={{
         position: "absolute", inset: 0,
-        background: "linear-gradient(145deg, #1a1a1a 0%, #0a0a0a 100%)",
-        borderRadius: 36,
-        border: "2px solid #2a2a2a",
-        boxShadow: "0 40px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(0,0,0,0.5)",
-        overflow: "hidden",
+        background: isIOS
+          ? "linear-gradient(145deg, #3a3a3c 0%, #1a1a1c 48%, #0a0a0c 100%)"
+          : "linear-gradient(145deg, #2a2a2e 0%, #141416 52%, #060608 100%)",
+        borderRadius: outerRadius,
+        boxShadow: "0 40px 80px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(0,0,0,0.6)",
+        padding: isIOS ? 3 : 4,
       }}>
-        <div style={{ position:"absolute", left:-3, top:80, width:3, height:30, background:"#1a1a1a", borderRadius:"2px 0 0 2px" }} />
-        <div style={{ position:"absolute", left:-3, top:120, width:3, height:30, background:"#1a1a1a", borderRadius:"2px 0 0 2px" }} />
-        <div style={{ position:"absolute", right:-3, top:100, width:3, height:50, background:"#1a1a1a", borderRadius:"0 2px 2px 0" }} />
+        {/* Side buttons */}
+        {isIOS ? (
+          <>
+            {/* action button (iPhone 15 Pro+) */}
+            <div style={{ position:"absolute", left:-2, top:78, width:3, height:22, background:"linear-gradient(90deg,#1a1a1a,#2a2a2c)", borderRadius:"2px 0 0 2px" }} />
+            {/* volume up */}
+            <div style={{ position:"absolute", left:-2, top:116, width:3, height:40, background:"linear-gradient(90deg,#1a1a1a,#2a2a2c)", borderRadius:"2px 0 0 2px" }} />
+            {/* volume down */}
+            <div style={{ position:"absolute", left:-2, top:164, width:3, height:40, background:"linear-gradient(90deg,#1a1a1a,#2a2a2c)", borderRadius:"2px 0 0 2px" }} />
+            {/* power / side button */}
+            <div style={{ position:"absolute", right:-2, top:130, width:3, height:64, background:"linear-gradient(270deg,#1a1a1a,#2a2a2c)", borderRadius:"0 2px 2px 0" }} />
+          </>
+        ) : (
+          <>
+            {/* volume rocker */}
+            <div style={{ position:"absolute", right:-2, top:108, width:3, height:52, background:"linear-gradient(270deg,#0c0c0c,#242426)", borderRadius:"0 2px 2px 0" }} />
+            {/* power button (lower, typical Android layout) */}
+            <div style={{ position:"absolute", right:-2, top:170, width:3, height:36, background:"linear-gradient(270deg,#0c0c0c,#242426)", borderRadius:"0 2px 2px 0" }} />
+          </>
+        )}
 
+        {/* Inner display */}
         <div style={{
-          position: "absolute", inset: 2,
+          position: "absolute", inset: isIOS ? 3 : 4,
           background: BG,
-          borderRadius: 34,
+          borderRadius: innerRadius,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
         }}>
-          <div style={{
-            position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-            width: 80, height: 22,
-            background: "#0a0a0a",
-            borderRadius: "0 0 14px 14px",
-            zIndex: 10,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          }}>
-            <div style={{ width:8, height:8, borderRadius:"50%", background:"#1a1a1a", border:"1px solid #2a2a2a" }} />
-            <div style={{ width:40, height:8, borderRadius:4, background:"#1a1a1a", border:"1px solid #2a2a2a" }} />
-          </div>
-          <div style={{ flex:1, overflow:"hidden", paddingTop:24 }}>
+          {/* Notch / island / punch-hole */}
+          {isIOS ? (
+            <div style={{
+              position: "absolute", top: 7, left: "50%", transform: "translateX(-50%)",
+              width: 78, height: 22,
+              background: "#000",
+              borderRadius: 14,
+              zIndex: 10,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "0 9px",
+              boxShadow: "inset 0 0 0 1px #0a0a0a",
+            }}>
+              {/* face id sensor */}
+              <div style={{ width:5, height:5, borderRadius:"50%", background:"#101012", border:"1px solid #1a1a1c" }} />
+              {/* front camera */}
+              <div style={{ width:7, height:7, borderRadius:"50%", background:"#07070a", border:"1px solid #1a1a1c", position:"relative" }}>
+                <div style={{ position:"absolute", top:1, left:1.5, width:2, height:2, borderRadius:"50%", background:"#1e3a5a" }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
+              width: 11, height: 11,
+              background: "#000",
+              borderRadius: "50%",
+              zIndex: 10,
+              boxShadow: "inset 0 0 0 1.5px #0a0a0a, 0 0 0 1px rgba(0,0,0,0.6)",
+            }}>
+              <div style={{ position:"absolute", top:2.5, left:3, width:3, height:3, borderRadius:"50%", background:"#142238" }} />
+            </div>
+          )}
+
+          <StatusBar platform={platform} />
+
+          <div style={{ flex:1, overflow:"hidden" }}>
             {screens[screen]}
           </div>
+
           <PhoneTabBar />
+          <HomeIndicator platform={platform} />
         </div>
       </div>
     </div>
@@ -96,8 +230,11 @@ function LogScreen() {
   return (
     <div style={{ padding:"8px 10px", display:"flex", flexDirection:"column", gap:6 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-        <span style={{ fontSize:14, fontWeight:700, color:TX, letterSpacing:"-0.03em" }}>Push Day</span>
-        <span style={{ fontSize:8, background:A, color:"#000", borderRadius:3, padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>TODAY</span>
+        <span style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.03em" }}>
+          <span style={{ color: TYPE_COLORS.Push }}>Push</span>
+          <span style={{ color: TX }}> Day</span>
+        </span>
+        <span style={{ fontSize:8, background:TYPE_COLORS.Push, color:"#000", borderRadius:3, padding:"1px 5px", fontWeight:700, letterSpacing:"0.06em" }}>TODAY</span>
       </div>
       {exercises.map(ex => (
         <div key={ex.name} style={{ background:S1, borderRadius:8, border:`1px solid ${BD}`, padding:"7px 9px" }}>
@@ -260,7 +397,7 @@ function DesktopMockup({ style = {} }) {
             fontSize: 11, color: SB,
             letterSpacing: "0.02em",
           }}>
-            app.theryn.coach / athletes
+            theryn.fit
           </div>
           <div style={{ width: 22, height: 22, borderRadius: "50%", background: A, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#000" }}>D</div>
         </div>
@@ -343,7 +480,7 @@ function DesktopMockup({ style = {} }) {
                   }}>{r.name[0]}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: TX }}>{r.name}</div>
-                    <div style={{ fontSize: 11, color: SB }}>{r.last}</div>
+                    <SessionLabel text={r.last} fontSize={11} />
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: r.streak > 0 ? A : SB, letterSpacing: "-0.02em" }}>
@@ -482,7 +619,7 @@ function StatCounter({ value, label, delay = 0 }) {
 }
 
 // ── FLOATING PHONE SECTION ────────────────────────────────────────────────────
-function FloatingPhoneSection({ screen, side = "right", title, subtitle, features, accentColor = A, delay = 0 }) {
+function FloatingPhoneSection({ screen, platform = "ios", side = "right", title, subtitle, features, accentColor = A, delay = 0 }) {
   const { ref: phoneRef, offset } = useParallax(0.25);
   return (
     <div style={{
@@ -544,7 +681,7 @@ function FloatingPhoneSection({ screen, side = "right", title, subtitle, feature
           position: "relative",
           animation: "floatPhone 4s ease-in-out infinite",
         }}>
-          <PhoneMockup screen={screen} />
+          <PhoneMockup screen={screen} platform={platform} />
           <div style={{
             position: "absolute",
             bottom: -20, left: "50%", transform: "translateX(-50%)",
@@ -692,7 +829,7 @@ function Hero({ onGetStarted }) {
 
         <p style={{
           fontSize: "clamp(15px, 1.35vw, 19px)",
-          color: "#9A9A9A",
+          color: SB2,
           lineHeight: 1.65,
           margin: "0 auto 40px",
           maxWidth: 640,
@@ -785,7 +922,7 @@ function Hero({ onGetStarted }) {
             filter: "drop-shadow(0 30px 50px rgba(0,0,0,0.8))",
             zIndex: 3,
           }}>
-            <PhoneMockup screen="coach" style={{ width: 180, height: 378 }} />
+            <PhoneMockup screen="coach" platform="android" style={{ width: 180, height: 378 }} />
           </div>
 
           {/* Floating phone — left */}
@@ -800,7 +937,7 @@ function Hero({ onGetStarted }) {
             zIndex: 3,
             opacity: 0.95,
           }}>
-            <PhoneMockup screen="log" style={{ width: 160, height: 336 }} />
+            <PhoneMockup screen="log" platform="ios" style={{ width: 160, height: 336 }} />
           </div>
         </div>
       </div>
@@ -1002,7 +1139,7 @@ function ChaosToClarity() {
                     }}>{a.name[0]}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: TX }}>{a.name}</div>
-                      <div style={{ fontSize: 11, color: a.warn ? "#FF8C42" : SB }}>{a.last}</div>
+                      <SessionLabel text={a.last} fontSize={11} warn={a.warn} />
                     </div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: a.streak > 0 ? A : SB }}>
                       {a.streak > 0 ? `🔥 ${a.streak}` : "—"}
@@ -1214,6 +1351,7 @@ export default function LandingPage({ onEnterApp }) {
       <section id="coaches" style={{ background: BG }}>
         <FloatingPhoneSection
           screen="coach"
+          platform="ios"
           side="right"
           title={<>Your whole roster.<br /><span style={{
             background: `linear-gradient(120deg, ${AT} 0%, ${A} 100%)`,
@@ -1237,6 +1375,7 @@ export default function LandingPage({ onEnterApp }) {
       <section id="athletes" style={{ background: S1, borderTop: `1px solid ${BD}`, borderBottom: `1px solid ${BD}` }}>
         <FloatingPhoneSection
           screen="log"
+          platform="android"
           side="left"
           title={<>Every rep.<br />Every set.<br /><span style={{ color: A }}>Every PR.</span></>}
           subtitle="For Athletes"
@@ -1283,6 +1422,7 @@ export default function LandingPage({ onEnterApp }) {
       <section style={{ background: S1, borderTop: `1px solid ${BD}`, borderBottom: `1px solid ${BD}` }}>
         <FloatingPhoneSection
           screen="progress"
+          platform="ios"
           side="right"
           title={<>One week.<br /><span style={{ color: AW }}>Full picture.</span></>}
           subtitle="Weekly Analytics"
@@ -1337,7 +1477,7 @@ export default function LandingPage({ onEnterApp }) {
           </p>
           <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
             <button
-              onClick={onEnterApp}
+              onClick={() => onEnterApp("coach")}
               style={{
                 background: A, border: "none", borderRadius: 12,
                 color: "#000", fontWeight: 700, fontSize: 16,
@@ -1351,7 +1491,7 @@ export default function LandingPage({ onEnterApp }) {
               Start Free as a Coach →
             </button>
             <button
-              onClick={onEnterApp}
+              onClick={() => onEnterApp("athlete")}
               style={{
                 background: "none", border: `1px solid ${MT}`, borderRadius: 12,
                 color: TX, fontWeight: 600, fontSize: 16,
