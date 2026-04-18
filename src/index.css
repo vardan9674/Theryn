@@ -102,3 +102,81 @@ textarea::placeholder {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* ── Coach App Shell ─────────────────────────────────────────────────── */
+
+/* Full-height flex column containing nav + scrollable content */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: -webkit-fill-available;
+  overflow: hidden;
+  position: relative;
+  background: #080808;
+}
+
+/* Scrollable main content — leaves room for the fixed bottom nav */
+.content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fixed bottom tab bar — centered, respects safe-area on iOS */
+.nav-bar-container {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
+  background: rgba(10, 10, 10, 0.96);
+  border-top: 1px solid #1E1E1E;
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index: 100;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Hide the brand/logo block inside the bottom nav — it belongs in the header */
+.nav-bar-container .sidebar-brand {
+  display: none;
+}
+
+/* Each tab button */
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.nav-item:active {
+  background: rgba(200, 255, 0, 0.06);
+}
+
+.nav-item-active {
+  /* Active colour is applied via inline styles (color: A) in the component */
+}
+
+@keyframes drawerUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
