@@ -8,6 +8,7 @@ import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { ensureInviteCode, findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData } from "./hooks/useCoach";
+import LandingPage from "./components/LandingPage";
 
 // ── TOKENS ──────────────────────────────────────────────────────────────
 const A   = "#C8FF00";
@@ -172,6 +173,7 @@ function TabIcon({ id, active }) {
 // ROOT APP
 // ════════════════════════════════════════════════════════════════════════
 export default function GymApp() {
+  const [showLanding,     setShowLanding]     = useState(true);
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
   const [showPrompt,      setShowPrompt]      = useState(false);
@@ -461,6 +463,10 @@ export default function GymApp() {
     });
     return () => { handler.then(h => h.remove()); };
   }, [tab]);
+
+  if (showLanding) return (
+    <LandingPage onEnterApp={() => setShowLanding(false)} />
+  );
 
   // Show a minimal loading screen while Supabase checks for an existing session
   if (authLoading) return (
