@@ -46,6 +46,11 @@ button, a, input, textarea, select {
   position: relative;
 }
 
+/* Landing page breaks out of the mobile app shell for full-width desktop layouts */
+body[data-landing="true"] #root {
+  max-width: none;
+}
+
 /* ── Input Focus Highlights ─────────────────────────────────────────── */
 input:focus,
 textarea:focus,
