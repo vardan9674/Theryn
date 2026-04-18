@@ -127,3 +127,6 @@ export async function loadAthleteData(athleteId: string) {
   ]);
   return { routine, history };
 }
+
+export async function loadAthleteSessionsSince(_athleteId: string, _since: string): Promise<unknown[]> { return []; }
+
