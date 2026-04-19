@@ -6,7 +6,9 @@ export const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export function detectSignals(_data: unknown[]): unknown[] { return []; }
-export function summarizeForRow(_row: unknown): string { return ""; }
+export function summarizeForRow(_row: unknown): { badges: unknown[]; primaryLine: string | null; primarySeverity: string | null; primaryTab: string | null } {
+  return { badges: [], primaryLine: null, primarySeverity: null, primaryTab: null };
+}
 export function computeStats(_data: unknown[]): Record<string, unknown> { return {}; }
 
 export type BMICategory = {
