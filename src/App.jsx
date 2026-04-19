@@ -566,7 +566,7 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 };
 
 export default function GymApp() {
-  const [showLanding,     setShowLanding]     = useState(true);
+  const [showLanding,     setShowLanding]     = useState(() => !Capacitor.isNativePlatform());
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
   const [showPrompt,      setShowPrompt]      = useState(false);
@@ -3302,13 +3302,46 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
           const bmi = computeBMI(latest, profile?.height_cm, units);
           const cat = bmiCategory(bmi);
           if (bmi == null) return null;
+          const SCALE_MIN = 15, SCALE_MAX = 40;
+          const markerPct = Math.max(2, Math.min(98, ((bmi - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
           return (
-            <div style={{ ...card, background: S2, marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{ ...card, background: S2, marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "14px" }}>
                 <div style={{ ...subLbl, marginBottom: 0 }}>BMI</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-                  <span style={{ fontSize: "30px", fontWeight: 800, color: cat.color, letterSpacing: "-0.03em", lineHeight: 1 }}>{bmi}</span>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                  <span style={{ fontSize: "34px", fontWeight: 800, color: cat.color, letterSpacing: "-0.03em", lineHeight: 1 }}>{bmi}</span>
                   <span style={{ fontSize: "11px", fontWeight: 700, color: cat.color, letterSpacing: "0.06em", textTransform: "uppercase" }}>{cat.label}</span>
+                </div>
+              </div>
+              <div style={{ position: "relative", paddingTop: "10px" }}>
+                <div style={{ display: "flex", height: "10px", borderRadius: "6px", overflow: "hidden" }}>
+                  <div style={{ flex: 3.5, background: "#60A5FA" }}/>
+                  <div style={{ flex: 6.5, background: "#C8FF00" }}/>
+                  <div style={{ flex: 5,   background: "#FFD166" }}/>
+                  <div style={{ flex: 10,  background: "#FF5C5C" }}/>
+                </div>
+                <div style={{
+                  position: "absolute",
+                  left: `${markerPct}%`,
+                  top: "4px",
+                  transform: "translateX(-50%)",
+                  width: "3px", height: "22px",
+                  background: "#fff",
+                  borderRadius: "2px",
+                  boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
+                  pointerEvents: "none",
+                }}/>
+                <div style={{ display: "flex", marginTop: "8px", fontSize: "10px", color: SB, letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>
+                  <div style={{ flex: 3.5, textAlign: "center" }}>Under</div>
+                  <div style={{ flex: 6.5, textAlign: "center" }}>Normal</div>
+                  <div style={{ flex: 5,   textAlign: "center" }}>Over</div>
+                  <div style={{ flex: 10,  textAlign: "center" }}>Obese</div>
+                </div>
+                <div style={{ display: "flex", marginTop: "2px", fontSize: "9px", color: SB, opacity: 0.6 }}>
+                  <div style={{ flex: 3.5, textAlign: "center" }}>&lt;18.5</div>
+                  <div style={{ flex: 6.5, textAlign: "center" }}>18.5–24</div>
+                  <div style={{ flex: 5,   textAlign: "center" }}>25–29</div>
+                  <div style={{ flex: 10,  textAlign: "center" }}>30+</div>
                 </div>
               </div>
             </div>
