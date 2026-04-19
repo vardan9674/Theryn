@@ -5127,6 +5127,12 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   const [showTour, setShowTour] = React.useState(false);
   const [toast, setToast] = React.useState(null); // { message, variant }
 
+  // Expand #root to full width on desktop for the coach dashboard
+  React.useEffect(() => {
+    document.body.dataset.app = "coach";
+    return () => { delete document.body.dataset.app; };
+  }, []);
+
   // Register notification tap handler once (deep-link listener)
   React.useEffect(() => {
     registerNotificationTapHandlers();

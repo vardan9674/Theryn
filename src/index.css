@@ -46,7 +46,12 @@ button, a, input, textarea, select {
   position: relative;
 }
 
-/* Landing page breaks out of the mobile app shell for full-width desktop layouts */
+/* On desktop the coach app gets full width — remove the mobile cap */
+body[data-app="coach"] #root {
+  max-width: none;
+}
+
+/* Landing page breaks out of the mobile shell for full-width desktop layouts */
 body[data-landing="true"] #root {
   max-width: none;
 }
@@ -105,7 +110,6 @@ textarea::placeholder {
 
 /* ── Coach App Shell ─────────────────────────────────────────────────── */
 
-/* Full-height flex column containing nav + scrollable content */
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -116,7 +120,7 @@ textarea::placeholder {
   background: #080808;
 }
 
-/* Scrollable main content — leaves room for the fixed bottom nav */
+/* Scrollable main content */
 .content-scroll {
   flex: 1;
   overflow-y: auto;
@@ -125,7 +129,7 @@ textarea::placeholder {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Fixed bottom tab bar — centered, respects safe-area on iOS */
+/* Mobile: fixed bottom tab bar */
 .nav-bar-container {
   position: fixed;
   bottom: 0;
@@ -145,12 +149,8 @@ textarea::placeholder {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Hide the brand/logo block inside the bottom nav — it belongs in the header */
-.nav-bar-container .sidebar-brand {
-  display: none;
-}
+.nav-bar-container .sidebar-brand { display: none; }
 
-/* Each tab button */
 .nav-item {
   flex: 1;
   display: flex;
@@ -168,12 +168,60 @@ textarea::placeholder {
   transition: background 0.15s ease;
 }
 
-.nav-item:active {
-  background: rgba(200, 255, 0, 0.06);
-}
+.nav-item:active { background: rgba(200, 255, 0, 0.06); }
+.nav-item-active { /* active colour applied via inline style */ }
 
-.nav-item-active {
-  /* Active colour is applied via inline styles (color: A) in the component */
+/* ── Desktop layout: left sidebar ──────────────────────────────────── */
+@media (min-width: 768px) {
+  .app-shell {
+    flex-direction: row;
+  }
+
+  .nav-bar-container {
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    width: 220px;
+    max-width: 220px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    border-top: none;
+    border-right: 1px solid #1a1a1a;
+    padding: 24px 12px 24px;
+    gap: 2px;
+    z-index: 10;
+  }
+
+  .nav-bar-container .sidebar-brand {
+    display: flex;
+  }
+
+  .nav-item {
+    flex: none;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .nav-item span {
+    font-size: 13px !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    font-weight: 500 !important;
+  }
+
+  .content-scroll {
+    padding-bottom: 24px;
+  }
 }
 
 @keyframes drawerUp {
