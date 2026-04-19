@@ -684,13 +684,29 @@ export default function GymApp() {
 
   useEffect(() => {
     // Check existing session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Stale/invalid refresh token — clear it so the user gets a clean login screen
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       setAuthUser(session?.user ?? null);
+      setAuthLoading(false);
+    }).catch(() => {
+      setAuthUser(null);
       setAuthLoading(false);
     });
 
     // Listen for auth state changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "TOKEN_REFRESHED" && !session) {
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       const user = session?.user ?? null;
       setAuthUser(user);
       setAuthLoading(false);
