@@ -14,15 +14,18 @@ html {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
   font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif;
   background: #080808;
   color: #F0F0F0;
-  overflow-x: hidden;
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* Prevent iOS from zooming on input focus (font-size must be ≥16px) */
@@ -38,17 +41,11 @@ button, a, input, textarea, select {
 
 /* ── Responsive App Shell ───────────────────────────────────────────── */
 #root {
-  max-width: 430px;
-  width: 100%;
-  margin: 0 auto;
-  min-height: 100vh;
-  min-height: -webkit-fill-available;
-  position: relative;
-}
-
-/* Landing page breaks out of the mobile app shell for full-width desktop layouts */
-body[data-landing="true"] #root {
-  max-width: none;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* ── Input Focus Highlights ─────────────────────────────────────────── */
@@ -70,14 +67,11 @@ textarea::placeholder {
 
 /* ── Scrollbar (WebKit) ─────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 4px;
+  display: none !important;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #2C2C2C;
-  border-radius: 2px;
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 /* ── Utility Animations ─────────────────────────────────────────────── */
@@ -90,15 +84,353 @@ textarea::placeholder {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes drawerUp {
+  from { transform: translate(-50%, 100%); }
+  to   { transform: translate(-50%, 0); }
+}
+
+/* All buttons inherit the app font by default (avoid Safari/Chrome default) */
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
 
-/* ── Safe area insets for notch devices ──────────────────────────────── */
-@supports (padding-top: env(safe-area-inset-top)) {
-  body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+@keyframes crmFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE DEFAULTS (App + Coach Bottom Bar)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Root Shell — mobile: centered column, capped at phone width */
+.app-shell {
+  max-width: 430px;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #080808;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Bottom Nav — mobile: fixed to bottom, horizontal, phone-width */
+.nav-bar-container {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  background: #111;
+  border-top: 1px solid #222;
+  display: flex;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Hide sidebar brand on mobile — it only shows on desktop */
+.sidebar-brand {
+  display: none;
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #585858;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: 96px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Athlete View Modal — Mobile defaults to full screen */
+.athlete-view-backdrop {
+  display: none; /* hidden on mobile */
+}
+
+.athlete-view-wrapper {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #080808;
+  z-index: 200;
+  overflow-y: auto;
+  padding-bottom: 100px;
+}
+
+/* CRM grid — stacks vertically on mobile */
+.crm-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+/* CRM card — base styles */
+.crm-card {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.3s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DESKTOP CRM MODE  (≥ 768px)
+   Coach Dashboard transforms into a professional CRM layout
+   ═══════════════════════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+
+  /* Shell → horizontal row: sidebar | content */
+  .app-shell {
+    max-width: 100vw;
+    flex-direction: row;
+    overflow: hidden;
+    background: #050505;
   }
+
+  /* ── Athlete View Modal (Desktop) ── */
+  .athlete-view-backdrop {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .athlete-view-wrapper {
+    position: relative;
+    max-width: 760px;
+    max-height: 90vh;
+    border-radius: 24px;
+    border: 1px solid #1a1a1a;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(200, 255, 0, 0.05);
+    background: #080808;
+    overflow-y: auto;
+    padding-bottom: 0px;
+    animation: crmFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Sidebar Navigation ── */
+  .nav-bar-container {
+    position: static;
+    transform: none;
+    width: 260px;
+    min-width: 260px;
+    max-width: 260px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    border-top: none;
+    border-right: 1px solid #141414;
+    background: linear-gradient(180deg, #0C0C0C 0%, #080808 100%);
+    padding-top: 32px;
+    z-index: 50;
+    gap: 0;
+  }
+
+  /* Show the sidebar brand on desktop */
+  .sidebar-brand {
+    display: block !important;
+  }
+
+  /* Nav items → horizontal row with icons + labels */
+  .nav-item {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 14px 24px;
+    gap: 14px;
+    width: 100%;
+    position: relative;
+    border-radius: 0;
+    margin: 0;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .nav-item:hover {
+    background: rgba(200, 255, 0, 0.04);
+  }
+
+  /* Active tab indicator — neon bar on the left edge */
+  .nav-item-active {
+    background: rgba(200, 255, 0, 0.06);
+  }
+
+  .nav-item-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 60%;
+    width: 3px;
+    background: #C8FF00;
+    border-radius: 0 3px 3px 0;
+    box-shadow: 0 0 8px rgba(200, 255, 0, 0.3);
+  }
+
+  /* Label styling in sidebar */
+  .nav-item span {
+    font-size: 13px !important;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── Main Content Area ── */
+  .content-scroll {
+    padding: 40px 48px;
+    padding-bottom: 40px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    animation: crmFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── CRM Grid — tiles athlete cards horizontally ── */
+  .crm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* ── CRM Card Hover — lift + glow ── */
+  .crm-card {
+    will-change: transform, box-shadow;
+    cursor: pointer;
+  }
+
+  .crm-card:hover {
+    transform: translateY(-6px) scale(1.015);
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(200, 255, 0, 0.08) inset;
+    background: #141414 !important;
+    z-index: 2;
+  }
+
+  /* Athlete-card action links: brighten text on hover, nudge arrow right */
+  .coach-card-link:hover { color: #F0F0F0 !important; }
+  .coach-card-link:hover > span { color: #C8FF00 !important; transform: translateX(2px); }
+  .coach-card-link > span { display: inline-block; transition: transform 0.15s, color 0.15s; }
+}
+
+/* ── Coach athlete card — mobile touch feedback ─────────────────────────── */
+/* Active-press affordance for iOS/Android. The desktop hover lift is scoped
+   inside the min-width:768px block above, so mobile needs its own response. */
+.coach-athlete-card {
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.coach-athlete-card:active {
+  transform: scale(0.985);
+  background: #141414 !important;
+  border-color: #2C2C2C !important;
+}
+@media (max-width: 767px) {
+  /* Slightly tighter margins on mobile for denser list view */
+  .coach-athlete-card { margin-bottom: 12px; }
+}
+@media (min-width: 768px) {
+  /* On desktop, keep the card's existing hover lift from .crm-card:hover
+     and suppress the mobile active-press scale so it doesn't fight it. */
+  .coach-athlete-card:active { transform: none; }
+
+  /* Expand panels and cards */
+  .crm-limit-width {
+    max-width: 640px !important;
+    margin: 0 auto;
+  }
+
+  /* ── Web button sizing — no full-width mobile stretching ── */
+  /* Constrain primary action buttons on web to a sensible size */
+  .web-btn-primary {
+    width: auto !important;
+    min-width: 220px;
+    max-width: 340px;
+  }
+
+  /* Any button using width:100% in most form-style controls → auto on desktop.
+     Rows that should always span their container opt in with .row-btn. */
+  .content-scroll button[style*="width: 100%"]:not(.row-btn),
+  .content-scroll button[style*="width:100%"]:not(.row-btn) {
+    width: auto !important;
+    min-width: 140px;
+  }
+
+  .content-scroll .row-btn {
+    width: 100% !important;
+  }
+
+  /* Save / confirm / action rows: flex-row, centered, compact */
+  .web-action-row {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  /* Role picker card layout for web */
+  .role-picker-cards {
+    flex-direction: row !important;
+    gap: 20px !important;
+    justify-content: center;
+  }
+}
+
+/* ── Safe area insets for notch / status bar (iOS + Android edge-to-edge) ─ */
+/*
+ * Reserve the full status bar region on BOTH platforms.
+ * iOS: env() reports the notch. Android (Capacitor 8+ edge-to-edge on API 35+)
+ * also reports the status bar height. Non-edge-to-edge Android returns 0,
+ * which is fine because the WebView already sits below the system bar.
+ *
+ * We apply padding on `.app-shell` instead of `body` so fixed-position
+ * overlays (modals, drawers, floating buttons) can still reach the top of
+ * the viewport and respect insets via their own env() math.
+ */
+.app-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+
+/* When the user is on a native shell, reserve a consistent top region
+   (~ status bar height) so the floating profile button never overlaps
+   the first tab's title, even without @capacitor/status-bar installed. */
+.content-scroll {
+  padding-top: 8px;
 }
