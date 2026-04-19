@@ -1,23 +1,5 @@
+import { LocalNotifications, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
-
-// LocalNotifications is native-only — dynamically loaded so web builds don't fail.
-// All call sites already guard with isNative() + try/catch, so the no-op web shim is safe.
-const _noop = async () => {};
-const LocalNotifications: any = {
-  requestPermissions: async () => ({ display: 'unsupported' }),
-  checkPermissions:   async () => ({ display: 'unsupported' }),
-  schedule:           _noop,
-  cancel:             _noop,
-  getPending:         async () => ({ notifications: [] }),
-  createChannel:      _noop,
-  addListener:        () => {},
-};
-if (Capacitor.isNativePlatform()) {
-  import('@capacitor/local-notifications').then(m => {
-    Object.assign(LocalNotifications, m.LocalNotifications);
-  }).catch(() => {});
-}
-type LocalNotificationSchema = any;
 
 // ── NOTIFICATION ID RANGES ────────────────────────────────────────────────
 // Reserved ranges (keep stable across app versions):
