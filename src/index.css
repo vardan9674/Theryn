@@ -160,7 +160,9 @@ button {
 
 .content-scroll {
   flex: 1;
+  min-height: 0;        /* allow flex child to shrink so overflow-y works */
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding-bottom: 96px;
@@ -207,6 +209,7 @@ button {
   /* Shell → horizontal row: sidebar | content */
   .app-shell {
     max-width: 100vw;
+    height: 100vh;        /* lock to viewport so children can scroll internally */
     flex-direction: row;
     overflow: hidden;
     background: #050505;
@@ -308,14 +311,21 @@ button {
 
   /* ── Main Content Area ── */
   .content-scroll {
+    flex: 1;
+    min-height: 0;        /* essential — lets the flex child scroll instead of grow */
+    height: 100vh;
     padding: 40px 48px;
     padding-bottom: 40px;
     overflow-x: hidden;
     overflow-y: auto;
-    max-width: 1200px;
-    margin: 0 auto;
-    width: 100%;
     animation: crmFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Inner content width cap — keeps text readable on wide screens */
+  .content-scroll > * {
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* ── CRM Grid — tiles athlete cards horizontally ── */
