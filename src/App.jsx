@@ -11,8 +11,15 @@ import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
+import LandingPage from "./components/LandingPage";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
+import {
+  loadClientFees, upsertClientFee, deleteClientFee,
+  loadPayments, savePayment, deletePayment,
+  computeMonthlySummary, athletePaymentStatus,
+  fmtMoney, SUPPORTED_CURRENCIES,
+} from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
@@ -559,6 +566,17 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 };
 
 export default function GymApp() {
+  const [showLanding,     setShowLanding]     = useState(() => {
+    if (Capacitor.isNativePlatform()) return false;
+    if (typeof window === "undefined") return true;
+    const { pathname, search, hash } = window.location;
+    const isOAuthConsent = pathname === "/oauth/consent";
+    const hasOAuthParams =
+      /[?&](code|error|access_token|refresh_token)=/.test(search) ||
+      /[#&](access_token|refresh_token|error)=/.test(hash);
+    const hasPending = !!localStorage.getItem("theryn_pending_role_landing");
+    return !(isOAuthConsent || hasOAuthParams || hasPending);
+  });
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
   const [showPrompt,      setShowPrompt]      = useState(false);
@@ -609,6 +627,8 @@ export default function GymApp() {
   // cause of the "re-prompts name on every device" bug.
   const [onboardingStatus, setOnboardingStatus] = useState("loading");
 
+  const [refreshing, setRefreshing] = useState(false);
+
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
@@ -622,23 +642,20 @@ export default function GymApp() {
     }
     let cancelled = false;
     supabase.from("profiles")
-      .select("display_name, height_cm, unit_system, onboarding_completed")
+      .select("display_name, height_cm, unit_system, default_currency, onboarding_completed")
       .eq("id", authUser.id)
       .maybeSingle()
-      .then(({ data, error }) => {
+      .then(({ data }) => {
         if (cancelled) return;
-        // On DB error (e.g. missing column, RLS) skip setup — don't block the app.
-        if (error) {
-          console.warn("Profile fetch error:", error.message);
+        if (data?.onboarding_completed) {
           setOnboardingStatus("done");
-          return;
+        } else {
+          setOnboardingStatus("needed");
         }
-        // Treat existing users with a display_name as already onboarded even if
-        // the onboarding_completed column is false/missing (pre-migration rows).
-        const alreadySetUp = data?.onboarding_completed || !!data?.display_name;
-        setOnboardingStatus(alreadySetUp ? "done" : "needed");
-
-        if (data?.display_name || data?.height_cm != null || data?.unit_system) {
+        // Hydrate profile state with anything already on the row. Initials
+        // are re-derived from display_name so the avatar reflects what the
+        // user actually entered at setup (not whatever Google handed us).
+        if (data?.display_name || data?.height_cm != null || data?.unit_system || data?.default_currency) {
           let nextInitials;
           if (data?.display_name) {
             const words = data.display_name.trim().split(" ").filter(Boolean);
@@ -654,6 +671,7 @@ export default function GymApp() {
             initials: nextInitials || p.initials,
             height_cm: data.height_cm != null ? Number(data.height_cm) : p.height_cm,
             units: data.unit_system || p.units,
+            default_currency: data.default_currency || p.default_currency || "USD",
           }));
         }
       });
@@ -666,13 +684,29 @@ export default function GymApp() {
 
   useEffect(() => {
     // Check existing session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Stale/invalid refresh token — clear it so the user gets a clean login screen
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       setAuthUser(session?.user ?? null);
+      setAuthLoading(false);
+    }).catch(() => {
+      setAuthUser(null);
       setAuthLoading(false);
     });
 
     // Listen for auth state changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "TOKEN_REFRESHED" && !session) {
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       const user = session?.user ?? null;
       setAuthUser(user);
       setAuthLoading(false);
@@ -784,6 +818,7 @@ export default function GymApp() {
   const skipAutoSaveRef = useRef(false);
   const routineSaveRef = useRef(null);
   const isLocalSaveRef = useRef(0);
+  const fetchRoutineRef = useRef(null);
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
@@ -830,6 +865,7 @@ export default function GymApp() {
         setTimeout(() => { skipAutoSaveRef.current = false; }, 2000);
       }
     };
+    fetchRoutineRef.current = fetchRoutine;
 
     // Initial load
     fetchRoutine();
@@ -943,6 +979,19 @@ export default function GymApp() {
     });
     return () => { handler.then(h => h.remove()); };
   }, [tab]);
+
+  if (showLanding) return (
+    <LandingPage onEnterApp={async () => {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith("theryn_role_")) localStorage.removeItem(k);
+      });
+      localStorage.removeItem("theryn_pending_role_landing");
+      setRole(null);
+      try { await supabase.auth.signOut(); } catch {}
+      setAuthUser(null);
+      setShowLanding(false);
+    }} />
+  );
 
   // Show a minimal loading screen while Supabase checks for an existing session
   if (authLoading) return (
@@ -1062,7 +1111,7 @@ export default function GymApp() {
 
       <div key={tab} className="screen-enter">
         {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
-        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded}/>}
+        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => fetchRoutineRef.current?.()}/>}
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
         {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
@@ -3292,13 +3341,46 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
           const bmi = computeBMI(latest, profile?.height_cm, units);
           const cat = bmiCategory(bmi);
           if (bmi == null) return null;
+          const SCALE_MIN = 15, SCALE_MAX = 40;
+          const markerPct = Math.max(2, Math.min(98, ((bmi - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
           return (
-            <div style={{ ...card, background: S2, marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{ ...card, background: S2, marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "14px" }}>
                 <div style={{ ...subLbl, marginBottom: 0 }}>BMI</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-                  <span style={{ fontSize: "30px", fontWeight: 800, color: cat.color, letterSpacing: "-0.03em", lineHeight: 1 }}>{bmi}</span>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                  <span style={{ fontSize: "34px", fontWeight: 800, color: cat.color, letterSpacing: "-0.03em", lineHeight: 1 }}>{bmi}</span>
                   <span style={{ fontSize: "11px", fontWeight: 700, color: cat.color, letterSpacing: "0.06em", textTransform: "uppercase" }}>{cat.label}</span>
+                </div>
+              </div>
+              <div style={{ position: "relative", paddingTop: "10px" }}>
+                <div style={{ display: "flex", height: "10px", borderRadius: "6px", overflow: "hidden" }}>
+                  <div style={{ flex: 3.5, background: "#60A5FA" }}/>
+                  <div style={{ flex: 6.5, background: "#C8FF00" }}/>
+                  <div style={{ flex: 5,   background: "#FFD166" }}/>
+                  <div style={{ flex: 10,  background: "#FF5C5C" }}/>
+                </div>
+                <div style={{
+                  position: "absolute",
+                  left: `${markerPct}%`,
+                  top: "4px",
+                  transform: "translateX(-50%)",
+                  width: "3px", height: "22px",
+                  background: "#fff",
+                  borderRadius: "2px",
+                  boxShadow: "0 0 0 2px rgba(0,0,0,0.5)",
+                  pointerEvents: "none",
+                }}/>
+                <div style={{ display: "flex", marginTop: "8px", fontSize: "10px", color: SB, letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>
+                  <div style={{ flex: 3.5, textAlign: "center" }}>Under</div>
+                  <div style={{ flex: 6.5, textAlign: "center" }}>Normal</div>
+                  <div style={{ flex: 5,   textAlign: "center" }}>Over</div>
+                  <div style={{ flex: 10,  textAlign: "center" }}>Obese</div>
+                </div>
+                <div style={{ display: "flex", marginTop: "2px", fontSize: "9px", color: SB, opacity: 0.6 }}>
+                  <div style={{ flex: 3.5, textAlign: "center" }}>&lt;18.5</div>
+                  <div style={{ flex: 6.5, textAlign: "center" }}>18.5–24</div>
+                  <div style={{ flex: 5,   textAlign: "center" }}>25–29</div>
+                  <div style={{ flex: 10,  textAlign: "center" }}>30+</div>
                 </div>
               </div>
             </div>
@@ -5015,6 +5097,13 @@ function CoachTabIcon({ tab, active }) {
       <line x1="22" y1="11" x2="16" y2="11"/>
     </svg>
   );
+  if (tab === "payments") return (
+    <svg {...s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="6" width="20" height="13" rx="2"/>
+      <line x1="2" y1="10" x2="22" y2="10"/>
+      <line x1="6" y1="15" x2="10" y2="15"/>
+    </svg>
+  );
   return null;
 }
 
@@ -5247,10 +5336,15 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     }
   }
 
-  const COACH_TABS = ["athletes", "routines", "body", "progress", "connections"];
-  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", connections: "Connect" };
+  // Connections moved out of the main nav into the profile drawer (it's a
+  // config-style flow, not a daily workflow). Payments takes the freed slot.
+  const COACH_TABS = ["athletes", "routines", "body", "progress", "payments"];
+  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments" };
 
-  const sharedTabProps = { authUser, selectedAthlete, setSelectedAthlete, coachLinks, coachLinksLoaded, athleteData, loadingAthlete, setAthleteCache };
+  // Separate state for the Connections modal triggered from the profile drawer.
+  const [showConnections, setShowConnections] = React.useState(false);
+
+  const sharedTabProps = { authUser, profile, selectedAthlete, setSelectedAthlete, coachLinks, coachLinksLoaded, athleteData, loadingAthlete, setAthleteCache };
 
   return (
     <div className="app-shell">
@@ -5307,8 +5401,19 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
         {tab === "routines"  && <CoachRoutinesTab  {...sharedTabProps}/>}
         {tab === "body"      && <CoachBodyTab       {...sharedTabProps}/>}
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
-        {tab === "connections" && <CoachModal authUser={authUser} mode="coach" inline={true} onUpdate={() => loadCoachLinks(authUser.id).then(setCoachLinks)} />}
+        {tab === "payments"  && <CoachPaymentsTab  {...sharedTabProps}/>}
       </div>
+
+      {/* Connections modal — triggered from the profile drawer (was a tab) */}
+      {showConnections && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 260, background: BG, overflowY: "auto" }}>
+          <div style={{ padding: "20px 16px", borderBottom: `1px solid ${BD}`, display: "flex", alignItems: "center", gap: "12px", position: "sticky", top: 0, background: BG, zIndex: 5 }}>
+            <button onClick={() => setShowConnections(false)} style={{ background: "none", border: "none", color: SB, fontSize: "22px", cursor: "pointer", padding: 0, lineHeight: 1 }}>←</button>
+            <div style={{ fontSize: "17px", fontWeight: 700, color: TX }}>Connections</div>
+          </div>
+          <CoachModal authUser={authUser} mode="coach" inline={true} onUpdate={() => loadCoachLinks(authUser.id).then(setCoachLinks)} />
+        </div>
+      )}
 
       {/* Floating profile avatar — visible on every tab (native only; web has its own top-right).
           `max()` ensures a minimum 44px offset on Android (where env() may be 0)
@@ -5353,43 +5458,113 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
               <button onClick={() => setShowProfile(false)} style={{ background: "none", border: "none", color: SB, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}>Dismiss</button>
             </div>
 
-            {editingName ? (
-              <div style={{ marginBottom: "16px", display: "flex", gap: "8px" }}>
-                <input
-                  type="text"
-                  value={editNameValue}
-                  onChange={e => setEditNameValue(e.target.value)}
-                  autoFocus
-                  style={{ flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "10px", padding: "12px", color: TX, fontSize: "16px", boxSizing: "border-box" }}
-                />
-                <button
-                  onClick={handleSaveCoachName}
-                  disabled={savingName || !editNameValue.trim()}
-                  style={{ background: A, border: "none", borderRadius: "10px", padding: "0 16px", color: BG, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}
-                >
-                  {savingName ? "..." : "Save"}
-                </button>
+            {/* ── Identity — avatar + name (editable) + email ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "22px" }}>
+              <div style={{
+                width: "52px", height: "52px", borderRadius: "50%",
+                background: profile?.color || A, border: `1px solid ${MT}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "19px", fontWeight: 800, color: BG, flexShrink: 0,
+                letterSpacing: "-0.02em",
+              }}>
+                {profile?.initials || coachDisplayName[0]?.toUpperCase() || "C"}
               </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: TX }}>{coachDisplayName}</div>
-                <button onClick={() => { setEditNameValue(coachDisplayName); setEditingName(true); }} style={{ background: "none", border: "none", color: A, fontSize: "13px", fontWeight: 700, cursor: "pointer", padding: "4px" }}>
-                  Edit
-                </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {editingName ? (
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      value={editNameValue}
+                      onChange={e => setEditNameValue(e.target.value)}
+                      autoFocus
+                      style={{ flex: 1, minWidth: 0, background: S2, border: `1px solid ${BD}`, borderRadius: "8px", padding: "8px 10px", color: TX, fontSize: "15px", boxSizing: "border-box" }}
+                    />
+                    <button onClick={handleSaveCoachName} disabled={savingName || !editNameValue.trim()}
+                      style={{ background: A, border: "none", borderRadius: "8px", padding: "0 12px", color: BG, fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
+                      {savingName ? "…" : "Save"}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{ fontSize: "17px", fontWeight: 700, color: TX, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {coachDisplayName}
+                      </div>
+                      <button onClick={() => { setEditNameValue(coachDisplayName); setEditingName(true); }}
+                        style={{ background: "none", border: "none", color: A, fontSize: "12px", fontWeight: 600, cursor: "pointer", padding: 0 }}>
+                        Edit
+                      </button>
+                    </div>
+                    <div style={{ fontSize: "12px", color: SB, marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {authUser?.email}
+                    </div>
+                  </>
+                )}
               </div>
-            )}
+            </div>
 
-            <div style={{ fontSize: "13px", color: SB, marginBottom: "16px" }}>{authUser?.email}</div>
-            <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "20px" }}>
-              <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px" }}>INVITE CODE</div>
+            {/* ── Quick stats: athletes + pending payments (links to Payments) ── */}
+            <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
+              <div style={{ flex: 1, background: S2, borderRadius: "12px", padding: "12px", border: `1px solid ${BD}` }}>
+                <div style={{ fontSize: "9px", color: SB, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase" }}>Athletes</div>
+                <div style={{ fontSize: "20px", fontWeight: 800, color: TX, marginTop: "3px", letterSpacing: "-0.02em" }}>
+                  {coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted").length}
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowProfile(false); setTab("payments"); }}
+                style={{ flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "12px", padding: "12px", textAlign: "left", cursor: "pointer", color: "inherit" }}
+              >
+                <div style={{ fontSize: "9px", color: SB, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase" }}>Payments</div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: A, marginTop: "3px", letterSpacing: "-0.01em" }}>
+                  Open <span style={{ color: MT }}>→</span>
+                </div>
+              </button>
+            </div>
+
+            {/* ── Invite code card ── */}
+            <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "18px", border: `1px solid ${BD}` }}>
+              <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase" }}>Invite Code</div>
               <div style={{ fontSize: "22px", fontWeight: 800, color: A, letterSpacing: "0.1em" }}>{coachInviteCode}</div>
             </div>
-            <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px" }}>
-              <button onClick={() => { setShowProfile(false); onSwitchRole(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", borderBottom: `1px solid ${BD}`, color: TX, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
-                <span>🏃</span> Switch to Athlete
+
+            {/* ── Settings ── */}
+            <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.08em", marginBottom: "8px", fontWeight: 700, textTransform: "uppercase", paddingLeft: "4px" }}>Settings</div>
+            <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px", border: `1px solid ${BD}` }}>
+              <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", borderBottom: `1px solid ${BD}` }}>
+                <div style={{ fontSize: "14px", color: TX }}>Default currency</div>
+                <select
+                  value={profile?.default_currency || "USD"}
+                  onChange={async (e) => {
+                    const next = e.target.value;
+                    if (setProfile) setProfile(p => ({ ...p, default_currency: next }));
+                    if (authUser?.id) {
+                      await supabase.from("profiles").update({ default_currency: next }).eq("id", authUser.id);
+                    }
+                  }}
+                  style={{ background: S1, color: TX, border: `1px solid ${BD}`, borderRadius: "8px", padding: "6px 10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", outline: "none" }}
+                >
+                  {SUPPORTED_CURRENCIES.map(c => (
+                    <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+                  ))}
+                </select>
+              </div>
+              <button onClick={() => { setShowProfile(false); setShowConnections(true); }}
+                style={{ width: "100%", padding: "14px 16px", background: "none", border: "none", color: TX, fontSize: "14px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Connections</span>
+                <span style={{ color: MT }}>→</span>
               </button>
-              <button onClick={() => { setShowProfile(false); onSignOut(); }} style={{ width: "100%", padding: "16px", background: "none", border: "none", color: RED, fontSize: "15px", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px" }}>
-                <span>🚪</span> Sign Out
+            </div>
+
+            {/* ── Account ── */}
+            <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "8px", border: `1px solid ${BD}` }}>
+              <button onClick={() => { setShowProfile(false); onSwitchRole(); }}
+                style={{ width: "100%", padding: "14px 16px", background: "none", border: "none", borderBottom: `1px solid ${BD}`, color: TX, fontSize: "14px", textAlign: "left", cursor: "pointer" }}>
+                Switch to Athlete
+              </button>
+              <button onClick={() => { setShowProfile(false); onSignOut(); }}
+                style={{ width: "100%", padding: "14px 16px", background: "none", border: "none", color: SEVERITY_COLORS.urgent, fontSize: "14px", textAlign: "left", cursor: "pointer", fontWeight: 600 }}>
+                Sign Out
               </button>
             </div>
           </div>
@@ -6028,6 +6203,562 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
         </>
       )}
     </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// COACH: PAYMENTS TAB
+// ═════════════════════════════════════════════════════════════════════════
+// Manual payment tracker — NOT a processor. Coach logs what athletes have
+// paid them; per-athlete fees drive the "expected" / "outstanding" math. No
+// money moves. Fees + payments are pulled from Supabase on mount; optimistic
+// updates on save/delete for instant-feeling UI.
+function CoachPaymentsTab({ authUser, profile, coachLinks, coachLinksLoaded }) {
+  const [fees, setFees] = React.useState([]);
+  const [payments, setPayments] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState("all"); // all | overdue | due | paid
+  const [addingPayment, setAddingPayment] = React.useState(false);
+  const [editingFeeFor, setEditingFeeFor] = React.useState(null); // athlete link row
+  const [historyFor, setHistoryFor] = React.useState(null); // athlete link row
+  const [toast, setToast] = React.useState(null);
+
+  const defaultCurrency = profile?.default_currency || "USD";
+
+  // Initial load — fees and payments fetched in parallel on mount / coach switch.
+  React.useEffect(() => {
+    if (!authUser?.id) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([loadClientFees(authUser.id), loadPayments(authUser.id)])
+      .then(([f, p]) => {
+        if (cancelled) return;
+        setFees(f);
+        setPayments(p);
+        setLoading(false);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setLoading(false);
+        setToast({ type: "error", message: `Load failed: ${e.message}` });
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.id]);
+
+  // Auto-dismiss toasts
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const myAthletes = React.useMemo(
+    () => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"),
+    [coachLinks, authUser?.id]
+  );
+
+  const summary = React.useMemo(
+    () => computeMonthlySummary(fees, payments),
+    [fees, payments]
+  );
+
+  // Per-athlete rows — compute fee + payments + status once per render.
+  const rows = React.useMemo(() => {
+    return myAthletes.map(link => {
+      const fee = fees.find(f => f.athlete_id === link.athlete_id) || null;
+      const athletePayments = payments.filter(p => p.athlete_id === link.athlete_id);
+      const status = athletePaymentStatus(fee, athletePayments);
+      return { link, fee, payments: athletePayments, status };
+    });
+  }, [myAthletes, fees, payments]);
+
+  const visibleRows = filter === "all" ? rows : rows.filter(r => r.status.status === filter);
+  const overdueCount = rows.filter(r => r.status.status === "overdue").length;
+
+  // Handlers — optimistic updates so UI feels instant even on slow network.
+  async function handleSavePayment({ athleteId, amount, currency, receivedDate, notes }) {
+    try {
+      const saved = await savePayment(authUser.id, athleteId, {
+        amount, currency, received_date: receivedDate, notes: notes || null,
+      });
+      setPayments(p => [saved, ...p]);
+      setToast({ type: "success", message: "Payment logged" });
+      try { Haptics.impact({ style: "light" }); } catch {}
+    } catch (e) {
+      setToast({ type: "error", message: `Save failed: ${e.message}` });
+    }
+  }
+
+  async function handleSaveFee({ athleteId, amount, currency, cadence, startDate, active, notes }) {
+    try {
+      const saved = await upsertClientFee(authUser.id, athleteId, {
+        amount, currency, cadence, start_date: startDate, active, notes,
+      });
+      setFees(f => {
+        const others = f.filter(x => !(x.coach_id === saved.coach_id && x.athlete_id === saved.athlete_id));
+        return [...others, saved];
+      });
+      setToast({ type: "success", message: "Fee updated" });
+    } catch (e) {
+      setToast({ type: "error", message: `Save failed: ${e.message}` });
+    }
+  }
+
+  async function handleDeleteFee(feeId) {
+    try {
+      await deleteClientFee(feeId);
+      setFees(f => f.filter(x => x.id !== feeId));
+      setToast({ type: "success", message: "Fee removed" });
+    } catch (e) {
+      setToast({ type: "error", message: `Delete failed: ${e.message}` });
+    }
+  }
+
+  async function handleDeletePayment(id) {
+    try {
+      await deletePayment(id);
+      setPayments(p => p.filter(x => x.id !== id));
+      setToast({ type: "success", message: "Payment removed" });
+    } catch (e) {
+      setToast({ type: "error", message: `Delete failed: ${e.message}` });
+    }
+  }
+
+  if (!coachLinksLoaded || loading) {
+    return (
+      <div style={{ padding: "20px 16px", textAlign: "center", color: SB, paddingTop: "48px" }}>
+        <div style={{ width: "28px", height: "28px", borderRadius: "50%", border: `3px solid ${MT}`, borderTopColor: A, animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }}/>
+        Loading payments…
+      </div>
+    );
+  }
+
+  if (myAthletes.length === 0) {
+    return (
+      <div style={{ padding: "40px 24px", textAlign: "center", color: SB }}>
+        <div style={{ fontSize: "20px", fontWeight: 800, color: TX, marginBottom: "8px" }}>Payments</div>
+        <div style={{ fontSize: "14px", lineHeight: 1.55 }}>
+          Connect athletes to start tracking payments. Use Connections in your profile menu.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "20px 16px 100px" }}>
+      <div style={{ marginBottom: "18px" }}>
+        <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Payments</div>
+        <div style={{ fontSize: "12px", color: SB, marginTop: "2px" }}>Track what athletes have paid you this month.</div>
+      </div>
+
+      {/* Monthly summary — three tiles. Received, Expected, Outstanding. */}
+      <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
+        {[
+          { label: "Received", value: summary.receivedThisMonth, color: A },
+          { label: "Expected", value: summary.expectedThisMonth, color: TX },
+          { label: "Outstanding", value: summary.outstanding, color: summary.outstanding > 0.01 ? SEVERITY_COLORS.urgent : SB },
+        ].map(t => (
+          <div key={t.label} style={{
+            flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "14px",
+            padding: "14px 12px", minWidth: 0,
+          }}>
+            <div style={{ fontSize: "9px", color: SB, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {t.label}
+            </div>
+            <div style={{ fontSize: "17px", fontWeight: 800, color: t.color, marginTop: "4px", letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {fmtMoney(t.value, defaultCurrency)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Overdue banner — only when there's something to act on. */}
+      {overdueCount > 0 && filter !== "overdue" && (
+        <div style={{ background: `${SEVERITY_COLORS.urgent}12`, border: `1px solid ${SEVERITY_COLORS.urgent}44`, borderRadius: "12px", padding: "12px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ fontSize: "13px", color: TX, flex: 1, lineHeight: 1.45 }}>
+            <strong style={{ color: SEVERITY_COLORS.urgent }}>{overdueCount}</strong> {overdueCount === 1 ? "athlete is" : "athletes are"} overdue this cycle.
+          </div>
+          <button onClick={() => setFilter("overdue")}
+            style={{ fontSize: "11px", color: SEVERITY_COLORS.urgent, background: "transparent", border: `1px solid ${SEVERITY_COLORS.urgent}`, borderRadius: "8px", padding: "5px 12px", fontWeight: 700, cursor: "pointer" }}>
+            View
+          </button>
+        </div>
+      )}
+
+      {/* Filter pills */}
+      <div style={{ display: "flex", gap: "6px", marginBottom: "14px", overflowX: "auto" }}>
+        {[
+          { key: "all", label: "All" },
+          { key: "overdue", label: "Overdue" },
+          { key: "due", label: "Due" },
+          { key: "paid", label: "Paid" },
+        ].map(p => (
+          <button key={p.key} onClick={() => setFilter(p.key)} style={{
+            flexShrink: 0, background: filter === p.key ? A : S2, color: filter === p.key ? BG : SB,
+            border: "none", borderRadius: "18px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+          }}>{p.label}</button>
+        ))}
+      </div>
+
+      {/* Rows */}
+      {visibleRows.length === 0 ? (
+        <div style={{ textAlign: "center", color: SB, padding: "36px 0", fontSize: "14px" }}>
+          No athletes match this filter.
+        </div>
+      ) : visibleRows.map(r => (
+        <AthletePaymentRow
+          key={r.link.id}
+          row={r}
+          defaultCurrency={defaultCurrency}
+          onSetFee={() => setEditingFeeFor(r.link)}
+          onViewHistory={() => setHistoryFor(r.link)}
+          onQuickLog={() => { setAddingPayment({ link: r.link, fee: r.fee }); }}
+        />
+      ))}
+
+      {/* Floating Add button */}
+      <button
+        onClick={() => setAddingPayment({ link: null, fee: null })}
+        aria-label="Log payment"
+        style={{
+          position: "fixed", bottom: Capacitor.getPlatform() === "web" ? "28px" : "88px", right: "20px",
+          width: "56px", height: "56px", borderRadius: "50%",
+          background: A, color: BG, border: "none",
+          fontSize: "30px", fontWeight: 300, cursor: "pointer",
+          boxShadow: `0 10px 28px ${A}55`,
+          zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1,
+        }}
+      >+</button>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed", left: "50%", bottom: "100px", transform: "translateX(-50%)",
+          background: toast.type === "success" ? A : SEVERITY_COLORS.urgent,
+          color: BG, padding: "10px 16px", borderRadius: "10px",
+          fontSize: "13px", fontWeight: 700, zIndex: 300,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}>{toast.message}</div>
+      )}
+
+      {/* Modals */}
+      {addingPayment && (
+        <AddPaymentSheet
+          myAthletes={myAthletes}
+          preselected={addingPayment.link}
+          preselectedFee={addingPayment.fee}
+          defaultCurrency={defaultCurrency}
+          existingFees={fees}
+          onClose={() => setAddingPayment(false)}
+          onSave={async (data) => {
+            await handleSavePayment(data);
+            setAddingPayment(false);
+          }}
+        />
+      )}
+      {editingFeeFor && (
+        <FeeEditorSheet
+          link={editingFeeFor}
+          existingFee={fees.find(f => f.athlete_id === editingFeeFor.athlete_id) || null}
+          defaultCurrency={defaultCurrency}
+          onClose={() => setEditingFeeFor(null)}
+          onSave={async (data) => { await handleSaveFee(data); setEditingFeeFor(null); }}
+          onDelete={async (feeId) => { await handleDeleteFee(feeId); setEditingFeeFor(null); }}
+        />
+      )}
+      {historyFor && (
+        <PaymentHistorySheet
+          link={historyFor}
+          payments={payments.filter(p => p.athlete_id === historyFor.athlete_id)}
+          onClose={() => setHistoryFor(null)}
+          onDelete={handleDeletePayment}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Row: one athlete, one card. Shows fee, status, last payment, actions.
+function AthletePaymentRow({ row, defaultCurrency, onSetFee, onViewHistory, onQuickLog }) {
+  const { link, fee, status } = row;
+  const currency = fee?.currency || defaultCurrency;
+  const statusColor =
+    status.status === "paid"    ? A :
+    status.status === "overdue" ? SEVERITY_COLORS.urgent :
+    status.status === "due"     ? SEVERITY_COLORS.warn :
+    SB;
+
+  const cadenceLabel = fee ? ({ weekly: "/wk", monthly: "/mo", quarterly: "/qtr", yearly: "/yr" }[fee.cadence] || "") : "";
+
+  return (
+    <div
+      onClick={onViewHistory}
+      className="press-scale"
+      style={{
+        background: S2, border: `1px solid ${BD}`, borderRadius: "14px",
+        padding: "14px 16px", marginBottom: "10px", cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{
+          width: "34px", height: "34px", borderRadius: "50%",
+          background: S1, border: `1px solid ${MT}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "13px", fontWeight: 700, color: A, flexShrink: 0,
+        }}>
+          {link.athlete_name?.[0]?.toUpperCase() || "?"}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "15px", fontWeight: 600, color: TX, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {link.athlete_name}
+          </div>
+          <div style={{ fontSize: "12px", color: SB, marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {fee
+              ? <>{fmtMoney(fee.amount, currency)}{cadenceLabel}{status.lastPayment ? ` · Last: ${fmtMoney(status.lastPayment.amount, status.lastPayment.currency)} ${new Date(status.lastPayment.received_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : " · No payment yet"}</>
+              : "No fee set"}
+          </div>
+        </div>
+        <span style={{
+          fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em",
+          color: statusColor, border: `1px solid ${statusColor}55`,
+          padding: "3px 9px", borderRadius: "10px",
+          textTransform: "uppercase", flexShrink: 0,
+        }}>
+          {status.label}
+        </span>
+      </div>
+
+      {/* Action links — click-swallowed from the row tap */}
+      <div style={{ display: "flex", gap: "8px", marginTop: "10px", paddingLeft: "46px" }} onClick={e => e.stopPropagation()}>
+        <button onClick={onQuickLog} className="press-scale"
+          style={{ fontSize: "11px", color: A, background: `${A}12`, border: `1px solid ${A}44`, borderRadius: "8px", padding: "5px 10px", fontWeight: 700, cursor: "pointer" }}>
+          + Log payment
+        </button>
+        <button onClick={onSetFee} className="press-scale"
+          style={{ fontSize: "11px", color: SB, background: "transparent", border: `1px solid ${MT}`, borderRadius: "8px", padding: "5px 10px", fontWeight: 600, cursor: "pointer" }}>
+          {fee ? "Edit fee" : "Set fee"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared drawer wrapper — bottom sheet on all platforms.
+function BottomSheet({ children, onClose, title }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 310, background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+          width: "100%", maxWidth: 480,
+          background: S1, borderRadius: "20px 20px 0 0",
+          padding: "22px 20px 32px",
+          animation: "drawerUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          maxHeight: "85vh", overflowY: "auto",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <div style={{ fontSize: "15px", fontWeight: 700, color: TX }}>{title}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: SB, fontSize: "14px", fontWeight: 700, cursor: "pointer" }}>Dismiss</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Add-payment sheet: pick athlete, amount, date, currency, notes.
+function AddPaymentSheet({ myAthletes, preselected, preselectedFee, defaultCurrency, existingFees, onClose, onSave }) {
+  const [athleteId, setAthleteId] = React.useState(preselected?.athlete_id || "");
+  const [amount, setAmount] = React.useState(preselectedFee ? String(preselectedFee.amount) : "");
+  const [currency, setCurrency] = React.useState(preselectedFee?.currency || defaultCurrency);
+  const [receivedDate, setReceivedDate] = React.useState(new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  // When athlete changes, auto-fill amount/currency from their fee if set.
+  React.useEffect(() => {
+    if (!athleteId) return;
+    const fee = existingFees.find(f => f.athlete_id === athleteId);
+    if (fee) {
+      if (!amount) setAmount(String(fee.amount));
+      setCurrency(fee.currency || defaultCurrency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [athleteId]);
+
+  const amt = parseFloat(amount);
+  const canSubmit = athleteId && !isNaN(amt) && amt >= 0 && !saving;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await onSave({ athleteId, amount: amt, currency, receivedDate, notes });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputBase = {
+    width: "100%", background: S2, border: `1px solid ${BD}`,
+    borderRadius: "10px", padding: "11px 13px", color: TX, fontSize: "15px",
+    boxSizing: "border-box", outline: "none",
+  };
+  const labelStyle = { fontSize: "10px", fontWeight: 700, color: SB, marginBottom: "6px", letterSpacing: "0.06em", textTransform: "uppercase" };
+
+  return (
+    <BottomSheet title="Log payment" onClose={onClose}>
+      <div style={{ marginBottom: "12px" }}>
+        <div style={labelStyle}>Athlete</div>
+        <select value={athleteId} onChange={e => setAthleteId(e.target.value)} style={inputBase}>
+          <option value="">Select an athlete…</option>
+          {myAthletes.map(a => <option key={a.id} value={a.athlete_id}>{a.athlete_name}</option>)}
+        </select>
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <div style={{ flex: 2 }}>
+          <div style={labelStyle}>Amount</div>
+          <input type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+            value={amount} onChange={e => setAmount(e.target.value)} style={inputBase}/>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={labelStyle}>Currency</div>
+          <select value={currency} onChange={e => setCurrency(e.target.value)} style={inputBase}>
+            {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <div style={labelStyle}>Received</div>
+        <input type="date" value={receivedDate} onChange={e => setReceivedDate(e.target.value)} style={inputBase}/>
+      </div>
+
+      <div style={{ marginBottom: "16px" }}>
+        <div style={labelStyle}>Notes (optional)</div>
+        <input type="text" placeholder="e.g. April monthly, bank transfer" value={notes} onChange={e => setNotes(e.target.value)} style={inputBase}/>
+      </div>
+
+      <button onClick={handleSubmit} disabled={!canSubmit}
+        style={{ width: "100%", background: A, color: BG, border: "none", borderRadius: "12px", padding: "14px", fontSize: "15px", fontWeight: 700, opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? "pointer" : "default" }}>
+        {saving ? "Saving…" : "Save payment"}
+      </button>
+    </BottomSheet>
+  );
+}
+
+// ── Fee editor: amount + currency + cadence + start date + active.
+function FeeEditorSheet({ link, existingFee, defaultCurrency, onClose, onSave, onDelete }) {
+  const [amount, setAmount] = React.useState(existingFee ? String(existingFee.amount) : "");
+  const [currency, setCurrency] = React.useState(existingFee?.currency || defaultCurrency);
+  const [cadence, setCadence] = React.useState(existingFee?.cadence || "monthly");
+  const [startDate, setStartDate] = React.useState(existingFee?.start_date || new Date().toISOString().split("T")[0]);
+  const [active, setActive] = React.useState(existingFee ? existingFee.active : true);
+  const [saving, setSaving] = React.useState(false);
+
+  const amt = parseFloat(amount);
+  const canSubmit = !isNaN(amt) && amt >= 0 && !saving;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await onSave({ athleteId: link.athlete_id, amount: amt, currency, cadence, startDate, active, notes: null });
+    } finally { setSaving(false); }
+  }
+
+  const inputBase = {
+    width: "100%", background: S2, border: `1px solid ${BD}`,
+    borderRadius: "10px", padding: "11px 13px", color: TX, fontSize: "15px",
+    boxSizing: "border-box", outline: "none",
+  };
+  const labelStyle = { fontSize: "10px", fontWeight: 700, color: SB, marginBottom: "6px", letterSpacing: "0.06em", textTransform: "uppercase" };
+
+  return (
+    <BottomSheet title={existingFee ? `Fee · ${link.athlete_name}` : `Set fee · ${link.athlete_name}`} onClose={onClose}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        <div style={{ flex: 2 }}>
+          <div style={labelStyle}>Amount</div>
+          <input type="number" step="0.01" inputMode="decimal" placeholder="0.00"
+            value={amount} onChange={e => setAmount(e.target.value)} style={inputBase}/>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={labelStyle}>Currency</div>
+          <select value={currency} onChange={e => setCurrency(e.target.value)} style={inputBase}>
+            {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <div style={labelStyle}>Cadence</div>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {["weekly", "monthly", "quarterly", "yearly"].map(c => (
+            <button key={c} onClick={() => setCadence(c)}
+              style={{ flex: 1, background: cadence === c ? A : S2, color: cadence === c ? BG : SB, border: `1px solid ${cadence === c ? A : BD}`, borderRadius: "8px", padding: "8px 4px", fontSize: "11px", fontWeight: 700, cursor: "pointer", textTransform: "capitalize" }}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: "12px" }}>
+        <div style={labelStyle}>Starts</div>
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputBase}/>
+      </div>
+
+      <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", padding: "10px", background: S2, borderRadius: "10px", border: `1px solid ${BD}`, cursor: "pointer" }}>
+        <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)}
+          style={{ width: "18px", height: "18px", accentColor: A }}/>
+        <div style={{ fontSize: "13px", color: TX }}>Active — include in "Expected" and overdue checks</div>
+      </label>
+
+      <button onClick={handleSubmit} disabled={!canSubmit}
+        style={{ width: "100%", background: A, color: BG, border: "none", borderRadius: "12px", padding: "14px", fontSize: "15px", fontWeight: 700, opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? "pointer" : "default", marginBottom: existingFee ? "8px" : 0 }}>
+        {saving ? "Saving…" : existingFee ? "Update fee" : "Set fee"}
+      </button>
+
+      {existingFee && (
+        <button onClick={() => onDelete(existingFee.id)}
+          style={{ width: "100%", background: "none", color: SEVERITY_COLORS.urgent, border: `1px solid ${SEVERITY_COLORS.urgent}55`, borderRadius: "12px", padding: "12px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
+          Remove fee
+        </button>
+      )}
+    </BottomSheet>
+  );
+}
+
+// ── History: all payments for one athlete, newest first; row-tap = delete.
+function PaymentHistorySheet({ link, payments, onClose, onDelete }) {
+  return (
+    <BottomSheet title={`${link.athlete_name} · Payments`} onClose={onClose}>
+      {payments.length === 0 ? (
+        <div style={{ textAlign: "center", color: SB, padding: "24px 0", fontSize: "14px" }}>No payments logged yet.</div>
+      ) : payments.map(p => (
+        <div key={p.id} style={{
+          display: "flex", alignItems: "center", gap: "12px",
+          padding: "12px", background: S2, borderRadius: "10px",
+          border: `1px solid ${BD}`, marginBottom: "8px",
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: "15px", fontWeight: 700, color: TX, letterSpacing: "-0.01em" }}>
+              {fmtMoney(p.amount, p.currency)}
+            </div>
+            <div style={{ fontSize: "12px", color: SB, marginTop: "2px" }}>
+              {new Date(p.received_date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              {p.notes ? ` · ${p.notes}` : ""}
+            </div>
+          </div>
+          <button onClick={() => { if (confirm("Remove this payment?")) onDelete(p.id); }}
+            style={{ background: "transparent", border: `1px solid ${MT}`, borderRadius: "8px", color: SB, fontSize: "11px", padding: "5px 10px", cursor: "pointer" }}>
+            Remove
+          </button>
+        </div>
+      ))}
+    </BottomSheet>
   );
 }
 

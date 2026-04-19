@@ -213,3 +213,6 @@ export async function loadAthleteSessionsSince(
     completedAt: s.completed_at,
   }));
 }
+
+export async function loadAthleteSessionsSince(_athleteId: string, _since: string): Promise<unknown[]> { return []; }
+

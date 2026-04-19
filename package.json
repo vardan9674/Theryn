@@ -9,8 +9,7 @@
     "preview": "vite preview",
     "sync": "npm run build && npx cap sync android",
     "android": "npm run build && npx cap sync android && npx cap open android",
-    "ios": "npm run build && npx cap sync ios && npx cap open ios",
-    "stress": "bash stress-tests/run_all.sh"
+    "ios": "npm run build && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
@@ -25,7 +24,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-"@supabase/supabase-js": "^2.45.0",
+    "@supabase/supabase-js": "^2.45.0",
     "framer-motion": "^12.38.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
