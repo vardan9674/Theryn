@@ -214,5 +214,4 @@ export async function loadAthleteSessionsSince(
   }));
 }
 
-export async function loadAthleteSessionsSince(_athleteId: string, _since: string): Promise<unknown[]> { return []; }
 
