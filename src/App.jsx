@@ -12,6 +12,8 @@ import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, sa
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
+import ChatView from "./components/ChatView";
+import { loadConversationPreviews } from "./hooks/useChat";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
@@ -641,6 +643,7 @@ export default function GymApp() {
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   // AthleteView used only in CoachApp — removed from athlete root
 
   // ── Check onboarding state on every sign-in (DB, not localStorage) ─────
@@ -1190,6 +1193,51 @@ export default function GymApp() {
           </button>
         ))}
       </div>
+
+      {/* ── COACH CHAT BUBBLE ── Only visible when athlete has an accepted coach ── */}
+      {coachLinks.some(l => l.status === "accepted") && (
+        <>
+          <button
+            onClick={() => setChatOpen(true)}
+            aria-label="Open chat with coach"
+            style={{
+              position: "fixed",
+              bottom: "calc(88px + 16px)",
+              right: "20px",
+              width: "52px",
+              height: "52px",
+              borderRadius: "50%",
+              background: A,
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 105,
+              boxShadow: "0 4px 18px rgba(200,255,0,0.35), 0 2px 8px rgba(0,0,0,0.5)",
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+              stroke={BG} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
+
+          {chatOpen && (() => {
+            const link = coachLinks.find(l => l.status === "accepted");
+            return (
+              <ChatView
+                authUser={authUser}
+                coachId={link.coach_id}
+                athleteId={link.athlete_id}
+                otherPartyName={link.coach_name || "Coach"}
+                onClose={() => setChatOpen(false)}
+              />
+            );
+          })()}
+        </>
+      )}
     </div>
   );
 }
@@ -5129,6 +5177,11 @@ function CoachTabIcon({ tab, active }) {
       <line x1="6" y1="15" x2="10" y2="15"/>
     </svg>
   );
+  if (tab === "messages") return (
+    <svg {...s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
   return null;
 }
 
@@ -5146,6 +5199,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   const [loadingAthlete, setLoadingAthlete] = React.useState(false);
   const [showTour, setShowTour] = React.useState(false);
   const [toast, setToast] = React.useState(null); // { message, variant }
+  const [coachMsgUnread, setCoachMsgUnread] = React.useState(0);
 
   // Expand #root to full width on desktop for the coach dashboard
   React.useEffect(() => {
@@ -5369,8 +5423,8 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
   // Connections moved out of the main nav into the profile drawer (it's a
   // config-style flow, not a daily workflow). Payments takes the freed slot.
-  const COACH_TABS = ["athletes", "routines", "body", "progress", "payments"];
-  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments" };
+  const COACH_TABS = ["athletes", "routines", "body", "progress", "payments", "messages"];
+  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments", messages: "Messages" };
 
   // Separate state for the Connections modal triggered from the profile drawer.
   const [showConnections, setShowConnections] = React.useState(false);
@@ -5402,12 +5456,24 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
       <div className="nav-bar-container">
         <SidebarBrand />
         {COACH_TABS.map(t => (
-          <button 
-            key={t} 
-            onClick={() => setTab(t)} 
+          <button
+            key={t}
+            onClick={() => { setTab(t); if (t === "messages") setCoachMsgUnread(0); }}
             className={`nav-item ${tab === t ? 'nav-item-active' : ''}`}
+            style={{ position: "relative" }}
           >
             <CoachTabIcon tab={t} active={tab === t}/>
+            {t === "messages" && coachMsgUnread > 0 && (
+              <div style={{
+                position: "absolute", top: "2px", right: "6px",
+                width: "16px", height: "16px", borderRadius: "50%",
+                background: "#FF5C5C", fontSize: "9px", fontWeight: 800,
+                color: "#F0F0F0", display: "flex", alignItems: "center",
+                justifyContent: "center", border: "2px solid #080808",
+              }}>
+                {coachMsgUnread > 9 ? "9+" : coachMsgUnread}
+              </div>
+            )}
             <span style={{ fontSize: "9px", fontWeight: 600, color: tab === t ? A : SB, letterSpacing: "0.04em", textTransform: "uppercase" }}>
               {COACH_LABELS[t]}
             </span>
@@ -5433,6 +5499,14 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
         {tab === "body"      && <CoachBodyTab       {...sharedTabProps}/>}
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
         {tab === "payments"  && <CoachPaymentsTab  {...sharedTabProps}/>}
+        {tab === "messages"  && (
+          <CoachMessagesTab
+            authUser={authUser}
+            coachLinks={coachLinks}
+            coachLinksLoaded={coachLinksLoaded}
+            onUnreadChange={setCoachMsgUnread}
+          />
+        )}
       </div>
 
       {/* Connections modal — triggered from the profile drawer (was a tab) */}
@@ -6240,6 +6314,121 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
 // ═════════════════════════════════════════════════════════════════════════
 // COACH: PAYMENTS TAB
 // ═════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────
+// COACH MESSAGES TAB
+// ─────────────────────────────────────────────
+function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChange }) {
+  const [openConv, setOpenConv] = React.useState(null); // { link }
+  const [previews, setPreviews] = React.useState({});
+
+  const myAthletes = React.useMemo(
+    () => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"),
+    [coachLinks, authUser?.id]
+  );
+
+  React.useEffect(() => {
+    if (!authUser?.id || myAthletes.length === 0) return;
+    loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
+  }, [authUser?.id, myAthletes.length]);
+
+  React.useEffect(() => {
+    const total = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
+    onUnreadChange?.(total);
+  }, [previews, onUnreadChange]);
+
+  function refreshPreviews() {
+    if (!authUser?.id || myAthletes.length === 0) return;
+    loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
+  }
+
+  function formatRelTime(iso) {
+    if (!iso) return "";
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "now";
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    return `${Math.floor(hrs / 24)}d`;
+  }
+
+  if (!coachLinksLoaded) {
+    return <div style={{ textAlign: "center", color: SB, padding: "48px 16px", fontSize: "14px" }}>Loading…</div>;
+  }
+
+  if (myAthletes.length === 0) {
+    return <div style={{ padding: "20px 16px", textAlign: "center", color: SB, fontSize: "14px" }}>No accepted athletes yet.</div>;
+  }
+
+  return (
+    <div style={{ padding: "20px 16px 0" }}>
+      <div style={{ fontSize: "20px", fontWeight: 800, color: TX, marginBottom: "16px" }}>Messages</div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {myAthletes.map(link => {
+          const preview = previews[link.athlete_id] || {};
+          const hasUnread = preview.unread > 0;
+          const initials = (link.athlete_name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+          return (
+            <button
+              key={link.id}
+              onClick={() => setOpenConv({ link })}
+              style={{
+                display: "flex", alignItems: "center", gap: "14px",
+                padding: "14px 0", background: "none", border: "none",
+                borderBottom: `1px solid ${BD}`, cursor: "pointer",
+                width: "100%", textAlign: "left", color: "inherit",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              <div style={{
+                width: 46, height: 46, borderRadius: "50%", background: A,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "15px", fontWeight: 800, color: BG, flexShrink: 0,
+              }}>
+                {initials}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: "15px", fontWeight: hasUnread ? 700 : 600, color: TX, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "70%" }}>
+                    {link.athlete_name}
+                  </div>
+                  {preview.lastMsgAt && (
+                    <div style={{ fontSize: "11px", color: SB, flexShrink: 0 }}>
+                      {formatRelTime(preview.lastMsgAt)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: "13px", color: hasUnread ? TX : SB, marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {preview.lastMsg || "No messages yet"}
+                </div>
+              </div>
+              {hasUnread && (
+                <div style={{
+                  width: 20, height: 20, borderRadius: "50%", background: A,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "10px", fontWeight: 800, color: BG, flexShrink: 0,
+                }}>
+                  {preview.unread > 9 ? "9+" : preview.unread}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {openConv && (
+        <ChatView
+          authUser={authUser}
+          coachId={openConv.link.coach_id}
+          athleteId={openConv.link.athlete_id}
+          otherPartyName={openConv.link.athlete_name || "Athlete"}
+          onClose={() => { setOpenConv(null); refreshPreviews(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // Manual payment tracker — NOT a processor. Coach logs what athletes have
 // paid them; per-athlete fees drive the "expected" / "outstanding" math. No
 // money moves. Fees + payments are pulled from Supabase on mount; optimistic
