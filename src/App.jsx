@@ -566,7 +566,17 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 };
 
 export default function GymApp() {
-  const [showLanding,     setShowLanding]     = useState(() => !Capacitor.isNativePlatform());
+  const [showLanding,     setShowLanding]     = useState(() => {
+    if (Capacitor.isNativePlatform()) return false;
+    if (typeof window === "undefined") return true;
+    const { pathname, search, hash } = window.location;
+    const isOAuthConsent = pathname === "/oauth/consent";
+    const hasOAuthParams =
+      /[?&](code|error|access_token|refresh_token)=/.test(search) ||
+      /[#&](access_token|refresh_token|error)=/.test(hash);
+    const hasPending = !!localStorage.getItem("theryn_pending_role_landing");
+    return !(isOAuthConsent || hasOAuthParams || hasPending);
+  });
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
   const [showPrompt,      setShowPrompt]      = useState(false);
@@ -951,7 +961,16 @@ export default function GymApp() {
   }, [tab]);
 
   if (showLanding) return (
-    <LandingPage onEnterApp={() => setShowLanding(false)} />
+    <LandingPage onEnterApp={async () => {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith("theryn_role_")) localStorage.removeItem(k);
+      });
+      localStorage.removeItem("theryn_pending_role_landing");
+      setRole(null);
+      try { await supabase.auth.signOut(); } catch {}
+      setAuthUser(null);
+      setShowLanding(false);
+    }} />
   );
 
   // Show a minimal loading screen while Supabase checks for an existing session
