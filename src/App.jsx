@@ -625,16 +625,19 @@ export default function GymApp() {
       .select("display_name, height_cm, unit_system, onboarding_completed")
       .eq("id", authUser.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
-        if (data?.onboarding_completed) {
+        // On DB error (e.g. missing column, RLS) skip setup — don't block the app.
+        if (error) {
+          console.warn("Profile fetch error:", error.message);
           setOnboardingStatus("done");
-        } else {
-          setOnboardingStatus("needed");
+          return;
         }
-        // Hydrate profile state with anything already on the row. Initials
-        // are re-derived from display_name so the avatar reflects what the
-        // user actually entered at setup (not whatever Google handed us).
+        // Treat existing users with a display_name as already onboarded even if
+        // the onboarding_completed column is false/missing (pre-migration rows).
+        const alreadySetUp = data?.onboarding_completed || !!data?.display_name;
+        setOnboardingStatus(alreadySetUp ? "done" : "needed");
+
         if (data?.display_name || data?.height_cm != null || data?.unit_system) {
           let nextInitials;
           if (data?.display_name) {
