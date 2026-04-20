@@ -1282,8 +1282,34 @@ function Testimonials() {
 // ── MAIN LANDING PAGE ─────────────────────────────────────────────────────────
 export default function LandingPage({ onEnterApp }) {
   useEffect(() => {
-    document.body.dataset.landing = "true";
-    return () => { delete document.body.dataset.landing; };
+    // Unlock scroll for the marketing page — the app shell normally locks
+    // html/body/#root to overflow:hidden to prevent rubber-band on native.
+    // The landing page is a long document that needs normal page scroll.
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+
+    const prev = {
+      htmlOverflow: html.style.overflow, htmlHeight: html.style.height,
+      bodyOverflow: body.style.overflow, bodyHeight: body.style.height,
+      rootOverflow: root?.style.overflow, rootHeight: root?.style.height,
+    };
+
+    html.style.overflow = "auto";
+    html.style.height   = "auto";
+    body.style.overflow = "auto";
+    body.style.height   = "auto";
+    body.dataset.landing = "true";
+    if (root) { root.style.overflow = "auto"; root.style.height = "auto"; }
+
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      html.style.height   = prev.htmlHeight;
+      body.style.overflow = prev.bodyOverflow;
+      body.style.height   = prev.bodyHeight;
+      delete body.dataset.landing;
+      if (root) { root.style.overflow = prev.rootOverflow; root.style.height = prev.rootHeight; }
+    };
   }, []);
 
   return (
