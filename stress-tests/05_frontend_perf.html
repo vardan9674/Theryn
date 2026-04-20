@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Theryn — Frontend Performance Tests</title>
+  <style>
+    /* ── Theryn Design Tokens ───────────────────────────────────────────── */
+    :root {
+      --bg:  #080808;
+      --s1:  #101010;
+      --s2:  #181818;
+      --bd:  #1E1E1E;
+      --mt:  #2C2C2C;
+      --sb:  #585858;
+      --tx:  #F0F0F0;
+      --a:   #C8FF00;
+      --red: #FF5C5C;
+      --yellow: #FFD166;
+      --green: #06D6A0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--tx);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 24px 16px 80px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--bd);
+      padding-bottom: 16px;
+    }
+    header h1 { font-size: 22px; font-weight: 700; color: var(--a); letter-spacing: -0.5px; }
+    header span { font-size: 12px; color: var(--sb); }
+
+    #summary-bar {
+      background: var(--s1);
+      border: 1px solid var(--bd);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    #summary-score { font-size: 24px; font-weight: 800; color: var(--a); }
+    #summary-detail { color: var(--sb); font-size: 12px; font-weight: 400; }
+
+    .test-card {
+      background: var(--s1);
+      border: 1px solid var(--bd);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header:hover { background: var(--s2); }
+
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--sb);
+    }
+    .status-dot.pass   { background: var(--green); }
+    .status-dot.warn   { background: var(--yellow); }
+    .status-dot.fail   { background: var(--red); }
+    .status-dot.running { background: var(--a); animation: pulse 0.8s infinite; }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+
+    .card-title { font-weight: 600; flex: 1; font-size: 13px; }
+    .card-verdict {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .verdict-pass { background: rgba(6,214,160,0.15); color: var(--green); }
+    .verdict-warn { background: rgba(255,209,102,0.15); color: var(--yellow); }
+    .verdict-fail { background: rgba(255,92,92,0.15); color: var(--red); }
+    .verdict-pending { background: rgba(88,88,88,0.2); color: var(--sb); }
+    .verdict-running { background: rgba(200,255,0,0.12); color: var(--a); }
+
+    .card-body {
+      border-top: 1px solid var(--bd);
+      padding: 14px 16px;
+      display: none;
+    }
+    .card-body.open { display: block; }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .metric-box {
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .metric-label { font-size: 10px; color: var(--sb); text-transform: uppercase; letter-spacing: 0.4px; }
+    .metric-value { font-size: 18px; font-weight: 700; color: var(--tx); margin-top: 2px; }
+    .metric-value.good { color: var(--green); }
+    .metric-value.warn { color: var(--yellow); }
+    .metric-value.bad  { color: var(--red); }
+
+    .log-block {
+      background: #050505;
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      font-family: "SF Mono", "Fira Mono", monospace;
+      font-size: 11px;
+      color: var(--sb);
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .log-block .ok   { color: var(--green); }
+    .log-block .warn { color: var(--yellow); }
+    .log-block .bad  { color: var(--red); }
+    .log-block .dim  { color: #333; }
+
+    .run-btn {
+      background: var(--a);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 10px;
+      letter-spacing: 0.3px;
+    }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Hidden render sandbox */
+    #render-sandbox {
+      position: fixed;
+      top: -9999px;
+      left: -9999px;
+      width: 375px;
+      height: 600px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Theryn</h1>
+  <span>Frontend Performance Test Suite · v1.3</span>
+</header>
+
+<div id="summary-bar">
+  <div id="summary-score">—/7</div>
+  <div>
+    <div id="summary-label">Waiting to run tests…</div>
+    <div id="summary-detail">Click "Run All Tests" or expand individual cards</div>
+  </div>
+  <button class="run-btn" id="run-all-btn" style="margin-top:0;margin-left:auto">Run All Tests</button>
+</div>
+
+<!-- Test cards injected by JS -->
+<div id="cards-container"></div>
+
+<!-- Off-screen DOM sandbox -->
+<div id="render-sandbox"></div>
+
+<script>
+'use strict';
+
+// ── Theryn colours (mirrored from App.jsx) ───────────────────────────────────
+const COLORS = { BG:'#080808', A:'#C8FF00', TX:'#F0F0F0', S1:'#101010', RED:'#FF5C5C' };
+
+// ── Global state ─────────────────────────────────────────────────────────────
+let exercises = [];  // loaded from /exercises.json
+const results  = {}; // testId → { verdict, metrics }
+
+// ── Test definitions ─────────────────────────────────────────────────────────
+const TESTS = [
+  { id: 't1', title: 'TEST 1 — Exercise Picker Performance',      fn: test1_pickerPerf },
+  { id: 't2', title: 'TEST 2 — Large List Rendering',             fn: test2_largeRender },
+  { id: 't3', title: 'TEST 3 — Rapid State Update Simulation',    fn: test3_rapidState },
+  { id: 't4', title: 'TEST 4 — Framer Motion Animation Budget',   fn: test4_animBudget },
+  { id: 't5', title: 'TEST 5 — localStorage Read/Write Stress',   fn: test5_localStorage },
+  { id: 't6', title: 'TEST 6 — Memory Leak Detection',            fn: test6_memoryLeak },
+  { id: 't7', title: 'TEST 7 — Concurrent Timer Stress',          fn: test7_timerStress },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function now() { return performance.now(); }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function raf() { return new Promise(r => requestAnimationFrame(r)); }
+
+function mean(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function verdict(id, v, metrics, log) {
+  results[id] = { verdict: v, metrics, log };
+  const dot  = document.querySelector(`#${id} .status-dot`);
+  const chip = document.querySelector(`#${id} .card-verdict`);
+  if (dot)  { dot.className = `status-dot ${v}`; }
+  if (chip) {
+    chip.className = `card-verdict verdict-${v}`;
+    chip.textContent = v.toUpperCase();
+  }
+  renderMetrics(id, metrics);
+  renderLog(id, log);
+  updateSummary();
+}
+
+function renderMetrics(id, metrics) {
+  const grid = document.querySelector(`#${id} .metric-grid`);
+  if (!grid || !metrics) return;
+  grid.innerHTML = '';
+  for (const [label, { value, color }] of Object.entries(metrics)) {
+    const box = document.createElement('div');
+    box.className = 'metric-box';
+    box.innerHTML = `<div class="metric-label">${label}</div><div class="metric-value ${color||''}">${value}</div>`;
+    grid.appendChild(box);
+  }
+}
+
+function renderLog(id, lines) {
+  const block = document.querySelector(`#${id} .log-block`);
+  if (!block || !lines) return;
+  block.innerHTML = lines.map(l => {
+    const cls = l.startsWith('PASS') || l.startsWith('OK') || l.startsWith('✓') ? 'ok'
+              : l.startsWith('WARN') || l.startsWith('⚠') ? 'warn'
+              : l.startsWith('FAIL') || l.startsWith('✗') ? 'bad'
+              : l.startsWith('──') || l.startsWith('  ') ? 'dim'
+              : '';
+    return `<span class="${cls}">${escapeHtml(l)}</span>`;
+  }).join('\n');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setRunning(id) {
+  const dot  = document.querySelector(`#${id} .status-dot`);
+  const chip = document.querySelector(`#${id} .card-verdict`);
+  const body = document.querySelector(`#${id} .card-body`);
+  if (dot)  dot.className = 'status-dot running';
+  if (chip) { chip.className = 'card-verdict verdict-running'; chip.textContent = 'RUNNING'; }
+  if (body) body.classList.add('open');
+}
+
+function updateSummary() {
+  const all   = TESTS.map(t => results[t.id]?.verdict).filter(Boolean);
+  const pass  = all.filter(v => v === 'pass').length;
+  const warns = all.filter(v => v === 'warn').length;
+  const fails = all.filter(v => v === 'fail').length;
+  const total = all.length;
+
+  const scoreEl  = document.getElementById('summary-score');
+  const labelEl  = document.getElementById('summary-label');
+  const detailEl = document.getElementById('summary-detail');
+
+  scoreEl.textContent = `${pass}/${TESTS.length}`;
+  scoreEl.style.color = fails > 0 ? COLORS.RED : warns > 0 ? '#FFD166' : COLORS.A;
+
+  const parts = [];
+  if (pass)  parts.push(`${pass} PASS`);
+  if (warns) parts.push(`${warns} WARN`);
+  if (fails) parts.push(`${fails} FAIL`);
+  labelEl.textContent  = parts.join(' · ') || 'Running…';
+  detailEl.textContent = `${total}/${TESTS.length} tests complete`;
+}
+
+// ── Build DOM ────────────────────────────────────────────────────────────────
+function buildCards() {
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+  for (const t of TESTS) {
+    const card = document.createElement('div');
+    card.className = 'test-card';
+    card.id = t.id;
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="status-dot"></div>
+        <div class="card-title">${t.title}</div>
+        <span class="card-verdict verdict-pending">PENDING</span>
+      </div>
+      <div class="card-body">
+        <div class="metric-grid"></div>
+        <div class="log-block">Not yet run.</div>
+        <button class="run-btn run-single-btn">Run This Test</button>
+      </div>`;
+    container.appendChild(card);
+
+    card.querySelector('.card-header').addEventListener('click', () => {
+      card.querySelector('.card-body').classList.toggle('open');
+    });
+
+    card.querySelector('.run-single-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      card.querySelector('.card-body').classList.add('open');
+      await ensureExercises();
+      await runTest(t);
+    });
+  }
+}
+
+async function ensureExercises() {
+  if (exercises.length > 0) return;
+  const log = document.querySelector('#t1 .log-block');
+  if (log) log.textContent = 'Fetching /exercises.json…';
+  try {
+    const res = await fetch('/exercises.json');
+    exercises = await res.json();
+  } catch (e) {
+    // fallback: generate synthetic data
+    exercises = Array.from({ length: 873 }, (_, i) => ({
+      name: `Exercise ${i+1} ${['Bench Press','Squat','Deadlift','Row','Press','Curl','Fly','Raise'][i%8]}`,
+      category: ['strength','cardio','stretching'][i%3],
+    }));
+  }
+}
+
+async function runTest(t) {
+  setRunning(t.id);
+  await sleep(20); // let UI paint
+  try {
+    await t.fn();
+  } catch(err) {
+    verdict(t.id, 'fail', {
+      'Error': { value: 'Exception', color: 'bad' }
+    }, [`FAIL Exception: ${err.message}`]);
+  }
+}
+
+// ── Run All ──────────────────────────────────────────────────────────────────
+document.getElementById('run-all-btn').addEventListener('click', async () => {
+  document.getElementById('run-all-btn').disabled = true;
+  document.getElementById('run-all-btn').textContent = 'Running…';
+  await ensureExercises();
+  for (const t of TESTS) {
+    await runTest(t);
+    await sleep(60);
+  }
+  document.getElementById('run-all-btn').disabled = false;
+  document.getElementById('run-all-btn').textContent = 'Run All Tests';
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 1 — Exercise Picker Performance
+// ════════════════════════════════════════════════════════════════════════════
+async function test1_pickerPerf() {
+  const queries = [
+    'bench', 'sq', 'a', 'press', 'row', '', 'deadlift',
+    'curl', 'fly', 'raise',
+    // extra variety rounds
+    'push', 'pull', 'leg', 'shoulder', 'chest',
+    'cable', 'dumbbell', 'barbell', 'machine', 'body',
+    'hamstring', 'quad', 'glute', 'back', 'tricep',
+    'bicep', 'calf', 'core', 'abs', 'hip',
+    'stretch', 'plank', 'run', 'swim', 'bike',
+    'incline', 'decline', 'overhead', 'lateral', 'front',
+    'reverse', 'wide', 'close', 'sumo', 'romanian',
+    'bulgarian', 'hack', 'goblet', 'nordic', 'nordic2',
+  ];
+
+  // Simulate the filter used in ExercisePicker (name contains query, case-insensitive)
+  function filterExercises(q) {
+    const lower = q.toLowerCase();
+    return exercises.filter(ex => ex.name.toLowerCase().includes(lower));
+  }
+
+  const timings = [];
+  const logLines = [];
+  let slowest = { q: '', ms: 0 };
+  let fastest = { q: '', ms: Infinity };
+
+  // Warm-up pass
+  for (let i = 0; i < 3; i++) filterExercises('bench');
+
+  logLines.push(`── Filtering ${exercises.length} exercises · 50 queries ──`);
+
+  for (let i = 0; i < 50; i++) {
+    const q = queries[i % queries.length];
+    const t0 = now();
+    const results = filterExercises(q);
+    const ms = now() - t0;
+    timings.push(ms);
+    if (ms > slowest.ms) slowest = { q, ms };
+    if (ms < fastest.ms) fastest = { q, ms };
+    logLines.push(`  [${String(i+1).padStart(2)}] q="${q.padEnd(12)}" → ${String(results.length).padStart(3)} results  ${ms.toFixed(3)}ms`);
+    if ((i+1) % 10 === 0) await raf(); // yield every 10
+  }
+
+  const avg = mean(timings);
+  const v = avg < 5 ? 'pass' : avg < 20 ? 'warn' : 'fail';
+
+  logLines.push('');
+  logLines.push(`── Summary ──`);
+  logLines.push(`  Avg filter time : ${avg.toFixed(3)}ms`);
+  logLines.push(`  Slowest query   : "${slowest.q}" → ${slowest.ms.toFixed(3)}ms`);
+  logLines.push(`  Fastest query   : "${fastest.q}" → ${fastest.ms.toFixed(3)}ms`);
+  logLines.push(`  Threshold       : PASS < 5ms · WARN < 20ms · FAIL ≥ 20ms`);
+  logLines.push(v === 'pass' ? `PASS Avg ${avg.toFixed(3)}ms < 5ms` : v === 'warn' ? `WARN Avg ${avg.toFixed(3)}ms (5–20ms range)` : `FAIL Avg ${avg.toFixed(3)}ms > 20ms`);
+
+  verdict('t1', v, {
+    'Avg Filter (ms)': { value: avg.toFixed(2), color: v === 'pass' ? 'good' : v === 'warn' ? 'warn' : 'bad' },
+    'Slowest (ms)':    { value: slowest.ms.toFixed(2), color: slowest.ms < 10 ? 'good' : 'warn' },
+    'Fastest (ms)':    { value: fastest.ms.toFixed(3), color: 'good' },
+    'Queries Run':     { value: '50', color: '' },
+    'Exercise Count':  { value: exercises.length, color: '' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 2 — Large List Rendering
+// ════════════════════════════════════════════════════════════════════════════
+async function test2_largeRender() {
+  const sandbox = document.getElementById('render-sandbox');
+  sandbox.innerHTML = '';
+  const logLines = [];
+
+  // ── 2a: Render 800 exercise items (ExercisePicker rows) ─────────────────
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow:hidden;width:100%;';
+  sandbox.appendChild(list);
+
+  const items800 = exercises.slice(0, 800).concat(
+    exercises.length < 800
+      ? Array.from({ length: 800 - exercises.length }, (_, i) => ({ name: `Synthetic Ex ${i}`, category: 'strength' }))
+      : []
+  );
+
+  logLines.push(`── Rendering ${items800.length} exercise picker items ──`);
+  const t0 = now();
+  const frag = document.createDocumentFragment();
+  for (const ex of items800) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #1E1E1E;background:#101010;';
+    row.innerHTML = `<span style="flex:1;font-size:14px;color:#F0F0F0;">${escapeHtml(ex.name)}</span>
+                     <span style="font-size:11px;color:#585858;">${ex.category||'strength'}</span>`;
+    frag.appendChild(row);
+  }
+  list.appendChild(frag);
+  const renderTime = now() - t0;
+  const nodeCount = list.querySelectorAll('div').length;
+  logLines.push(`  Initial render  : ${renderTime.toFixed(2)}ms`);
+  logLines.push(`  DOM nodes       : ${nodeCount}`);
+
+  await raf();
+
+  // ── 2b: Clear and re-render ──────────────────────────────────────────────
+  logLines.push(`── Clear + re-render ──`);
+  const t1 = now();
+  list.innerHTML = '';
+  const frag2 = document.createDocumentFragment();
+  for (const ex of items800) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #1E1E1E;background:#101010;';
+    row.innerHTML = `<span style="flex:1;font-size:14px;color:#F0F0F0;">${escapeHtml(ex.name)}</span>
+                     <span style="font-size:11px;color:#585858;">${ex.category||'strength'}</span>`;
+    frag2.appendChild(row);
+  }
+  list.appendChild(frag2);
+  const reRenderTime = now() - t1;
+  logLines.push(`  Re-render       : ${reRenderTime.toFixed(2)}ms`);
+
+  await raf();
+
+  // ── 2c: Render 30 workout history cards (15 exercise rows each) ──────────
+  sandbox.innerHTML = '';
+  const histContainer = document.createElement('div');
+  sandbox.appendChild(histContainer);
+
+  logLines.push(`── Rendering 30 history cards × 15 exercise rows ──`);
+  const t2 = now();
+  const histFrag = document.createDocumentFragment();
+  for (let c = 0; c < 30; c++) {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#101010;border:1px solid #1E1E1E;border-radius:12px;margin-bottom:12px;padding:12px;';
+    let inner = `<div style="font-weight:700;color:#F0F0F0;margin-bottom:8px;">Workout ${c+1} · Push · 45min</div>`;
+    for (let r = 0; r < 15; r++) {
+      inner += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #1E1E1E;font-size:12px;">
+        <span style="color:#F0F0F0;">Exercise ${r+1}</span>
+        <span style="color:#585858;">3 × 10 @ 100lbs</span>
+      </div>`;
+    }
+    card.innerHTML = inner;
+    histFrag.appendChild(card);
+  }
+  histContainer.appendChild(histFrag);
+  const histRenderTime = now() - t2;
+  logLines.push(`  History render  : ${histRenderTime.toFixed(2)}ms`);
+
+  const FRAME = 16.67;
+  const worstMs = Math.max(renderTime, reRenderTime, histRenderTime);
+  const v = worstMs < FRAME ? 'pass' : worstMs < FRAME * 3 ? 'warn' : 'fail';
+
+  logLines.push('');
+  logLines.push(`  Frame budget    : ${FRAME.toFixed(2)}ms (60fps)`);
+  logLines.push(v === 'pass' ? `PASS All renders within frame budget` : v === 'warn' ? `WARN Exceeded 16ms frame budget (still <50ms)` : `FAIL Render significantly over frame budget`);
+
+  sandbox.innerHTML = '';
+
+  verdict('t2', v, {
+    'Render 800 items':  { value: `${renderTime.toFixed(1)}ms`, color: renderTime < 16 ? 'good' : renderTime < 50 ? 'warn' : 'bad' },
+    'Re-render':         { value: `${reRenderTime.toFixed(1)}ms`, color: reRenderTime < 16 ? 'good' : reRenderTime < 50 ? 'warn' : 'bad' },
+    'History 30 cards':  { value: `${histRenderTime.toFixed(1)}ms`, color: histRenderTime < 16 ? 'good' : histRenderTime < 50 ? 'warn' : 'bad' },
+    'DOM Nodes':         { value: nodeCount, color: '' },
+    'Frame Budget':      { value: `${FRAME.toFixed(0)}ms`, color: '' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 3 — Rapid State Update Simulation
+// ════════════════════════════════════════════════════════════════════════════
+async function test3_rapidState() {
+  const sandbox = document.getElementById('render-sandbox');
+  sandbox.innerHTML = '';
+  const logLines = [];
+
+  // Build 15 exercises × 3 sets = 45 input fields
+  const form = document.createElement('form');
+  form.style.cssText = 'background:#101010;padding:12px;';
+  const EXERCISES = 15;
+  const SETS = 3;
+
+  logLines.push(`── Building ${EXERCISES} exercises × ${SETS} sets = ${EXERCISES*SETS} inputs ──`);
+
+  const inputs = [];
+  for (let e = 0; e < EXERCISES; e++) {
+    const exDiv = document.createElement('div');
+    exDiv.style.marginBottom = '8px';
+    for (let s = 0; s < SETS; s++) {
+      const wInput = document.createElement('input');
+      wInput.type = 'text';
+      wInput.placeholder = 'lbs';
+      wInput.dataset.ex = e;
+      wInput.dataset.set = s;
+      wInput.dataset.field = 'w';
+      wInput.style.cssText = 'width:50px;margin:2px;background:#181818;color:#F0F0F0;border:1px solid #1E1E1E;padding:4px;font-size:12px;';
+
+      const rInput = document.createElement('input');
+      rInput.type = 'text';
+      rInput.placeholder = 'reps';
+      rInput.dataset.ex = e;
+      rInput.dataset.set = s;
+      rInput.dataset.field = 'r';
+      rInput.style.cssText = 'width:50px;margin:2px;background:#181818;color:#F0F0F0;border:1px solid #1E1E1E;padding:4px;font-size:12px;';
+
+      exDiv.appendChild(wInput);
+      exDiv.appendChild(rInput);
+      inputs.push(wInput, rInput);
+    }
+    form.appendChild(exDiv);
+  }
+  sandbox.appendChild(form);
+
+  // Simulate localStorage serialization (what th_session does on every keystroke)
+  function buildSessionState() {
+    const state = { exercises: [] };
+    for (let e = 0; e < EXERCISES; e++) {
+      const ex = { name: `Exercise ${e+1}`, sets: [] };
+      for (let s = 0; s < SETS; s++) {
+        const wi = inputs[(e * SETS + s) * 2];
+        const ri = inputs[(e * SETS + s) * 2 + 1];
+        ex.sets.push({ w: wi?.value || '', r: ri?.value || '' });
+      }
+      state.exercises.push(ex);
+    }
+    return JSON.stringify(state);
+  }
+
+  // Fire 90 updates: 2 per input field
+  const TOTAL_UPDATES = 90;
+  logLines.push(`── Firing ${TOTAL_UPDATES} rapid state updates ──`);
+
+  const updateTimes = [];
+  const t0 = now();
+
+  for (let u = 0; u < TOTAL_UPDATES; u++) {
+    const input = inputs[u % inputs.length];
+    const ut0 = now();
+
+    // Programmatic value change + input event (simulates React controlled input)
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, String(u * 2.5));
+    } else {
+      input.value = String(u * 2.5);
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Serialize full state (simulating localStorage write on every change)
+    const serialized = buildSessionState();
+    // Simulate the write
+    try { localStorage.setItem('theryn_perf_test_session', serialized); } catch(e) {}
+
+    updateTimes.push(now() - ut0);
+  }
+
+  const totalTime = now() - t0;
+  const avgUpdate = mean(updateTimes);
+  const maxUpdate = Math.max(...updateTimes);
+  const frameDrops = updateTimes.filter(t => t > 16.67).length;
+  const updatesPerSec = (TOTAL_UPDATES / (totalTime / 1000)).toFixed(0);
+
+  // Clean up test data
+  try { localStorage.removeItem('theryn_perf_test_session'); } catch(e) {}
+  sandbox.innerHTML = '';
+
+  logLines.push(`  Total time      : ${totalTime.toFixed(2)}ms`);
+  logLines.push(`  Avg per update  : ${avgUpdate.toFixed(3)}ms`);
+  logLines.push(`  Max single upd  : ${maxUpdate.toFixed(3)}ms`);
+  logLines.push(`  Updates/sec     : ${updatesPerSec}`);
+  logLines.push(`  Frame drops >16ms: ${frameDrops}/${TOTAL_UPDATES}`);
+
+  const v = frameDrops === 0 ? 'pass' : frameDrops < 10 ? 'warn' : 'fail';
+  logLines.push(v === 'pass' ? 'PASS No frame drops detected' : v === 'warn' ? `WARN ${frameDrops} updates exceeded 16ms` : `FAIL ${frameDrops} frame drops — state updates too slow`);
+
+  verdict('t3', v, {
+    'Total Time':     { value: `${totalTime.toFixed(1)}ms`, color: '' },
+    'Avg/Update':     { value: `${avgUpdate.toFixed(3)}ms`, color: avgUpdate < 5 ? 'good' : avgUpdate < 16 ? 'warn' : 'bad' },
+    'Max Update':     { value: `${maxUpdate.toFixed(2)}ms`, color: maxUpdate < 16 ? 'good' : 'warn' },
+    'Updates/sec':    { value: updatesPerSec, color: 'good' },
+    'Frame Drops':    { value: frameDrops, color: frameDrops === 0 ? 'good' : frameDrops < 10 ? 'warn' : 'bad' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 4 — Framer Motion Animation Budget
+// ════════════════════════════════════════════════════════════════════════════
+async function test4_animBudget() {
+  const sandbox = document.getElementById('render-sandbox');
+  sandbox.innerHTML = '';
+  const logLines = [];
+
+  logLines.push('── Creating 10 SwipeRow-style animated divs ──');
+
+  // Create 10 SwipeRow-like divs
+  const rows = [];
+  const container = document.createElement('div');
+  container.style.cssText = 'position:relative;width:375px;overflow:hidden;';
+
+  for (let i = 0; i < 10; i++) {
+    const row = document.createElement('div');
+    row.style.cssText = `
+      display:flex;align-items:center;
+      background:#101010;
+      border-bottom:1px solid #1E1E1E;
+      padding:14px 16px;
+      will-change:transform,opacity;
+      transform:translateX(0px);
+      transition:transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94), opacity 0.35s ease;
+      cursor:pointer;
+    `;
+    row.innerHTML = `
+      <div style="flex:1;color:#F0F0F0;font-size:14px;">Exercise Row ${i+1}</div>
+      <div style="color:#C8FF00;font-size:12px;font-weight:600;">3×10</div>
+    `;
+    container.appendChild(row);
+    rows.push(row);
+  }
+  sandbox.appendChild(container);
+
+  // Measure FPS during animation
+  const fpsSamples = [];
+  let lastFrame = performance.now();
+  let rafHandle;
+  let animating = true;
+
+  function measureFPS(ts) {
+    const delta = ts - lastFrame;
+    if (delta > 0) fpsSamples.push(1000 / delta);
+    lastFrame = ts;
+    if (animating) rafHandle = requestAnimationFrame(measureFPS);
+  }
+  rafHandle = requestAnimationFrame(measureFPS);
+
+  // Trigger all 10 animations simultaneously (swipe left, then back)
+  logLines.push('── Triggering all 10 animations simultaneously ──');
+
+  // Phase 1: swipe all left
+  for (const row of rows) {
+    row.style.transform = 'translateX(-80px)';
+    row.style.opacity = '0.7';
+  }
+
+  await sleep(400);
+
+  // Phase 2: swipe all back
+  for (const row of rows) {
+    row.style.transform = 'translateX(0px)';
+    row.style.opacity = '1';
+  }
+
+  await sleep(400);
+
+  // Run multiple cycles
+  for (let cycle = 0; cycle < 3; cycle++) {
+    for (const row of rows) {
+      row.style.transform = 'translateX(-100px)';
+      row.style.opacity = '0.5';
+    }
+    await sleep(350);
+    for (const row of rows) {
+      row.style.transform = 'translateX(0px)';
+      row.style.opacity = '1';
+    }
+    await sleep(350);
+  }
+
+  animating = false;
+  cancelAnimationFrame(rafHandle);
+  sandbox.innerHTML = '';
+
+  // Compute FPS stats (drop warmup frames)
+  const validSamples = fpsSamples.filter(f => f > 1 && f <= 120);
+  const avgFPS = mean(validSamples);
+  const minFPS = validSamples.length ? Math.min(...validSamples) : 0;
+  const p5FPS  = validSamples.sort((a,b)=>a-b)[Math.floor(validSamples.length * 0.05)] || 0;
+
+  logLines.push(`  Frames sampled  : ${validSamples.length}`);
+  logLines.push(`  Avg FPS         : ${avgFPS.toFixed(1)}`);
+  logLines.push(`  Min FPS         : ${minFPS.toFixed(1)}`);
+  logLines.push(`  5th-pctile FPS  : ${p5FPS.toFixed(1)}`);
+  logLines.push(`  Target          : 60fps sustained`);
+
+  const v = avgFPS >= 58 ? 'pass' : avgFPS >= 45 ? 'warn' : 'fail';
+  logLines.push(v === 'pass' ? `PASS Avg ${avgFPS.toFixed(1)}fps — smooth animations` : v === 'warn' ? `WARN Avg ${avgFPS.toFixed(1)}fps — some jank possible` : `FAIL Avg ${avgFPS.toFixed(1)}fps — animations will be choppy`);
+
+  verdict('t4', v, {
+    'Avg FPS':     { value: avgFPS.toFixed(1), color: avgFPS >= 58 ? 'good' : avgFPS >= 45 ? 'warn' : 'bad' },
+    'Min FPS':     { value: minFPS.toFixed(1), color: minFPS >= 50 ? 'good' : minFPS >= 30 ? 'warn' : 'bad' },
+    'P5 FPS':      { value: p5FPS.toFixed(1), color: p5FPS >= 45 ? 'good' : 'warn' },
+    'Frames':      { value: validSamples.length, color: '' },
+    'Animation':   { value: '10 rows × 4 cycles', color: '' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 5 — localStorage Read/Write Stress
+// ════════════════════════════════════════════════════════════════════════════
+async function test5_localStorage() {
+  const logLines = [];
+  const LS_LIMIT_KB = 5120;
+
+  // ── Generate realistic Theryn payloads ───────────────────────────────────
+  function makeSession(numEx, numSets) {
+    return {
+      startedAt: new Date().toISOString(),
+      type: 'Push',
+      exercises: Array.from({ length: numEx }, (_, ei) => ({
+        name: `Exercise ${ei+1}`,
+        sets: Array.from({ length: numSets }, (_, si) => ({
+          w: String(Math.round(50 + Math.random() * 150)),
+          r: String(Math.round(5 + Math.random() * 10)),
+        })),
+      })),
+    };
+  }
+
+  function makeHistory(numSessions, numEx, numSets) {
+    return Array.from({ length: numSessions }, (_, i) => ({
+      id: `sess-${i}`,
+      date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0],
+      type: ['Push','Pull','Legs','Upper','Lower'][i % 5],
+      duration: 2700 + Math.round(Math.random() * 1800),
+      exercises: Array.from({ length: numEx }, (_, ei) => ({
+        name: `Exercise ${ei+1}`,
+        sets: Array.from({ length: numSets }, (_, si) => ({
+          w: String(Math.round(50 + Math.random() * 150)),
+          r: String(Math.round(5 + Math.random() * 10)),
+        })),
+      })),
+      totalSets: numEx * numSets,
+      totalVolume: Math.round(Math.random() * 50000),
+    }));
+  }
+
+  function makeWeights(count) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `bw-${i}`,
+      date: new Date(Date.now() - i * 86400000).toISOString().split('T')[0],
+      weight: 150 + Math.random() * 50,
+    }));
+  }
+
+  function makeRoutine(days, exPerDay) {
+    const types = ['Push','Pull','Legs','Upper','Lower','Full Body','Rest'];
+    const dayKeys = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const result = {};
+    for (let d = 0; d < days; d++) {
+      result[dayKeys[d]] = {
+        type: types[d % types.length],
+        exercises: Array.from({ length: exPerDay }, (_, ei) => `Exercise ${ei+1}`),
+      };
+    }
+    return result;
+  }
+
+  logLines.push('── Generating realistic Theryn localStorage payloads ──');
+
+  const session    = makeSession(15, 3);         // th_session: 15 ex × 3 sets
+  const history    = makeHistory(30, 15, 5);     // 30 sessions × 15 ex × 5 sets
+  const weights    = makeWeights(90);            // 90 weight entries
+  const routine    = makeRoutine(7, 10);         // 7 days × 10 exercises
+
+  const payloads = {
+    'theryn_perf_session':  JSON.stringify(session),
+    'theryn_perf_history':  JSON.stringify(history),
+    'theryn_perf_weights':  JSON.stringify(weights),
+    'theryn_perf_routine':  JSON.stringify(routine),
+  };
+
+  const sizes = {};
+  for (const [k, v] of Object.entries(payloads)) {
+    sizes[k] = (new Blob([v]).size / 1024).toFixed(2);
+    logLines.push(`  ${k.padEnd(30)}: ${sizes[k]} KB`);
+  }
+
+  // ── Write all ────────────────────────────────────────────────────────────
+  logLines.push('── Writing all payloads to localStorage ──');
+  const t0 = now();
+  try {
+    for (const [k, v] of Object.entries(payloads)) {
+      localStorage.setItem(k, v);
+    }
+  } catch(e) {
+    logLines.push(`FAIL localStorage write error: ${e.message}`);
+    verdict('t5', 'fail', { 'Error': { value: 'Write failed', color: 'bad' } }, logLines);
+    return;
+  }
+  const writeTime = now() - t0;
+  logLines.push(`  Write time: ${writeTime.toFixed(2)}ms`);
+
+  // ── Read all back ────────────────────────────────────────────────────────
+  logLines.push('── Reading all payloads back ──');
+  const t1 = now();
+  for (const k of Object.keys(payloads)) {
+    const raw = localStorage.getItem(k);
+    try { JSON.parse(raw); } catch(e) { logLines.push(`  WARN parse error for ${k}`); }
+  }
+  const readTime = now() - t1;
+  logLines.push(`  Read time: ${readTime.toFixed(2)}ms`);
+
+  // ── Measure used storage ─────────────────────────────────────────────────
+  let totalUsedKB = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const val = localStorage.getItem(key) || '';
+    totalUsedKB += (key.length + val.length) * 2 / 1024; // UTF-16 bytes
+  }
+
+  const testKB = Object.entries(payloads).reduce((acc, [k, v]) => acc + (k.length + v.length) * 2 / 1024, 0);
+  logLines.push(`── Storage usage ──`);
+  logLines.push(`  Test data used  : ${testKB.toFixed(2)} KB`);
+  logLines.push(`  Total LS used   : ${totalUsedKB.toFixed(2)} KB`);
+  logLines.push(`  LS limit        : ${LS_LIMIT_KB} KB`);
+  logLines.push(`  Remaining       : ${(LS_LIMIT_KB - totalUsedKB).toFixed(2)} KB`);
+
+  // ── Clean up test data ───────────────────────────────────────────────────
+  for (const k of Object.keys(payloads)) {
+    localStorage.removeItem(k);
+  }
+  logLines.push('── Test keys cleaned up ──');
+
+  const v = writeTime < 50 && readTime < 50 ? 'pass' : writeTime < 200 && readTime < 200 ? 'warn' : 'fail';
+  logLines.push(v === 'pass' ? 'PASS localStorage read/write within budget' : v === 'warn' ? 'WARN localStorage slower than expected' : 'FAIL localStorage critically slow');
+
+  verdict('t5', v, {
+    'Write Time':      { value: `${writeTime.toFixed(2)}ms`, color: writeTime < 50 ? 'good' : 'warn' },
+    'Read Time':       { value: `${readTime.toFixed(2)}ms`, color: readTime < 50 ? 'good' : 'warn' },
+    'Test Data':       { value: `${testKB.toFixed(1)} KB`, color: '' },
+    'Total LS Used':   { value: `${totalUsedKB.toFixed(1)} KB`, color: totalUsedKB < 2048 ? 'good' : 'warn' },
+    'Budget':          { value: `${LS_LIMIT_KB} KB`, color: '' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 6 — Memory Leak Detection
+// ════════════════════════════════════════════════════════════════════════════
+async function test6_memoryLeak() {
+  const logLines = [];
+  const CYCLES = 100;
+
+  const hasMemory = !!(performance.memory);
+
+  logLines.push(`── Mount/unmount simulation · ${CYCLES} cycles ──`);
+  logLines.push(`  performance.memory available: ${hasMemory}`);
+
+  const sandbox = document.getElementById('render-sandbox');
+
+  // Sample heap before
+  const heapBefore = hasMemory ? performance.memory.usedJSHeapSize : null;
+
+  // Simulate mounting/unmounting a component (create → attach → detach → GC hint)
+  for (let i = 0; i < CYCLES; i++) {
+    // Create a "component" with realistic Theryn structure
+    const root = document.createElement('div');
+    root.className = 'workout-session';
+
+    // Exercise list with inputs (like the ActiveWorkout component)
+    for (let e = 0; e < 5; e++) {
+      const exDiv = document.createElement('div');
+      exDiv.style.background = '#101010';
+
+      const header = document.createElement('div');
+      header.textContent = `Exercise ${e+1}`;
+      exDiv.appendChild(header);
+
+      for (let s = 0; s < 3; s++) {
+        const setRow = document.createElement('div');
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.value = '100';
+        const inp2 = document.createElement('input');
+        inp2.type = 'number';
+        inp2.value = '10';
+        setRow.appendChild(inp);
+        setRow.appendChild(inp2);
+
+        // Simulate event listener attachment (like React's synthetic events)
+        inp.addEventListener('change', () => {});
+        inp2.addEventListener('change', () => {});
+        exDiv.appendChild(setRow);
+      }
+      root.appendChild(exDiv);
+    }
+
+    sandbox.appendChild(root);
+    // "unmount" — remove from DOM (simulates React unmounting)
+    sandbox.removeChild(root);
+
+    if (i % 20 === 0) await raf(); // yield every 20 cycles
+  }
+
+  sandbox.innerHTML = '';
+
+  // Give GC a chance to run
+  await sleep(100);
+  await raf();
+  await sleep(100);
+
+  const heapAfter = hasMemory ? performance.memory.usedJSHeapSize : null;
+  const heapDeltaMB = hasMemory ? (heapAfter - heapBefore) / (1024 * 1024) : null;
+
+  if (hasMemory) {
+    logLines.push(`  Heap before: ${(heapBefore / 1024 / 1024).toFixed(2)} MB`);
+    logLines.push(`  Heap after : ${(heapAfter / 1024 / 1024).toFixed(2)} MB`);
+    logLines.push(`  Delta      : ${heapDeltaMB > 0 ? '+' : ''}${heapDeltaMB.toFixed(2)} MB`);
+    logLines.push(`  Threshold  : >10 MB growth = potential leak`);
+  } else {
+    logLines.push('  performance.memory not available in this browser.');
+    logLines.push('  (Available in Chrome with --enable-precise-memory-info)');
+    logLines.push('  DOM create/destroy cycles completed without throwing.');
+  }
+
+  let v;
+  if (!hasMemory) {
+    v = 'warn';
+    logLines.push('WARN Cannot measure heap — run in Chrome for full results');
+  } else if (heapDeltaMB > 10) {
+    v = 'fail';
+    logLines.push(`FAIL Heap grew ${heapDeltaMB.toFixed(2)} MB after ${CYCLES} mount/unmount cycles`);
+  } else if (heapDeltaMB > 3) {
+    v = 'warn';
+    logLines.push(`WARN Heap grew ${heapDeltaMB.toFixed(2)} MB — monitor in production`);
+  } else {
+    v = 'pass';
+    logLines.push(`PASS Heap delta ${heapDeltaMB.toFixed(2)} MB — no leak detected`);
+  }
+
+  verdict('t6', v, {
+    'Cycles':          { value: CYCLES, color: '' },
+    'Heap Before':     { value: hasMemory ? `${(heapBefore/1024/1024).toFixed(1)} MB` : 'N/A', color: '' },
+    'Heap After':      { value: hasMemory ? `${(heapAfter/1024/1024).toFixed(1)} MB` : 'N/A', color: '' },
+    'Delta':           { value: hasMemory ? `${heapDeltaMB > 0 ? '+' : ''}${heapDeltaMB.toFixed(2)} MB` : 'N/A', color: hasMemory ? (heapDeltaMB < 3 ? 'good' : heapDeltaMB < 10 ? 'warn' : 'bad') : '' },
+    'memory API':      { value: hasMemory ? 'Available' : 'Unavailable', color: hasMemory ? 'good' : 'warn' },
+  }, logLines);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TEST 7 — Concurrent Timer Stress
+// ════════════════════════════════════════════════════════════════════════════
+async function test7_timerStress() {
+  const logLines = [];
+  const DURATION_MS = 3000;
+  const TICK_INTERVAL = 100; // ms
+
+  logLines.push('── Starting 5 rest timers + 1 stopwatch simultaneously ──');
+  logLines.push(`── Running for ${DURATION_MS}ms real time ──`);
+
+  // Each timer: tracks own elapsed vs expected
+  const timers = [];
+  const intervalIds = [];
+  const timerData = [
+    { name: 'Rest Timer 1', expected: TICK_INTERVAL },
+    { name: 'Rest Timer 2', expected: TICK_INTERVAL },
+    { name: 'Rest Timer 3', expected: TICK_INTERVAL },
+    { name: 'Rest Timer 4', expected: TICK_INTERVAL },
+    { name: 'Rest Timer 5', expected: TICK_INTERVAL },
+    { name: 'Stopwatch',    expected: TICK_INTERVAL },
+  ];
+
+  for (let i = 0; i < timerData.length; i++) {
+    const startTime = performance.now();
+    const ticks = [];
+    let prev = startTime;
+    const id = setInterval(() => {
+      const now_ = performance.now();
+      ticks.push(now_ - prev);
+      prev = now_;
+    }, timerData[i].expected);
+    intervalIds.push(id);
+    timers.push({ ...timerData[i], startTime, ticks });
+  }
+
+  // Let timers run
+  const testStart = performance.now();
+  await sleep(DURATION_MS + 50); // slight buffer
+
+  // Stop all timers
+  for (const id of intervalIds) clearInterval(id);
+
+  const actualDuration = performance.now() - testStart;
+
+  logLines.push(`  Actual run time : ${actualDuration.toFixed(0)}ms (expected ~${DURATION_MS}ms)`);
+  logLines.push('');
+
+  let maxDrift = 0;
+  let totalTicks = 0;
+
+  for (const timer of timers) {
+    const ticks = timer.ticks;
+    if (!ticks.length) continue;
+
+    totalTicks += ticks.length;
+    const avgTick  = mean(ticks);
+    const minTick  = Math.min(...ticks);
+    const maxTick  = Math.max(...ticks);
+    const driftMs  = Math.abs(avgTick - timer.expected);
+
+    if (driftMs > maxDrift) maxDrift = driftMs;
+
+    const driftColor = driftMs < 10 ? '' : driftMs < 50 ? 'WARN' : 'FAIL';
+    logLines.push(`  ${timer.name.padEnd(16)}: ${ticks.length} ticks · avg ${avgTick.toFixed(1)}ms · max ${maxTick.toFixed(1)}ms · drift ±${driftMs.toFixed(1)}ms ${driftColor}`);
+  }
+
+  logLines.push('');
+  logLines.push(`  Total ticks     : ${totalTicks}`);
+  logLines.push(`  Max drift       : ±${maxDrift.toFixed(1)}ms`);
+  logLines.push(`  Drift threshold : ±50ms over ${DURATION_MS/1000}s`);
+
+  // Expected tick count per timer: DURATION_MS / TICK_INTERVAL
+  const expectedTicks = Math.floor(DURATION_MS / TICK_INTERVAL);
+  const missedTicks   = timers.reduce((acc, t) => acc + Math.max(0, expectedTicks - t.ticks.length), 0);
+  logLines.push(`  Missed ticks    : ${missedTicks} (expected ~${expectedTicks * timerData.length} total)`);
+
+  const v = maxDrift <= 50 && missedTicks < 5 ? 'pass' : maxDrift <= 100 && missedTicks < 20 ? 'warn' : 'fail';
+  logLines.push('');
+  logLines.push(v === 'pass' ? `PASS All timers within ±50ms drift — no CPU congestion` : v === 'warn' ? `WARN Timer drift ${maxDrift.toFixed(1)}ms or ${missedTicks} missed ticks` : `FAIL Timer drift ${maxDrift.toFixed(1)}ms exceeds 50ms threshold`);
+
+  verdict('t7', v, {
+    'Max Drift':       { value: `±${maxDrift.toFixed(1)}ms`, color: maxDrift <= 50 ? 'good' : maxDrift <= 100 ? 'warn' : 'bad' },
+    'Timers Run':      { value: timerData.length, color: '' },
+    'Total Ticks':     { value: totalTicks, color: '' },
+    'Missed Ticks':    { value: missedTicks, color: missedTicks === 0 ? 'good' : missedTicks < 5 ? 'warn' : 'bad' },
+    'Run Duration':    { value: `${actualDuration.toFixed(0)}ms`, color: '' },
+  }, logLines);
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+buildCards();
+</script>
+</body>
+</html>

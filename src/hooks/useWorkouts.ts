@@ -75,78 +75,94 @@ export interface WorkoutPayload {
   totalVolume: number;
 }
 
+import { enqueueAction } from "../lib/offlineQueue";
+
 /**
  * Saves a completed workout session and all its sets to Supabase.
  * Returns the new session id.
  */
 export async function saveCompletedWorkout(
   userId: string,
-  workout: WorkoutPayload
+  workout: WorkoutPayload,
+  isBackgroundSync = false
 ): Promise<string> {
   const startedAt = workout.startedAt;
   const completedAt = new Date().toISOString();
 
-  // Insert session row
-  const { data: sessionRow, error: sessionErr } = await supabase
-    .from("workout_sessions")
-    .insert({
-      user_id: userId,
-      workout_type: workout.type,
-      started_at: startedAt,
-      completed_at: completedAt,
-      notes: JSON.stringify({
-        totalSets: workout.totalSets,
-        totalVolume: workout.totalVolume,
-      }),
-    })
-    .select("id")
-    .single();
-
-  if (sessionErr || !sessionRow?.id) {
-    throw new Error(`Failed to save workout session: ${sessionErr?.message}`);
-  }
-
-  const sessionId = sessionRow.id;
-
-  // Build workout_sets rows
-  const setsToInsert: Array<{
-    session_id: string;
-    exercise_id: string;
-    set_number: number;
-    weight: number | null;
-    reps: number | null;
-  }> = [];
-
-  for (const ex of workout.exercises) {
-    let exerciseId: string;
+  // 1. Optimistic Cache Update (only if this is user action, not background sync)
+  if (!isBackgroundSync) {
+    const cacheKey = `theryn_history_${userId}`;
     try {
-      exerciseId = await getExerciseId(ex.name, userId);
-    } catch {
-      continue; // skip if we can't resolve the exercise
-    }
+      const cachedText = localStorage.getItem(cacheKey);
+      const cached = cachedText ? JSON.parse(cachedText) : [];
+      const optimisticEntry = {
+        id: `offline-${Date.now()}`,
+        date: startedAt.split("T")[0],
+        type: workout.type,
+        duration: workout.duration,
+        startedAt: startedAt,
+        exercises: workout.exercises.map(ex => ({ name: ex.name, sets: ex.sets })),
+        totalSets: workout.totalSets,
+        totalVolume: workout.totalVolume
+      };
+      cached.unshift(optimisticEntry);
+      localStorage.setItem(cacheKey, JSON.stringify(cached.slice(0, 30)));
+    } catch {}
+  }
 
-    ex.sets.forEach((set, idx) => {
-      setsToInsert.push({
-        session_id: sessionId,
-        exercise_id: exerciseId,
-        set_number: idx + 1,
-        weight: set.w ? parseFloat(set.w) : null,
-        reps: set.r ? parseInt(set.r, 10) : null,
+  // 2. Attempt Supabase Save
+  try {
+    const { data: sessionRow, error: sessionErr } = await supabase
+      .from("workout_sessions")
+      .insert({
+        user_id: userId,
+        workout_type: workout.type,
+        started_at: startedAt,
+        completed_at: completedAt,
+        notes: JSON.stringify({
+          totalSets: workout.totalSets,
+          totalVolume: workout.totalVolume,
+        }),
+      })
+      .select("id")
+      .single();
+
+    if (sessionErr || !sessionRow?.id) throw sessionErr;
+
+    const sessionId = sessionRow.id;
+
+    const setsToInsert: Array<any> = [];
+    for (const ex of workout.exercises) {
+      let exerciseId: string;
+      try {
+        exerciseId = await getExerciseId(ex.name, userId);
+      } catch {
+        continue;
+      }
+      ex.sets.forEach((set, idx) => {
+        setsToInsert.push({
+          session_id: sessionId,
+          exercise_id: exerciseId,
+          set_number: idx + 1,
+          weight: set.w ? parseFloat(set.w) : null,
+          reps: set.r ? parseInt(set.r, 10) : null,
+        });
       });
-    });
-  }
-
-  if (setsToInsert.length > 0) {
-    const { error: setsErr } = await supabase
-      .from("workout_sets")
-      .insert(setsToInsert);
-
-    if (setsErr) {
-      console.error("Failed to insert workout sets:", setsErr.message);
     }
-  }
 
-  return sessionId;
+    if (setsToInsert.length > 0) {
+      const { error: setsErr } = await supabase.from("workout_sets").insert(setsToInsert);
+      if (setsErr) console.error("Failed to insert sets:", setsErr.message);
+    }
+
+    return sessionId;
+  } catch (err: any) {
+    if (!isBackgroundSync) {
+      enqueueAction({ type: "SAVE_WORKOUT", userId, payload: workout });
+      return "offline_saved";
+    }
+    throw err;
+  }
 }
 
 // ── History output type ──────────────────────────────────────────────────────
@@ -170,100 +186,90 @@ export interface WorkoutHistoryEntry {
  * Loads the last 30 completed workout sessions with their sets.
  * Builds a reverse id→name map from public_exercises + user_exercises.
  */
-export async function loadWorkoutHistory(userId: string): Promise<WorkoutHistoryEntry[]> {
-  // Fetch sessions with nested sets
-  const { data: sessions, error } = await supabase
-    .from("workout_sessions")
-    .select(`
-      id,
-      workout_type,
-      started_at,
-      completed_at,
-      notes,
-      workout_sets ( exercise_id, set_number, weight, reps )
-    `)
-    .eq("user_id", userId)
-    .not("completed_at", "is", null)
-    .order("completed_at", { ascending: false })
-    .limit(30);
+export async function loadWorkoutHistory(
+  userId: string,
+  onFreshData?: (data: WorkoutHistoryEntry[]) => void
+): Promise<WorkoutHistoryEntry[]> {
+  const cacheKey = `theryn_history_${userId}`;
+  
+  let cachedData = null;
+  try {
+    const cachedText = localStorage.getItem(cacheKey);
+    if (cachedText) cachedData = JSON.parse(cachedText);
+  } catch {}
 
-  if (error) {
-    console.error("loadWorkoutHistory error:", error.message);
-    return [];
-  }
+  const fetchNetwork = async () => {
+    const { data: sessions, error } = await supabase
+      .from("workout_sessions")
+      .select(`
+        id, workout_type, started_at, completed_at, notes,
+        workout_sets ( exercise_id, set_number, weight, reps )
+      `)
+      .eq("user_id", userId)
+      .not("completed_at", "is", null)
+      .order("completed_at", { ascending: false })
+      .limit(30);
 
-  if (!sessions || sessions.length === 0) return [];
+    if (error || !sessions) return [];
 
-  // Build id→name map
-  const idToName: Record<string, string> = {};
+    const idToName: Record<string, string> = {};
+    const [{ data: pubExes }, { data: userExes }] = await Promise.all([
+      supabase.from("public_exercises").select("id, name"),
+      supabase.from("user_exercises").select("id, name").eq("user_id", userId),
+    ]);
+    for (const ex of pubExes || []) idToName[ex.id] = ex.name;
+    for (const ex of userExes || []) idToName[ex.id] = ex.name;
 
-  const [{ data: pubExes }, { data: userExes }] = await Promise.all([
-    supabase.from("public_exercises").select("id, name"),
-    supabase.from("user_exercises").select("id, name").eq("user_id", userId),
-  ]);
+    const history = sessions.map((s) => {
+      const startedAt = new Date(s.started_at).getTime();
+      const completedAt = new Date(s.completed_at).getTime();
+      const duration = Math.round((completedAt - startedAt) / 1000);
 
-  for (const ex of pubExes || []) idToName[ex.id] = ex.name;
-  for (const ex of userExes || []) idToName[ex.id] = ex.name;
+      const exMap: Record<string, Array<{ w: string; r: string }>> = {};
+      const exOrder: string[] = [];
 
-  return sessions.map((s) => {
-    const startedAt = new Date(s.started_at).getTime();
-    const completedAt = new Date(s.completed_at).getTime();
-    const duration = Math.round((completedAt - startedAt) / 1000);
+      const sortedSets = [...(s.workout_sets || [])].sort((a, b) => a.set_number - b.set_number);
 
-    // Group sets by exercise_id preserving order
-    const exMap: Record<string, Array<{ w: string; r: string }>> = {};
-    const exOrder: string[] = [];
-
-    const sortedSets = [...(s.workout_sets || [])].sort(
-      (a, b) => a.set_number - b.set_number
-    );
-
-    for (const set of sortedSets) {
-      if (!exMap[set.exercise_id]) {
-        exMap[set.exercise_id] = [];
-        exOrder.push(set.exercise_id);
+      for (const set of sortedSets) {
+        if (!exMap[set.exercise_id]) {
+          exMap[set.exercise_id] = [];
+          exOrder.push(set.exercise_id);
+        }
+        exMap[set.exercise_id].push({
+          w: set.weight != null ? String(set.weight) : "",
+          r: set.reps != null ? String(set.reps) : "",
+        });
       }
-      exMap[set.exercise_id].push({
-        w: set.weight != null ? String(set.weight) : "",
-        r: set.reps != null ? String(set.reps) : "",
-      });
-    }
 
-    const exercises: HistoryExercise[] = exOrder.map((exId) => ({
-      name: idToName[exId] || "Unknown Exercise",
-      sets: exMap[exId],
-    }));
+      const exercises: HistoryExercise[] = exOrder.map((exId) => ({
+        name: idToName[exId] || "Unknown Exercise",
+        sets: exMap[exId],
+      }));
 
-    let parsedNotes: { totalSets?: number; totalVolume?: number } = {};
-    try {
-      parsedNotes = s.notes ? JSON.parse(s.notes) : {};
-    } catch {
-      // ignore parse errors
-    }
+      let parsedNotes: { totalSets?: number; totalVolume?: number } = {};
+      try { parsedNotes = s.notes ? JSON.parse(s.notes) : {}; } catch {}
 
-    const totalSets = parsedNotes.totalSets ?? exercises.reduce((a, ex) => a + ex.sets.length, 0);
-    const totalVolume =
-      parsedNotes.totalVolume ??
-      exercises.reduce(
-        (a, ex) =>
-          a +
-          ex.sets.reduce((s, set) => {
-            const w = parseFloat(set.w) || 0;
-            const r = parseInt(set.r, 10) || 0;
-            return s + w * r;
-          }, 0),
-        0
-      );
+      return {
+        id: s.id,
+        date: s.started_at.split("T")[0],
+        type: s.workout_type || "Custom",
+        startedAt: s.started_at,
+        duration,
+        exercises,
+        totalSets: parsedNotes.totalSets ?? exercises.reduce((a, ex) => a + ex.sets.length, 0),
+        totalVolume: parsedNotes.totalVolume ?? exercises.reduce((a, ex) => a + ex.sets.reduce((ss, s) => ss + (Number(s.w) || 0) * (Number(s.r) || 0), 0), 0),
+      };
+    });
 
-    return {
-      id: s.id,
-      date: s.completed_at.split("T")[0],
-      type: s.workout_type,
-      duration,
-      startedAt: s.started_at,
-      exercises,
-      totalSets,
-      totalVolume,
-    };
-  });
+    localStorage.setItem(cacheKey, JSON.stringify(history));
+    if (onFreshData) onFreshData(history);
+    return history;
+  };
+
+  if (cachedData && cachedData.length > 0) {
+    if (typeof window !== "undefined" && navigator.onLine) fetchNetwork().catch(()=>{});
+    return cachedData;
+  }
+  
+  return fetchNetwork();
 }

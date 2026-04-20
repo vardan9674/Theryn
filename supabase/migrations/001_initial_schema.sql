@@ -317,37 +317,37 @@ CREATE POLICY "Users manage own PRs"
 
 
 -- ── COACHING RELATIONSHIPS ──────────────────────────────────────────────────
-CREATE TABLE coaching_relationships (
+CREATE TABLE coach_athletes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  athlete_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   coach_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   coach_email TEXT NOT NULL,
-  permission TEXT NOT NULL DEFAULT 'view'
+  permission TEXT NOT NULL DEFAULT 'edit_routine'
     CHECK (permission IN ('view', 'edit_routine', 'full')),
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'accepted', 'declined', 'revoked')),
   invite_code TEXT UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
   created_at TIMESTAMPTZ DEFAULT now(),
   accepted_at TIMESTAMPTZ,
-  UNIQUE (client_id, coach_email)
+  UNIQUE (athlete_id, coach_email)
 );
 
-ALTER TABLE coaching_relationships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE coach_athletes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Athletes manage own coaching relationships"
-  ON coaching_relationships FOR ALL
-  USING (auth.uid() = client_id)
-  WITH CHECK (auth.uid() = client_id);
+  ON coach_athletes FOR ALL
+  USING (auth.uid() = athlete_id)
+  WITH CHECK (auth.uid() = athlete_id);
 
 CREATE POLICY "Coaches can see invites to them"
-  ON coaching_relationships FOR SELECT
+  ON coach_athletes FOR SELECT
   USING (
     coach_id = auth.uid()
     OR coach_email = (SELECT email FROM auth.users WHERE id = auth.uid())
   );
 
 CREATE POLICY "Coaches can accept invites"
-  ON coaching_relationships FOR UPDATE
+  ON coach_athletes FOR UPDATE
   USING (
     coach_email = (SELECT email FROM auth.users WHERE id = auth.uid())
     AND status = 'pending'
@@ -358,7 +358,7 @@ CREATE POLICY "Coaches can accept invites"
 -- ── COACH ACTIVITY LOG ──────────────────────────────────────────────────────
 CREATE TABLE coach_activity_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  coaching_relationship_id UUID REFERENCES coaching_relationships(id) ON DELETE CASCADE NOT NULL,
+  coach_athlete_id UUID REFERENCES coach_athletes(id) ON DELETE CASCADE NOT NULL,
   action TEXT NOT NULL,
   details JSONB,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -369,19 +369,19 @@ ALTER TABLE coach_activity_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Coach activity visible to both parties"
   ON coach_activity_log FOR SELECT
   USING (EXISTS (
-    SELECT 1 FROM coaching_relationships cr
-    WHERE cr.id = coach_activity_log.coaching_relationship_id
-      AND (cr.client_id = auth.uid() OR cr.coach_id = auth.uid())
-      AND cr.status = 'accepted'
+    SELECT 1 FROM coach_athletes ca
+    WHERE ca.id = coach_activity_log.coach_athlete_id
+      AND (ca.athlete_id = auth.uid() OR ca.coach_id = auth.uid())
+      AND ca.status = 'accepted'
   ));
 
 CREATE POLICY "Coaches can insert activity"
   ON coach_activity_log FOR INSERT
   WITH CHECK (EXISTS (
-    SELECT 1 FROM coaching_relationships cr
-    WHERE cr.id = coach_activity_log.coaching_relationship_id
-      AND cr.coach_id = auth.uid()
-      AND cr.status = 'accepted'
+    SELECT 1 FROM coach_athletes ca
+    WHERE ca.id = coach_activity_log.coach_athlete_id
+      AND ca.coach_id = auth.uid()
+      AND ca.status = 'accepted'
   ));
 
 
@@ -433,11 +433,11 @@ CREATE INDEX idx_user_exercises_user
 -- ============================================================================
 
 -- Coach access helper
-CREATE OR REPLACE FUNCTION is_coach_of(client UUID, required_permission TEXT DEFAULT 'view')
+CREATE OR REPLACE FUNCTION is_coach_of(athlete UUID, required_permission TEXT DEFAULT 'view')
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
-    SELECT 1 FROM coaching_relationships
-    WHERE client_id = client
+    SELECT 1 FROM coach_athletes
+    WHERE athlete_id = athlete
       AND coach_id = auth.uid()
       AND status = 'accepted'
       AND (
@@ -600,6 +600,10 @@ CREATE POLICY "Coaches can edit client routines"
   USING (is_coach_of(user_id, 'edit_routine'))
   WITH CHECK (is_coach_of(user_id, 'edit_routine'));
 
+CREATE POLICY "Coaches can delete client routines"
+  ON routines FOR DELETE
+  USING (is_coach_of(user_id, 'edit_routine'));
+
 CREATE POLICY "Coaches can view client routine days"
   ON routine_days FOR SELECT
   USING (EXISTS (
@@ -618,6 +622,12 @@ CREATE POLICY "Coaches can update client routine days"
     SELECT 1 FROM routines r WHERE r.id = routine_days.routine_id AND is_coach_of(r.user_id, 'edit_routine')
   ))
   WITH CHECK (EXISTS (
+    SELECT 1 FROM routines r WHERE r.id = routine_days.routine_id AND is_coach_of(r.user_id, 'edit_routine')
+  ));
+
+CREATE POLICY "Coaches can delete client routine days"
+  ON routine_days FOR DELETE
+  USING (EXISTS (
     SELECT 1 FROM routines r WHERE r.id = routine_days.routine_id AND is_coach_of(r.user_id, 'edit_routine')
   ));
 

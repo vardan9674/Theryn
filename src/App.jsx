@@ -636,6 +636,8 @@ export default function GymApp() {
   // cause of the "re-prompts name on every device" bug.
   const [onboardingStatus, setOnboardingStatus] = useState("loading");
 
+  const [refreshing, setRefreshing] = useState(false);
+
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
@@ -691,13 +693,29 @@ export default function GymApp() {
 
   useEffect(() => {
     // Check existing session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Stale/invalid refresh token — clear it so the user gets a clean login screen
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       setAuthUser(session?.user ?? null);
+      setAuthLoading(false);
+    }).catch(() => {
+      setAuthUser(null);
       setAuthLoading(false);
     });
 
     // Listen for auth state changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "TOKEN_REFRESHED" && !session) {
+        supabase.auth.signOut().catch(() => {});
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
       const user = session?.user ?? null;
       setAuthUser(user);
       setAuthLoading(false);
@@ -811,6 +829,7 @@ export default function GymApp() {
   const skipAutoSaveRef = useRef(false);
   const routineSaveRef = useRef(null);
   const isLocalSaveRef = useRef(0);
+  const fetchRoutineRef = useRef(null);
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
@@ -857,6 +876,7 @@ export default function GymApp() {
         setTimeout(() => { skipAutoSaveRef.current = false; }, 2000);
       }
     };
+    fetchRoutineRef.current = fetchRoutine;
 
     // Initial load
     fetchRoutine();
@@ -1116,7 +1136,7 @@ export default function GymApp() {
 
       <div key={tab} className="screen-enter">
         {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
-        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded}/>}
+        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => fetchRoutineRef.current?.()}/>}
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
         {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}

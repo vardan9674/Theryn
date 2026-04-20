@@ -5,3 +5,12 @@ dist
 ios
 android
 *.tsbuildinfo
+
+# OS / editor junk
+.DS_Store
+
+# Vite dev-server temp config files (regenerated on each run)
+vite.config.ts.timestamp-*.mjs
+
+# Claude Code agent working directories
+.claude/worktrees/

@@ -63,6 +63,18 @@ export async function sendCoachRequest(
   coachId: string,
   athleteId: string
 ): Promise<void> {
+  // Enforce rule: athlete can only have 1 active coach
+  const { data: activeCoach } = await supabase
+    .from("coach_athletes")
+    .select("id")
+    .eq("athlete_id", athleteId)
+    .eq("status", "accepted")
+    .single();
+
+  if (activeCoach) {
+    throw new Error("This athlete already has an active coach.");
+  }
+
   const { error } = await supabase.from("coach_athletes").insert({
     coach_id: coachId,
     athlete_id: athleteId,
@@ -103,11 +115,28 @@ export async function loadCoachLinks(userId: string): Promise<CoachLink[]> {
 
 // ── Accept a pending request (called by athlete) ──────────────────────────────
 export async function acceptCoachRequest(linkId: string): Promise<void> {
+  const { data: link, error: fetchErr } = await supabase
+    .from("coach_athletes")
+    .select("athlete_id")
+    .eq("id", linkId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+
   const { error } = await supabase
     .from("coach_athletes")
     .update({ status: "accepted" })
     .eq("id", linkId);
   if (error) throw new Error(error.message);
+
+  // Clean up any other pending requests for this athlete
+  if (link?.athlete_id) {
+    await supabase
+      .from("coach_athletes")
+      .delete()
+      .eq("athlete_id", link.athlete_id)
+      .neq("id", linkId)
+      .eq("status", "pending");
+  }
 }
 
 // ── Decline / remove a link ───────────────────────────────────────────────────
@@ -119,14 +148,70 @@ export async function removeCoachLink(linkId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+import { loadBodyWeights, loadMeasurements } from "./useBody";
+
 // ── Load an athlete's full data for the coach view ────────────────────────────
 export async function loadAthleteData(athleteId: string) {
-  const [routine, history] = await Promise.all([
+  const [routine, history, weights, measurements, profileRes] = await Promise.all([
     loadRoutine(athleteId),
     loadWorkoutHistory(athleteId),
+    loadBodyWeights(athleteId),
+    loadMeasurements(athleteId),
+    // Fetch the athlete's height + unit so the coach can compute BMI.
+    // RLS: the existing "coaches can read profile" policy must allow this for
+    // accepted coach_athletes links. Falls back to null silently on error.
+    supabase.from("profiles")
+      .select("height_cm, unit_system")
+      .eq("id", athleteId)
+      .maybeSingle(),
   ]);
-  return { routine, history };
+  const profile = profileRes?.data
+    ? {
+        height_cm: profileRes.data.height_cm != null ? Number(profileRes.data.height_cm) : null,
+        unit_system: profileRes.data.unit_system || "imperial",
+      }
+    : { height_cm: null, unit_system: "imperial" };
+  return { routine, history, weights, measurements, profile };
 }
 
-export async function loadAthleteSessionsSince(_athleteId: string, _since: string): Promise<unknown[]> { return []; }
+// ── Fetch sessions finished by athletes since a timestamp (catch-up) ──────────
+export async function loadAthleteSessionsSince(
+  coachId: string,
+  sinceIso: string
+): Promise<Array<{ athleteName: string; workoutType: string; completedAt: string }>> {
+  // Get coach's accepted athletes
+  const { data: links } = await supabase
+    .from("coach_athletes")
+    .select("athlete_id")
+    .eq("coach_id", coachId)
+    .eq("status", "accepted");
+
+  const athleteIds = (links || []).map((l: any) => l.athlete_id);
+  if (athleteIds.length === 0) return [];
+
+  const [{ data: sessions }, { data: profiles }] = await Promise.all([
+    supabase
+      .from("workout_sessions")
+      .select("user_id, workout_type, completed_at")
+      .in("user_id", athleteIds)
+      .not("completed_at", "is", null)
+      .gte("completed_at", sinceIso)
+      .order("completed_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", athleteIds),
+  ]);
+
+  const nameMap: Record<string, string> = {};
+  for (const p of profiles || []) nameMap[p.id] = p.display_name || "Athlete";
+
+  return (sessions || []).map((s: any) => ({
+    athleteName: nameMap[s.user_id] || "Athlete",
+    workoutType: s.workout_type || "workout",
+    completedAt: s.completed_at,
+  }));
+}
+
 
