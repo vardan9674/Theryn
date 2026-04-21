@@ -13,7 +13,7 @@ import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
 import ChatView from "./components/ChatView";
-import { loadConversationPreviews } from "./hooks/useChat";
+import { loadConversationPreviews, loadMyConversationPreviews } from "./hooks/useChat";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
@@ -644,6 +644,24 @@ export default function GymApp() {
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [athleteChatUnread, setAthleteChatUnread] = useState(0);
+
+  // Athlete-side unread poll: sums unread counts across any conversations the
+  // current user participates in. Reuses the same RPC coaches use for previews.
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (chatOpen) { setAthleteChatUnread(0); return; }
+    let cancelled = false;
+    async function tick() {
+      const rows = await loadMyConversationPreviews();
+      if (cancelled) return;
+      const total = rows.reduce((s, r) => s + (r.unread_count || 0), 0);
+      setAthleteChatUnread(total);
+    }
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [authUser?.id, chatOpen]);
   // AthleteView used only in CoachApp — removed from athlete root
 
   // ── Check onboarding state on every sign-in (DB, not localStorage) ─────
@@ -1222,6 +1240,28 @@ export default function GymApp() {
               stroke={BG} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
+            {athleteChatUnread > 0 && (
+              <div style={{
+                position: "absolute",
+                top: "-4px",
+                right: "-4px",
+                minWidth: "20px",
+                height: "20px",
+                borderRadius: "10px",
+                background: "#FF5C5C",
+                color: "#F0F0F0",
+                fontSize: "11px",
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 6px",
+                border: `2px solid ${BG}`,
+                boxSizing: "border-box",
+              }}>
+                {athleteChatUnread > 9 ? "9+" : athleteChatUnread}
+              </div>
+            )}
           </button>
 
           {chatOpen && (() => {

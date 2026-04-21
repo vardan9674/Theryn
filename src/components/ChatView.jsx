@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { useChat } from "../hooks/useChat";
 
@@ -253,12 +254,39 @@ export default function ChatView({
     useChat({ authUser, coachId, athleteId, selfName });
 
   const bottomRef = React.useRef(null);
+  const scrollRef = React.useRef(null);
   const prevIncomingCount = React.useRef(0);
+  const [atBottom, setAtBottom] = React.useState(true);
+  const [newCount, setNewCount] = React.useState(0);
 
-  // Auto-scroll on new messages
+  // Track whether the user is pinned to the bottom of the scroll.
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setAtBottom(near);
+    if (near) setNewCount(0);
+  }
+
+  // Auto-scroll on new messages only if the user is already at the bottom.
+  // Otherwise surface a "jump to latest" pill so we don't yank them mid-read.
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    const isOwn = last?.sender_id === authUser?.id;
+    if (atBottom || isOwn) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      setNewCount((n) => n + 1);
+    }
+  }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ESC closes the chat.
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose?.(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   // Mark read on mount
   React.useEffect(() => {
@@ -284,14 +312,30 @@ export default function ChatView({
     ? otherPartyName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : "?";
 
-  return (
+  // Lock background scroll while chat is open
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const overlay = (
     <div style={{
       position: "fixed",
       inset: 0,
-      zIndex: 260,
+      zIndex: 9999,
       background: BG,
       display: "flex",
       flexDirection: "column",
+      alignItems: "center",
+    }}>
+    <div style={{
+      width: "100%",
+      maxWidth: "820px",
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+      minHeight: 0,
     }}>
       {/* Header */}
       <div style={{
@@ -341,13 +385,18 @@ export default function ChatView({
       </div>
 
       {/* Message list */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "12px 16px",
-        display: "flex",
-        flexDirection: "column",
-      }}>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px 16px",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+        }}
+      >
         {loading && (
           <div style={{ textAlign: "center", color: SB, padding: "48px 0", fontSize: "14px" }}>
             Loading messages\u2026
@@ -385,7 +434,34 @@ export default function ChatView({
         <div ref={bottomRef} />
       </div>
 
+      {!atBottom && newCount > 0 && (
+        <button
+          onClick={() => bottomRef.current?.scrollIntoView({ behavior: "smooth" })}
+          style={{
+            position: "absolute",
+            bottom: "84px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: A,
+            color: BG,
+            border: "none",
+            borderRadius: "18px",
+            padding: "6px 14px",
+            fontSize: "12px",
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+            zIndex: 6,
+          }}
+        >
+          {newCount} new message{newCount > 1 ? "s" : ""} ↓
+        </button>
+      )}
+
       <InputBar onSend={sendMessage} onTyping={sendTyping} />
     </div>
+    </div>
   );
+
+  return createPortal(overlay, document.body);
 }
