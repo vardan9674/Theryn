@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Block the app shell's deep routes that require auth — not useful to index
+Disallow: /api/
+
+Sitemap: https://theryn.fit/sitemap.xml
