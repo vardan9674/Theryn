@@ -6,15 +6,15 @@
 
 import React from "react";
 
-// Tokens mirrored from App.jsx
-const A   = "#C8FF00";
-const BG  = "#080808";
-const S1  = "#101010";
-const S2  = "#181818";
-const BD  = "#1E1E1E";
-const TX  = "#F0F0F0";
-const SB  = "#585858";
-const MT  = "#2C2C2C";
+// Tokens — CSS variables so dark/light mode works automatically
+const A   = "#C8FF00";            // accent — same in both themes
+const BG  = "var(--bg)";
+const S1  = "var(--bg-s1)";
+const S2  = "var(--bg-s2)";
+const BD  = "var(--border)";
+const TX  = "var(--text)";
+const SB  = "var(--text-sub)";
+const MT  = "var(--text-muted)";
 
 const TYPE_COLORS = {
   Push: "#FF8C42", Pull: "#4ECDC4", Legs: "#A8E6CF", Upper: "#C77DFF",

@@ -1,10 +1,10 @@
 const A   = "#C8FF00";
-const BG  = "#080808";
-const S1  = "#101010";
-const BD  = "#1E1E1E";
-const TX  = "#F0F0F0";
-const SB  = "#585858";
-const MT  = "#2C2C2C";
+const BG  = "var(--bg)";
+const S1  = "var(--bg-s1)";
+const BD  = "var(--border)";
+const TX  = "var(--text)";
+const SB  = "var(--text-sub)";
+const MT  = "var(--text-muted)";
 
 const btnPrim = {
   background: A,
@@ -99,7 +99,7 @@ export default function LoginScreen({ onSignIn, loading, error }) {
         <div style={{
           marginTop: "16px",
           fontSize: "13px",
-          color: "#FF5C5C",
+          color: "var(--red)",
           textAlign: "center",
           padding: "10px 14px",
           background: S1,
