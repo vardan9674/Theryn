@@ -49,7 +49,8 @@ export function playRestTimerBeep() {
 }
 
 // ── TOKENS ──────────────────────────────────────────────────────────────
-const A   = "#C8FF00";            // accent — same in both themes
+const A   = "#C8FF00";            // accent — for bg fills, glows, button backgrounds
+const ACT = "var(--accent-text)"; // accent AS TEXT — deep olive on light, neon on dark
 const BG  = "var(--bg)";
 const S1  = "var(--bg-s1)";
 const S2  = "var(--bg-s2)";
@@ -231,7 +232,7 @@ function ScreenHeader({ sup, title, profile, onProfileTap, rightContent }) {
           <div style={{ ...subLbl, marginBottom:"4px" }}>{sup}</div>
           <div style={{ fontSize:"28px", fontWeight:"700", letterSpacing:"-0.04em" }}>{title}</div>
           {Capacitor.getPlatform() === 'web' && (
-            <div style={{ fontSize:"12px", color:A, fontWeight:"600", marginTop:"4px", letterSpacing:"0.02em", textTransform:"uppercase" }}>
+            <div style={{ fontSize:"12px", color:ACT, fontWeight:"600", marginTop:"4px", letterSpacing:"0.02em", textTransform:"uppercase" }}>
               Coaching, Without the Chaos
             </div>
           )}
@@ -542,7 +543,7 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 
   return (
     <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"#000", zIndex:1000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ color:A, fontSize:"24px", fontWeight:"700", marginBottom:"40px", textTransform:"uppercase", letterSpacing:"0.1em" }}>{targetName}</div>
+      <div style={{ color:ACT, fontSize:"24px", fontWeight:"700", marginBottom:"40px", textTransform:"uppercase", letterSpacing:"0.1em" }}>{targetName}</div>
       
       <div style={{ display:"flex", alignItems:"center", gap:"20px", marginBottom:"80px" }}>
         <button onClick={() => { setRunning(false); setTime(t => Math.max(0, t - 15)); }} style={{ background:"none", border:"none", color:SB, fontSize:"32px", cursor:"pointer", padding:"20px" }}>-</button>
@@ -1149,7 +1150,7 @@ export default function GymApp() {
       {undoToast && (
         <div style={{ position:"fixed", bottom:"86px", left:"50%", transform:"translateX(-50%)", background:S2, border:`1px solid ${BD}`, borderRadius:"10px", padding:"10px 16px", display:"flex", alignItems:"center", gap:"12px", zIndex:150, maxWidth:"360px" }}>
           <span style={{ fontSize:"13px", color:TX, flex:1 }}>{undoToast}</span>
-          <button onClick={revertTemplates} style={{ background:"none", border:`1px solid ${A}`, borderRadius:"6px", color:A, cursor:"pointer", padding:"4px 12px", fontSize:"12px", fontWeight:"600" }}>Undo</button>
+          <button onClick={revertTemplates} style={{ background:"none", border:`1px solid ${A}`, borderRadius:"6px", color:ACT, cursor:"pointer", padding:"4px 12px", fontSize:"12px", fontWeight:"600" }}>Undo</button>
         </div>
       )}
 
@@ -1654,7 +1655,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                 <div style={{ fontSize:"14px", color:TYPE_COLORS[w.type]||SB, fontWeight:"600", marginTop:"2px" }}>{w.type}</div>
               </div>
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:"18px", fontWeight:"700", color:A, letterSpacing:"-0.03em" }}>{fmtTimer(w.duration)}</div>
+                <div style={{ fontSize:"18px", fontWeight:"700", color:ACT, letterSpacing:"-0.03em" }}>{fmtTimer(w.duration)}</div>
                 <div style={{ fontSize:"10px", color:SB }}>duration</div>
               </div>
             </div>
@@ -1826,7 +1827,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
               </div>
             </div>
             <button onClick={() => adjustRest(-15)} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>−15</button>
-            <button onClick={() => adjustRest(+15)} style={{ background:`${A}15`, border:`1px solid ${A}44`, borderRadius:"8px", color:A, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>+15</button>
+            <button onClick={() => adjustRest(+15)} style={{ background:`${A}15`, border:`1px solid ${A}44`, borderRadius:"8px", color:ACT, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>+15</button>
             <button onClick={skipRest} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"7px 13px", fontSize:"13px", flexShrink:0 }}>Skip</button>
           </div>
         </div>
@@ -1851,7 +1852,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             {/* Greyed-out overlay before workout starts */}
             {!workoutActive && session.length > 0 && (
               <div style={{ background:S2, border:`1px dashed ${MT}`, borderRadius:"12px", padding:"16px", textAlign:"center", marginBottom:"8px" }}>
-                <div style={{ fontSize:"15px", color:SB }}>Press <span style={{ color:A, fontWeight:"700" }}>Start</span> to begin logging your sets</div>
+                <div style={{ fontSize:"15px", color:SB }}>Press <span style={{ color:ACT, fontWeight:"700" }}>Start</span> to begin logging your sets</div>
               </div>
             )}
 
@@ -1875,7 +1876,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                                 <span style={{ fontSize:"19px", fontWeight:"600", color: exDone ? A : TX }}>{ex.name}</span>
                                 {exIsCardio && <span style={{ fontSize:"9px", background:"#06D6A0", color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>CARDIO</span>}
                                 {exDone && <span style={{ fontSize:"9px", background:A, color:"#000", borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>DONE</span>}
-                                {ex.coachNote && !isCol && <span style={{ fontSize:"9px", background:`${A}20`, color:A, borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>COACH</span>}
+                                {ex.coachNote && !isCol && <span style={{ fontSize:"9px", background:`${A}20`, color:ACT, borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>COACH</span>}
                                 <span style={{ fontSize:"10px", color:SB, transform: isCol ? "none" : "rotate(180deg)", transition:"transform 0.2s" }}>⌄</span>
                               </button>
                             </div>
@@ -1891,7 +1892,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                                 </svg>
                                 <div>
-                                  <div style={{ fontSize: "10px", fontWeight: 700, color: A, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "3px" }}>Coach Note</div>
+                                  <div style={{ fontSize: "10px", fontWeight: 700, color: ACT, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: "3px" }}>Coach Note</div>
                                   <div style={{ fontSize: "13px", color: TX, lineHeight: 1.55 }}>{ex.coachNote}</div>
                                 </div>
                               </div>
@@ -1936,7 +1937,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                                     </button>
 
                                     {exIsTimed && (
-                                      <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background:S2, border:`1px solid ${BD}`, color:A, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>⏱</button>
+                                      <button onClick={() => setActiveStopwatch({ exId: ex.id, setId: set.id, name: ex.name })} style={{ width:"44px", height:"44px", borderRadius:"10px", background:S2, border:`1px solid ${BD}`, color:ACT, fontSize:"20px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>⏱</button>
                                     )}
 
                                     <button onClick={() => removeSet(ex.id, set.id)} style={{ background:"none", border:"none", color:MT, cursor:"pointer", fontSize:"16px", padding:0, textAlign:"center", lineHeight:1 }}>✕</button>
@@ -2004,7 +2005,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             {/* Stats grid */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"20px" }}>
               <div style={{ background:S2, borderRadius:"12px", padding:"14px 8px", textAlign:"center", border:`1px solid ${BD}` }}>
-                <div style={{ fontSize:"24px", fontWeight:"700", color:A, letterSpacing:"-0.03em" }}>{fmtTimer(workoutSummary.duration)}</div>
+                <div style={{ fontSize:"24px", fontWeight:"700", color:ACT, letterSpacing:"-0.03em" }}>{fmtTimer(workoutSummary.duration)}</div>
                 <div style={{ fontSize:"11px", color:SB, marginTop:"4px", textTransform:"uppercase", letterSpacing:"0.06em" }}>Duration</div>
               </div>
               <div style={{ background:S2, borderRadius:"12px", padding:"14px 8px", textAlign:"center", border:`1px solid ${BD}` }}>
@@ -2024,7 +2025,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                 {workoutSummary.exercises.map((ex, i) => (
                   <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom: i < workoutSummary.exercises.length - 1 ? `1px solid ${MT}` : "none" }}>
                     <span style={{ fontSize:"15px", fontWeight:"500", color:TX }}>{ex.name}</span>
-                    <span style={{ fontSize:"13px", color:A, fontWeight:"600" }}>{ex.sets.length} {ex.sets.length === 1 ? "set" : "sets"}</span>
+                    <span style={{ fontSize:"13px", color:ACT, fontWeight:"600" }}>{ex.sets.length} {ex.sets.length === 1 ? "set" : "sets"}</span>
                   </div>
                 ))}
               </div>
@@ -2067,7 +2068,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             <div style={{ fontSize:"17px", fontWeight:"700", marginBottom:"8px" }}>Finish Workout?</div>
             <div style={{ fontSize:"13px", color:SB, lineHeight:"1.6", marginBottom:"8px" }}>
               {doneSets > 0 ? (
-                <>You completed <span style={{ color:A, fontWeight:"600" }}>{doneSets} sets</span> across <span style={{ color:A, fontWeight:"600" }}>{session.filter(ex => ex.sets.some(s => s.done)).length} exercises</span> in <span style={{ color:A, fontWeight:"600" }}>{fmtTimer(workoutElapsed)}</span>.</>
+                <>You completed <span style={{ color:ACT, fontWeight:"600" }}>{doneSets} sets</span> across <span style={{ color:ACT, fontWeight:"600" }}>{session.filter(ex => ex.sets.some(s => s.done)).length} exercises</span> in <span style={{ color:ACT, fontWeight:"600" }}>{fmtTimer(workoutElapsed)}</span>.</>
               ) : (
                 "No sets completed yet."
               )}
@@ -2109,7 +2110,7 @@ function RoutineExerciseCard({ ex, updateEx }) {
     <div style={{ padding:"8px 4px 8px 0", flex:1, touchAction: "pan-y" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <span style={{ fontSize:"16px", fontWeight:"500", color:TX }}>{name}</span>
-        <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} style={{ background:"none", border:"none", color:A, fontSize:"13px", fontWeight:"600", padding:"4px", cursor:"pointer" }}>
+        <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} style={{ background:"none", border:"none", color:ACT, fontSize:"13px", fontWeight:"600", padding:"4px", cursor:"pointer" }}>
           {expanded ? "Done" : "Config"}
         </button>
       </div>
@@ -2250,7 +2251,7 @@ function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAth
           width: "36px", height: "36px", borderRadius: "50%",
           background: S1, border: `1px solid ${MT}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "14px", fontWeight: 700, color: A,
+          fontSize: "14px", fontWeight: 700, color: ACT,
           flexShrink: 0, letterSpacing: "-0.02em",
         }}>
           {athlete.athlete_name.charAt(0).toUpperCase()}
@@ -2271,7 +2272,7 @@ function CoachAthleteRow({ athlete, expandedAthlete, setExpandedAthlete, openAth
             {streakText && (
               <>
                 <span style={{ color: MT, margin: "0 8px" }}>·</span>
-                <span style={{ color: A, fontWeight: 500 }}>{streakText}</span>
+                <span style={{ color: ACT, fontWeight: 500 }}>{streakText}</span>
               </>
             )}
           </div>
@@ -3038,7 +3039,7 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
                         </div>
                         <div>
                           <div style={{ fontSize:"16px", fontWeight:"600" }}>{l.coach_name}</div>
-                          <div style={{ fontSize:"12px", color:A, marginTop:"2px", display:"flex", alignItems:"center", gap:"4px" }}>
+                          <div style={{ fontSize:"12px", color:ACT, marginTop:"2px", display:"flex", alignItems:"center", gap:"4px" }}>
                             <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:A }}/>Active
                           </div>
                         </div>
@@ -3152,7 +3153,7 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
               {/* 6-box code input */}
               <div style={{ display:"flex", justifyContent:"center", gap:"6px", marginBottom:"28px" }}>
                 {[0,1,2,3,4,5].map(i => (
-                  <div key={i} style={{ width:"44px", height:"56px", borderRadius:"12px", background:S2, border:`2px solid ${codeInput[i] ? A : BD}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"26px", fontWeight:"800", color:A, transition:"border-color 0.15s" }}>
+                  <div key={i} style={{ width:"44px", height:"56px", borderRadius:"12px", background:S2, border:`2px solid ${codeInput[i] ? A : BD}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"26px", fontWeight:"800", color:ACT, transition:"border-color 0.15s" }}>
                     {codeInput[i] || ""}
                   </div>
                 ))}
@@ -3889,7 +3890,7 @@ function PRsScreen({ prs, profile, onProfileTap, units, workoutHistory }) {
               <div style={{ fontSize:"13px", color:SB, marginTop:"2px", letterSpacing:"0.04em" }}>{pr.date}</div>
             </div>
             <div style={{ textAlign:"right" }}>
-              <div><span style={{ fontSize:"26px", fontWeight:"700", color:A, letterSpacing:"-0.04em" }}>{pr.w}</span><span style={{ fontSize:"14px", color:SB }}> {wLabel}</span></div>
+              <div><span style={{ fontSize:"26px", fontWeight:"700", color:ACT, letterSpacing:"-0.04em" }}>{pr.w}</span><span style={{ fontSize:"14px", color:SB }}> {wLabel}</span></div>
               <div style={{ fontSize:"13px", color:SB }}>× {pr.r} {pr.r===1?"rep":"reps"}</div>
             </div>
           </div>
@@ -4035,7 +4036,7 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
               <span style={{ fontSize:"16px" }}>Switch to Coach Mode</span>
               <div style={{ fontSize:"12px", color:SB, marginTop:"2px" }}>Manage athletes' routines & progress</div>
             </div>
-            <button onClick={onSwitchRole} style={{ background:"none", border:`1px solid ${A}44`, borderRadius:"8px", cursor:"pointer", fontSize:"13px", color:A, fontWeight:"600", padding:"6px 14px" }}>Switch</button>
+            <button onClick={onSwitchRole} style={{ background:"none", border:`1px solid ${A}44`, borderRadius:"8px", cursor:"pointer", fontSize:"13px", color:ACT, fontWeight:"600", padding:"6px 14px" }}>Switch</button>
           </div>
         </div>
         <div style={card}>
@@ -4114,12 +4115,12 @@ function LoginScreen({ authError, onClearError }) {
         </div>
         <div style={{ textAlign:"center" }}>
           {Capacitor.getPlatform() === 'web' ? (
-            <div style={{ fontSize:"30px", fontWeight:"800", letterSpacing:"-0.05em", color:A, lineHeight:1.2, maxWidth:"300px" }}>
+            <div style={{ fontSize:"30px", fontWeight:"800", letterSpacing:"-0.05em", color:ACT, lineHeight:1.2, maxWidth:"300px" }}>
               Theryn — Coaching, Without the Chaos
             </div>
           ) : (
             <>
-              <div style={{ fontSize:"38px", fontWeight:"800", letterSpacing:"-0.05em", color:A, lineHeight:1 }}>Theryn</div>
+              <div style={{ fontSize:"38px", fontWeight:"800", letterSpacing:"-0.05em", color:ACT, lineHeight:1 }}>Theryn</div>
               <div style={{ fontSize:"16px", color:SB, marginTop:"8px", lineHeight:"1.6" }}>Your personal gym & body tracking log.</div>
             </>
           )}
@@ -4280,7 +4281,7 @@ function TourOverlay({ onDone }) {
 
         {/* Tag */}
         <div style={{
-          fontSize: "11px", color: A, fontWeight: "700",
+          fontSize: "11px", color: ACT, fontWeight: "700",
           letterSpacing: "0.1em", textTransform: "uppercase",
         }}>
           {s.tag}
@@ -4667,7 +4668,7 @@ function WebAthleteDownloadPage({ onSwitchToCoach, onSignOut }) {
             onClick={onSwitchToCoach}
             style={{
               background: "none", border: `1px solid ${MT}`, borderRadius: "10px",
-              padding: "10px 20px", color: A, fontSize: "14px", fontWeight: 600,
+              padding: "10px 20px", color: ACT, fontSize: "14px", fontWeight: 600,
               cursor: "pointer", transition: "all 0.2s ease",
             }}
             onMouseEnter={e => { e.currentTarget.style.background = `${A}12`; e.currentTarget.style.borderColor = `${A}44`; }}
@@ -5498,7 +5499,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
                         {coachDisplayName}
                       </div>
                       <button onClick={() => { setEditNameValue(coachDisplayName); setEditingName(true); }}
-                        style={{ background: "none", border: "none", color: A, fontSize: "12px", fontWeight: 600, cursor: "pointer", padding: 0 }}>
+                        style={{ background: "none", border: "none", color: ACT, fontSize: "12px", fontWeight: 600, cursor: "pointer", padding: 0 }}>
                         Edit
                       </button>
                     </div>
@@ -5523,7 +5524,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
                 style={{ flex: 1, background: S2, border: `1px solid ${BD}`, borderRadius: "12px", padding: "12px", textAlign: "left", cursor: "pointer", color: "inherit" }}
               >
                 <div style={{ fontSize: "9px", color: SB, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase" }}>Payments</div>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: A, marginTop: "3px", letterSpacing: "-0.01em" }}>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: ACT, marginTop: "3px", letterSpacing: "-0.01em" }}>
                   Open <span style={{ color: MT }}>→</span>
                 </div>
               </button>
@@ -5532,7 +5533,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             {/* ── Invite code card ── */}
             <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "18px", border: `1px solid ${BD}` }}>
               <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase" }}>Invite Code</div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: A, letterSpacing: "0.1em" }}>{coachInviteCode}</div>
+              <div style={{ fontSize: "22px", fontWeight: 800, color: ACT, letterSpacing: "0.1em" }}>{coachInviteCode}</div>
             </div>
 
             {/* ── Settings ── */}
@@ -5716,7 +5717,7 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
       {selectedAthlete && (
         <div style={{ background: `${A}10`, border: `1px solid ${A}44`, borderRadius: "12px", padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: "10px", color: A, fontWeight: 700, letterSpacing: "0.06em", marginBottom: "2px" }}>VIEWING</div>
+            <div style={{ fontSize: "10px", color: ACT, fontWeight: 700, letterSpacing: "0.06em", marginBottom: "2px" }}>VIEWING</div>
             <div style={{ fontSize: "14px", color: TX, fontWeight: 700 }}>
               {selectedAthlete.athlete_name || selectedAthlete.athlete_id?.slice(0, 8)}
             </div>
@@ -5737,7 +5738,7 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
           <div style={{ fontSize: "13px", color: SB, marginBottom: "24px" }}>Share your invite code with athletes to connect.</div>
           <div style={{ background: S2, border: `1px solid ${BD}`, borderRadius: "12px", padding: "14px 20px", display: "inline-block" }}>
             <div style={{ fontSize: "11px", color: SB, marginBottom: "4px", letterSpacing: "0.06em" }}>YOUR INVITE CODE</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: A, letterSpacing: "0.12em" }}>{inviteCode}</div>
+            <div style={{ fontSize: "24px", fontWeight: 800, color: ACT, letterSpacing: "0.12em" }}>{inviteCode}</div>
           </div>
         </div>
       ) : (
@@ -5938,7 +5939,7 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Routines</div>
-        <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
+        <div style={{ fontSize: "12px", color: ACT, marginTop: "2px" }}>{athleteName}</div>
       </div>
 
       {/* Note save toast */}
@@ -5985,7 +5986,7 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
             <button
               onClick={() => setCoachAthleteView({ name: athleteName, routine, history: athleteData?.history, weights: athleteData?.weights, measurements: athleteData?.measurements })}
               style={{ padding: "6px 12px", background: S2, color: TX, border: `1px solid ${BD}`, borderRadius: "14px", fontSize: "12px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
-              <span style={{ fontSize: "14px", color: A }}>✎</span> Edit
+              <span style={{ fontSize: "14px", color: ACT }}>✎</span> Edit
             </button>
           </div>
 
@@ -6029,10 +6030,10 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
                     {/* Exercise name + index */}
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
                       <div style={{ width: "26px", height: "26px", borderRadius: "8px", background: `${A}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: A }}>{i + 1}</span>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: ACT }}>{i + 1}</span>
                       </div>
                       <div style={{ fontSize: "15px", fontWeight: 700, color: TX, flex: 1 }}>{exName}</div>
-                      {existingNote && <span style={{ fontSize: "10px", background: `${A}15`, color: A, borderRadius: "4px", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.04em" }}>NOTE</span>}
+                      {existingNote && <span style={{ fontSize: "10px", background: `${A}15`, color: ACT, borderRadius: "4px", padding: "2px 6px", fontWeight: 700, letterSpacing: "0.04em" }}>NOTE</span>}
                     </div>
 
                     {/* Coach note edit area */}
@@ -6103,7 +6104,7 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Body</div>
-        <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
+        <div style={{ fontSize: "12px", color: ACT, marginTop: "2px" }}>{athleteName}</div>
       </div>
 
       {loadingAthlete ? (
@@ -6365,7 +6366,7 @@ function CoachPaymentsTab({ authUser, profile, coachLinks, coachLinksLoaded }) {
       {/* Monthly summary — three tiles. Received, Expected, Outstanding. */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
         {[
-          { label: "Received", value: summary.receivedThisMonth, color: A },
+          { label: "Received", value: summary.receivedThisMonth, color: ACT },
           { label: "Expected", value: summary.expectedThisMonth, color: TX },
           { label: "Outstanding", value: summary.outstanding, color: summary.outstanding > 0.01 ? SEVERITY_COLORS.urgent : SB },
         ].map(t => (
@@ -6515,7 +6516,7 @@ function AthletePaymentRow({ row, defaultCurrency, onSetFee, onViewHistory, onQu
           width: "34px", height: "34px", borderRadius: "50%",
           background: S1, border: `1px solid ${MT}`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "13px", fontWeight: 700, color: A, flexShrink: 0,
+          fontSize: "13px", fontWeight: 700, color: ACT, flexShrink: 0,
         }}>
           {link.athlete_name?.[0]?.toUpperCase() || "?"}
         </div>
@@ -6542,7 +6543,7 @@ function AthletePaymentRow({ row, defaultCurrency, onSetFee, onViewHistory, onQu
       {/* Action links — click-swallowed from the row tap */}
       <div style={{ display: "flex", gap: "8px", marginTop: "10px", paddingLeft: "46px" }} onClick={e => e.stopPropagation()}>
         <button onClick={onQuickLog} className="press-scale"
-          style={{ fontSize: "11px", color: A, background: `${A}12`, border: `1px solid ${A}44`, borderRadius: "8px", padding: "5px 10px", fontWeight: 700, cursor: "pointer" }}>
+          style={{ fontSize: "11px", color: ACT, background: `${A}12`, border: `1px solid ${A}44`, borderRadius: "8px", padding: "5px 10px", fontWeight: 700, cursor: "pointer" }}>
           + Log payment
         </button>
         <button onClick={onSetFee} className="press-scale"
@@ -6806,7 +6807,7 @@ function CoachProgressTab({ authUser, selectedAthlete, setSelectedAthlete, coach
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Progress</div>
-        <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
+        <div style={{ fontSize: "12px", color: ACT, marginTop: "2px" }}>{athleteName}</div>
       </div>
 
       {loadingAthlete ? (
@@ -6953,7 +6954,7 @@ function CoachRecordsTab({ authUser, selectedAthlete, setSelectedAthlete, coachL
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Records</div>
-        <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
+        <div style={{ fontSize: "12px", color: ACT, marginTop: "2px" }}>{athleteName}</div>
       </div>
 
       {loadingAthlete ? (
@@ -6981,7 +6982,7 @@ function CoachRecordsTab({ authUser, selectedAthlete, setSelectedAthlete, coachL
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "20px", fontWeight: 800, color: A, lineHeight: 1 }}>{r.weight}</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: ACT, lineHeight: 1 }}>{r.weight}</div>
                       <div style={{ fontSize: "10px", color: SB }}>lbs</div>
                     </div>
                   </div>

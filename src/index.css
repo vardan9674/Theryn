@@ -16,6 +16,10 @@
   --text-sub:    #585858;
   --text-muted:  #2C2C2C;
   --accent:      #C8FF00;
+  --accent-text: #C8FF00;           /* neon as text — pops on dark bg */
+  --accent-teal: #4ECDC4;           /* teal gradient stop */
+  --accent-bg:   rgba(200, 255, 0, 0.10);
+  --accent-ring: rgba(200, 255, 0, 0.22);
   --accent-10:   rgba(200, 255, 0, 0.10);
   --accent-15:   rgba(200, 255, 0, 0.15);
   --accent-glow: rgba(200, 255, 0, 0.08);
@@ -38,6 +42,10 @@
   --text-sub:    #6B7280;
   --text-muted:  #D1D5DB;
   --accent:      #C8FF00;
+  --accent-text: #4A6B00;           /* deep olive — WCAG AA on white */
+  --accent-teal: #1A7A6E;           /* dark teal — readable gradient stop */
+  --accent-bg:   rgba(74, 107, 0, 0.09);
+  --accent-ring: rgba(74, 107, 0, 0.25);
   --accent-10:   rgba(120, 160, 0, 0.12);
   --accent-15:   rgba(120, 160, 0, 0.18);
   --accent-glow: rgba(120, 160, 0, 0.10);
@@ -489,4 +497,20 @@ button {
    the first tab's title, even without @capacitor/status-bar installed. */
 .content-scroll {
   padding-top: 8px;
+}
+
+/* ── Gradient text — theme-aware ────────────────────────────────────────
+   CSS variables inside background-clip:text MUST live in a stylesheet rule,
+   not an inline style, to work reliably in Safari/WebKit.              */
+.accent-gradient-text {
+  background: linear-gradient(120deg, var(--accent-text) 0%, var(--accent-teal) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.accent-gradient-text-rev {
+  background: linear-gradient(120deg, var(--accent-teal) 0%, var(--accent-text) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

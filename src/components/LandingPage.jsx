@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 
-const A   = "#C8FF00";            // accent — same in both themes
+const A   = "#C8FF00";            // accent — for bg fills, glows, button backgrounds
+const ACT = "var(--accent-text)"; // accent AS TEXT — deep olive on light, neon on dark
 const AT  = "#4ECDC4";            // workout type colours — theme-independent
 const AW  = "#FFD166";
 const BG  = "var(--bg)";
@@ -269,9 +270,9 @@ function BodyScreen() {
       <div style={{ background:S2, borderRadius:8, border:`1px solid ${BD}`, padding:"8px 10px" }}>
         <div style={{ fontSize:7, color:SB, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>Today's Weight</div>
         <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
-          <span style={{ fontSize:26, fontWeight:700, color:A, letterSpacing:"-0.04em" }}>183.4</span>
+          <span style={{ fontSize:26, fontWeight:700, color:ACT, letterSpacing:"-0.04em" }}>183.4</span>
           <span style={{ fontSize:9, color:SB }}>lbs</span>
-          <span style={{ fontSize:9, color:A, marginLeft:4 }}>↓ 0.6</span>
+          <span style={{ fontSize:9, color:ACT, marginLeft:4 }}>↓ 0.6</span>
         </div>
       </div>
       {[["Chest","42.0 in","↑ 0.5"],["Waist","31.2 in","↓ 0.3"],["Arms","15.8 in","↑ 0.2"]].map(([name,val,delta]) => (
@@ -355,7 +356,7 @@ function CoachScreen() {
 // a big invite code, a "Needs Attention" card, and an athlete list with streaks.
 function DesktopMockup({ style = {} }) {
   const roster = [
-    { name: "Alex Mercer",   last: "Push Day · today",       streak: 6, color: A },
+    { name: "Alex Mercer",   last: "Push Day · today",       streak: 6, color: ACT },
     { name: "Jordan Kim",    last: "Upper · yesterday",      streak: 4, color: AT },
     { name: "Sam Rivera",    last: "Pull · 5 days ago",      streak: 0, color: "#FF8C42" },
     { name: "Maya Chen",     last: "Legs · today",           streak: 9, color: "#B580FF" },
@@ -427,7 +428,7 @@ function DesktopMockup({ style = {} }) {
             {/* Invite code card — real feature */}
             <div style={{ marginTop: "auto", padding: "12px 12px", background: S1, borderRadius: 10, border: `1px solid ${BD}` }}>
               <div style={{ fontSize: 9, color: SB, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Your invite code</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: A, letterSpacing: "0.16em" }}>K7M4NP</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: ACT, letterSpacing: "0.16em" }}>K7M4NP</div>
               <div style={{ fontSize: 10, color: SB, marginTop: 4 }}>Share to connect athletes</div>
             </div>
           </div>
@@ -634,7 +635,7 @@ function StatCounter({ value, label, delay = 0 }) {
       transform: visible ? "translateY(0)" : "translateY(20px)",
       transition: `opacity 0.6s ease ${delay}s, transform 0.6s ease ${delay}s`,
     }}>
-      <div style={{ fontSize: "clamp(36px, 4.2vw, 56px)", fontWeight: 700, color: A, letterSpacing: "-0.05em", lineHeight: 1 }}>
+      <div style={{ fontSize: "clamp(36px, 4.2vw, 56px)", fontWeight: 700, color: ACT, letterSpacing: "-0.05em", lineHeight: 1 }}>
         {formatted}{suffix}
       </div>
       <div style={{ fontSize: 12, color: SB, marginTop: 8, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</div>
@@ -831,13 +832,13 @@ function Hero({ onGetStarted }) {
       }}>
         <div style={{
           display: "inline-flex", alignItems: "center", gap: 8,
-          background: A + "15", border: `1px solid ${A}30`,
+          background: "var(--accent-bg)", border: "1px solid var(--accent-ring)",
           borderRadius: 100, padding: "5px 14px",
           marginBottom: 28,
           animation: "fadeInDown 0.6s ease",
         }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: A }} />
-          <span style={{ fontSize: 11, color: A, fontWeight: 600, letterSpacing: "0.12em" }}>BUILT FOR COACHES · NOW IN BETA</span>
+          <span style={{ fontSize: 11, color: ACT, fontWeight: 600, letterSpacing: "0.12em" }}>BUILT FOR COACHES · NOW IN BETA</span>
         </div>
 
         <h1 style={{
@@ -850,12 +851,7 @@ function Hero({ onGetStarted }) {
           animation: "fadeInUp 0.7s ease 0.1s both",
         }}>
           Coaching,<br />
-          <span style={{
-            background: `linear-gradient(120deg, ${A} 0%, ${AT} 100%)`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-          }}>without the chaos.</span>
+          <span className="accent-gradient-text">without the chaos.</span>
         </h1>
 
         <p style={{
@@ -1012,7 +1008,7 @@ function ChaosToClarity() {
     }}>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <RevealDiv style={{ textAlign: "center", marginBottom: 80 }}>
-          <div style={{ fontSize: 11, color: A, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>
+          <div style={{ fontSize: 11, color: ACT, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>
             The Transformation
           </div>
           <h2 style={{
@@ -1024,12 +1020,7 @@ function ChaosToClarity() {
             lineHeight: 1.05,
           }}>
             From 47 tabs open<br />
-            to <span style={{
-              background: `linear-gradient(120deg, ${A} 0%, ${AT} 100%)`,
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}>one organized system.</span>
+            to <span className="accent-gradient-text">one organized system.</span>
           </h2>
           <p style={{
             fontSize: 17,
@@ -1115,12 +1106,12 @@ function ChaosToClarity() {
             }}>
               <div style={{
                 width: 56, height: 56, borderRadius: "50%",
-                background: A + "15", border: `1px solid ${A}40`,
+                background: "var(--accent-bg)", border: "1px solid var(--accent-ring)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 24, color: A,
+                fontSize: 24, color: ACT,
               }}>→</div>
               <div style={{
-                fontSize: 12, fontWeight: 700, color: A, letterSpacing: "0.16em",
+                fontSize: 12, fontWeight: 700, color: ACT, letterSpacing: "0.16em",
               }}>THERYN</div>
             </div>
           </RevealDiv>
@@ -1131,7 +1122,7 @@ function ChaosToClarity() {
               position: "relative",
               height: 440,
               background: `linear-gradient(145deg, ${S1} 0%, #0b0b0b 100%)`,
-              border: `1px solid ${A}40`,
+              border: "1px solid var(--accent-ring)",
               borderRadius: 20,
               overflow: "hidden",
               padding: 20,
@@ -1142,7 +1133,7 @@ function ChaosToClarity() {
                 background: `linear-gradient(90deg, transparent, ${A}, transparent)`,
               }} />
               <div style={{
-                fontSize: 10, color: A, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600,
+                fontSize: 10, color: ACT, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600,
                 marginBottom: 14,
               }}>After · One System</div>
 
@@ -1157,7 +1148,7 @@ function ChaosToClarity() {
                 </div>
 
                 {[
-                  { name: "Alex Mercer", last: "Push Day · today",        streak: 6, color: A },
+                  { name: "Alex Mercer", last: "Push Day · today",        streak: 6, color: ACT },
                   { name: "Jordan Kim",  last: "Upper · yesterday",       streak: 4, color: AT },
                   { name: "Sam Rivera",  last: "Pull · 5 days ago",       streak: 0, color: "#FF8C42", warn: true },
                   { name: "Maya Chen",   last: "Legs · today",            streak: 9, color: "#B580FF" },
@@ -1185,7 +1176,7 @@ function ChaosToClarity() {
 
               <div style={{
                 position: "absolute", bottom: 16, left: 20, right: 20,
-                fontSize: 11, color: A, textAlign: "center", fontWeight: 600,
+                fontSize: 11, color: ACT, textAlign: "center", fontWeight: 600,
                 letterSpacing: "0.04em",
               }}>
                 ✓ Everything in one place. Nothing falls through.
@@ -1269,7 +1260,7 @@ function Ticker() {
 function Testimonials() {
   const quotes = [
     { text: "I was running 12 athletes on three different spreadsheets and WhatsApp. After two weeks on Theryn, I deleted all of them. I get my Sundays back now.", name: "Coach Dana L.", role: "Strength & Conditioning · 12 athletes", color: AT },
-    { text: "The roster view tells me in five seconds who's crushing it and who's drifting. That used to be an hour of scrolling through chats and screenshots.", name: "Marcus T.", role: "Powerlifting Coach · 8 athletes", color: A },
+    { text: "The roster view tells me in five seconds who's crushing it and who's drifting. That used to be an hour of scrolling through chats and screenshots.", name: "Marcus T.", role: "Powerlifting Coach · 8 athletes", color: ACT },
     { text: "My clients take it more seriously because it feels like a real product, not a shared Google Sheet. That alone changed my retention.", name: "Ryan K.", role: "Online Hybrid Coach · 20 athletes", color: "#FF8C42" },
   ];
   return (
@@ -1277,7 +1268,7 @@ function Testimonials() {
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <RevealDiv>
           <div style={{ textAlign: "center", marginBottom: 64 }}>
-            <div style={{ fontSize: 11, color: A, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>Coaches who switched</div>
+            <div style={{ fontSize: 11, color: ACT, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>Coaches who switched</div>
             <h2 style={{ fontSize: "clamp(30px, 4.4vw, 52px)", fontWeight: 700, color: TX, margin: 0, letterSpacing: "-0.035em", lineHeight: 1.1 }}>
               Built with coaches.<br />Refined until it just works.
             </h2>
@@ -1422,12 +1413,7 @@ export default function LandingPage({ onEnterApp }) {
           screen="coach"
           platform="ios"
           side="right"
-          title={<>Your whole roster.<br /><span style={{
-            background: `linear-gradient(120deg, ${AT} 0%, ${A} 100%)`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-          }}>One dashboard.</span></>}
+          title={<>Your whole roster.<br /><span className="accent-gradient-text-rev">One dashboard.</span></>}
           subtitle="For Coaches"
           accentColor={AT}
           delay={0}
@@ -1446,7 +1432,7 @@ export default function LandingPage({ onEnterApp }) {
           screen="log"
           platform="android"
           side="left"
-          title={<>Every rep.<br />Every set.<br /><span style={{ color: A }}>Every PR.</span></>}
+          title={<>Every rep.<br />Every set.<br /><span style={{ color: ACT }}>Every PR.</span></>}
           subtitle="For Athletes"
           accentColor={A}
           delay={0}
@@ -1463,7 +1449,7 @@ export default function LandingPage({ onEnterApp }) {
       <section id="features" style={{ padding: "120px clamp(20px, 4vw, 48px)", background: BG }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <RevealDiv style={{ textAlign: "center", marginBottom: 64 }}>
-            <div style={{ fontSize: 11, color: A, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>One App · Zero Chaos</div>
+            <div style={{ fontSize: 11, color: ACT, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 12, fontWeight: 600 }}>One App · Zero Chaos</div>
             <h2 style={{ fontSize: "clamp(30px, 4.4vw, 52px)", fontWeight: 700, color: TX, margin: "0 0 18px", letterSpacing: "-0.035em", lineHeight: 1.1 }}>
               Everything a coach needs.<br />Nothing a coach doesn't.
             </h2>
@@ -1522,7 +1508,7 @@ export default function LandingPage({ onEnterApp }) {
           pointerEvents: "none",
         }} />
         <RevealDiv style={{ position: "relative", zIndex: 1, maxWidth: 900, margin: "0 auto" }}>
-          <div style={{ fontSize: 11, color: A, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 22, fontWeight: 600 }}>
+          <div style={{ fontSize: 11, color: ACT, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 22, fontWeight: 600 }}>
             Stop juggling. Start coaching.
           </div>
           <h2 style={{
@@ -1533,12 +1519,7 @@ export default function LandingPage({ onEnterApp }) {
             lineHeight: 1.02,
           }}>
             Your unorganized<br />
-            client life, <span style={{
-              background: `linear-gradient(120deg, ${A} 0%, ${AT} 100%)`,
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}>organized.</span>
+            client life, <span className="accent-gradient-text">organized.</span>
           </h2>
           <p style={{ fontSize: 17, color: SB, maxWidth: 520, margin: "0 auto 44px", lineHeight: 1.7 }}>
             Free to start. No credit card. Invite your first athletes in under two minutes —
