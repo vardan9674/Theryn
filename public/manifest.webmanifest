@@ -1,0 +1,19 @@
+{
+  "name": "Theryn — Coaching & Gym App",
+  "short_name": "Theryn",
+  "description": "Free coaching and gym app for personal trainers and athletes. Build routines, track workouts, message your coach.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#080808",
+  "orientation": "portrait",
+  "categories": ["health", "fitness", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/ICON.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
