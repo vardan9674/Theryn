@@ -339,64 +339,47 @@ function computeStatus(
   return otherLastRead >= msg.created_at ? "read" : "sent";
 }
 
+export interface ConversationPreviewRow {
+  conversation_id: string;
+  coach_id: string;
+  athlete_id: string;
+  last_content: string | null;
+  last_sender_id: string | null;
+  last_created_at: string | null;
+  unread_count: number;
+}
+
+export async function loadMyConversationPreviews(): Promise<ConversationPreviewRow[]> {
+  const { data, error } = await supabase.rpc("get_conversation_previews");
+  if (error || !data) return [];
+  return data as ConversationPreviewRow[];
+}
+
 export async function loadConversationPreviews(
   coachId: string,
   athletes: { athlete_id: string }[]
 ): Promise<Record<string, { lastMsg: string | null; lastMsgAt: string | null; unread: number }>> {
   if (athletes.length === 0) return {};
 
-  const athleteIds = athletes.map((a) => a.athlete_id);
-
-  const { data: convs } = await supabase
-    .from("conversations")
-    .select("id, athlete_id")
-    .eq("coach_id", coachId)
-    .in("athlete_id", athleteIds);
-
-  if (!convs || convs.length === 0) return {};
-
-  const convIds = convs.map((c: { id: string }) => c.id);
-
-  // Fetch last message per conversation (ordered desc, JS groups them)
-  const { data: msgs } = await supabase
-    .from("messages")
-    .select("conversation_id, content, created_at, sender_id")
-    .in("conversation_id", convIds)
-    .order("created_at", { ascending: false })
-    .limit(convIds.length * 5); // 5 per conv is ample for unread counting
-
-  // Fetch coach's own read receipts
-  const { data: reads } = await supabase
-    .from("conversation_reads")
-    .select("conversation_id, last_read_at")
-    .eq("user_id", coachId)
-    .in("conversation_id", convIds);
-
-  const readMap: Record<string, string> = {};
-  for (const r of reads ?? []) {
-    readMap[r.conversation_id] = r.last_read_at;
-  }
+  // Single-round-trip RPC: DISTINCT ON returns the last message per conv and an
+  // accurate unread count scoped to the caller via RLS. See 005_messaging_previews.sql.
+  const { data, error } = await supabase.rpc("get_conversation_previews");
+  if (error || !data) return {};
 
   const result: Record<string, { lastMsg: string | null; lastMsgAt: string | null; unread: number }> = {};
-
-  for (const conv of convs) {
-    const convMsgs = (msgs ?? []).filter(
-      (m: { conversation_id: string }) => m.conversation_id === conv.id
-    );
-    const lastMsg = convMsgs[0] ?? null;
-    const lastRead = readMap[conv.id] ?? null;
-
-    const unread = convMsgs.filter(
-      (m: { sender_id: string; created_at: string }) =>
-        m.sender_id !== coachId && (!lastRead || m.created_at > lastRead)
-    ).length;
-
-    result[conv.athlete_id] = {
-      lastMsg: lastMsg?.content ?? null,
-      lastMsgAt: lastMsg?.created_at ?? null,
-      unread,
+  for (const row of data as Array<{
+    athlete_id: string;
+    coach_id: string;
+    last_content: string | null;
+    last_created_at: string | null;
+    unread_count: number;
+  }>) {
+    if (row.coach_id !== coachId) continue;
+    result[row.athlete_id] = {
+      lastMsg: row.last_content,
+      lastMsgAt: row.last_created_at,
+      unread: row.unread_count ?? 0,
     };
   }
-
   return result;
 }
