@@ -1,6 +1,21 @@
 import { openDB, IDBPDatabase } from "idb";
 import { supabase } from "./supabase";
 
+export interface QueuedAction {
+  id?: number;
+  type: string;
+  userId: string;
+  payload: unknown;
+  createdAt: number;
+}
+
+export function enqueueAction(action: Omit<QueuedAction, "id" | "createdAt">): void {
+  const entry: QueuedAction = { ...action, createdAt: Date.now() };
+  getDB()
+    .then((db) => db.add("action-outbox", entry))
+    .catch(() => {});
+}
+
 interface OutboxEntry {
   clientId: string;
   conversationId: string;
@@ -15,10 +30,15 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
-    dbPromise = openDB("theryn-offline", 1, {
-      upgrade(db) {
-        const store = db.createObjectStore("message-outbox", { keyPath: "clientId" });
-        store.createIndex("by-created-at", "createdAt");
+    dbPromise = openDB("theryn-offline", 2, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const store = db.createObjectStore("message-outbox", { keyPath: "clientId" });
+          store.createIndex("by-created-at", "createdAt");
+        }
+        if (oldVersion < 2) {
+          db.createObjectStore("action-outbox", { keyPath: "id", autoIncrement: true });
+        }
       },
     });
   }

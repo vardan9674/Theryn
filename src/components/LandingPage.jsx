@@ -17,7 +17,7 @@ const DARK = {
   accent: "#C8FF00", accentText: "#C8FF00",
   teal: "#4ECDC4", tealText: "#4ECDC4",
   warm: "#FFD166", red: "#FF5C5C",
-  mt: "#282828", grid: "#1E1E1E", glow: "rgba(200,255,0,0.08)",
+  mt: "#282828", grid: "#303030", glow: "rgba(200,255,0,0.08)",
 };
 const LIGHT = {
   bg: "#FFFFFF", s1: "#F6F6F6", s2: "#EEEEEE", bd: "#E2E2E2",
@@ -59,6 +59,17 @@ function useIsMobile() {
   return m;
 }
 
+function useIsDesktop() {
+  const [d, setD] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const fn = e => setD(e.matches);
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+  return d;
+}
+
 function Reveal({ children, delay = 0, y = 20 }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-60px" });
@@ -87,7 +98,7 @@ function CountUp({ target, suffix = "" }) {
 
 // ── PHONE SHELL ───────────────────────────────────────────────────────────────
 function PhoneShell({ children, c, size = "md" }) {
-  const w = size === "sm" ? 190 : 220;
+  const w = size === "sm" ? 190 : size === "lg" ? 270 : 220;
   return (
     <div style={{
       width: w, background: c.s1, borderRadius: 36,
@@ -331,6 +342,7 @@ const FRAME_LABELS = ["Share code", "Athlete joins", "Log session", "Coach sees 
 function HeroSection({ onEnterApp }) {
   const c = useC();
   const { theme } = useTheme();
+  const isDesktop = useIsDesktop();
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -341,11 +353,56 @@ function HeroSection({ onEnterApp }) {
   const scrollToHow = () =>
     document.getElementById("how")?.scrollIntoView({ behavior: "smooth" });
 
+  const phoneBlock = (
+    <motion.div
+      initial={{ opacity: 0, y: 44 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, delay: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+      style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}
+    >
+      <div style={{ position: "relative" }}>
+        <div style={{
+          position: "absolute", bottom: -30, left: "50%", transform: "translateX(-50%)",
+          width: 160, height: 60,
+          background: `radial-gradient(ellipse, ${c.accent}25 0%, transparent 70%)`,
+          filter: "blur(20px)", pointerEvents: "none",
+        }} />
+        <PhoneShell c={c} size={isDesktop ? "lg" : "md"}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={frame}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.28 }}
+            >
+              <HeroFrame frame={frame} c={c} />
+            </motion.div>
+          </AnimatePresence>
+        </PhoneShell>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 18 }}>
+        {[0,1,2,3].map(i => (
+          <motion.button
+            key={i}
+            onClick={() => setFrame(i)}
+            animate={{ width: frame === i ? 22 : 7, background: frame === i ? c.accent : c.bd }}
+            transition={{ duration: 0.3 }}
+            style={{ height: 7, borderRadius: 3.5, border: "none", cursor: "pointer", padding: 0 }}
+          />
+        ))}
+      </div>
+      <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: c.sb, height: 14 }}>
+        {FRAME_LABELS[frame]}
+      </div>
+    </motion.div>
+  );
+
   return (
     <section style={{
       minHeight: "100svh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
-      padding: "80px clamp(16px, 4vw, 48px) 60px",
+      padding: "80px clamp(16px, 4vw, 64px) 60px",
       position: "relative", overflow: "hidden", background: c.bg,
     }}>
       {/* Radial glows */}
@@ -359,114 +416,116 @@ function HeroSection({ onEnterApp }) {
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
         backgroundImage: `linear-gradient(${c.grid} 1px, transparent 1px), linear-gradient(90deg, ${c.grid} 1px, transparent 1px)`,
-        backgroundSize: "52px 52px", opacity: theme === "dark" ? 0.25 : 0.5,
+        backgroundSize: "52px 52px", opacity: 0.5,
       }} />
 
-      {/* Text block */}
-      <motion.div
-        initial={{ opacity: 0, y: 32 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
-        style={{ textAlign: "center", position: "relative", zIndex: 1, maxWidth: 600 }}
-      >
-        {/* Badge */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
-          <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>iOS · Android · Web · Free to start</span>
-        </div>
-
-        <h1 style={{
-          fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900,
-          letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px",
+      {isDesktop ? (
+        /* Desktop: side-by-side */
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: "clamp(48px, 7vw, 96px)", width: "100%", maxWidth: 1160,
+          position: "relative", zIndex: 1,
         }}>
-          Built for Coaches.
-        </h1>
-        <h1 className="text-gradient" style={{
-          fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900,
-          letterSpacing: "-0.045em", lineHeight: 1.03, margin: "0 0 20px",
-          background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
-        }}>
-          Loved by Athletes.
-        </h1>
-        <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 32px", lineHeight: 1.6, maxWidth: 380 }}>
-          One app. Real data. Zero spreadsheets.
-        </p>
-
-        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-          <motion.button
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => onEnterApp("coach")}
-            style={{
-              background: c.accent, border: "none", borderRadius: 11,
-              color: "#000", fontWeight: 800, fontSize: 15,
-              padding: "14px 30px", cursor: "pointer",
-              boxShadow: theme === "dark" ? `0 8px 32px ${c.accent}30` : `0 4px 16px ${c.accent}60`,
-            }}
+          {/* Text block */}
+          <motion.div
+            initial={{ opacity: 0, x: -32 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
+            style={{ flex: "1 1 0", minWidth: 0, maxWidth: 560 }}
           >
-            Start Free →
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={scrollToHow}
-            style={{
-              background: "none", border: `1.5px solid ${c.bd}`, borderRadius: 11,
-              color: c.tx, fontWeight: 600, fontSize: 15,
-              padding: "14px 30px", cursor: "pointer",
-            }}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 24 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
+              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>iOS · Android · Web · Free to start</span>
+            </div>
+            <h1 style={{
+              fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
+              letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px",
+            }}>
+              Built for Coaches.
+            </h1>
+            <h1 className="text-gradient" style={{
+              fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
+              letterSpacing: "-0.045em", lineHeight: 1.03, margin: "0 0 24px",
+              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
+            }}>
+              Loved by Athletes.
+            </h1>
+            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb, margin: "0 0 36px", lineHeight: 1.65, maxWidth: 420 }}>
+              One system. Total control.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <motion.button
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                onClick={() => onEnterApp("coach")}
+                style={{
+                  background: c.accent, border: "none", borderRadius: 11,
+                  color: "#000", fontWeight: 800, fontSize: 15,
+                  padding: "14px 30px", cursor: "pointer",
+                  boxShadow: theme === "dark" ? `0 8px 32px ${c.accent}30` : `0 4px 16px ${c.accent}60`,
+                }}
+              >Start Free →</motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }}
+                onClick={scrollToHow}
+                style={{
+                  background: "none", border: `1.5px solid ${c.bd}`, borderRadius: 11,
+                  color: c.tx, fontWeight: 600, fontSize: 15,
+                  padding: "14px 30px", cursor: "pointer",
+                }}
+              >See How It Works</motion.button>
+            </div>
+          </motion.div>
+
+          {/* Phone */}
+          <motion.div
+            initial={{ opacity: 0, x: 32 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+            style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}
           >
-            See How It Works
-          </motion.button>
+            {phoneBlock}
+          </motion.div>
         </div>
-      </motion.div>
-
-      {/* Product loop */}
-      <motion.div
-        initial={{ opacity: 0, y: 44 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, delay: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
-        style={{ marginTop: 48, position: "relative", zIndex: 1 }}
-      >
-        <div style={{ position: "relative" }}>
-          {/* Glow under phone */}
-          <div style={{
-            position: "absolute", bottom: -30, left: "50%", transform: "translateX(-50%)",
-            width: 160, height: 60,
-            background: `radial-gradient(ellipse, ${c.accent}25 0%, transparent 70%)`,
-            filter: "blur(20px)", pointerEvents: "none",
-          }} />
-          <PhoneShell c={c}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={frame}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.28 }}
-              >
-                <HeroFrame frame={frame} c={c} />
-              </motion.div>
-            </AnimatePresence>
-          </PhoneShell>
-        </div>
-
-        {/* Frame dots */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 18 }}>
-          {[0,1,2,3].map(i => (
-            <motion.button
-              key={i}
-              onClick={() => setFrame(i)}
-              animate={{ width: frame === i ? 22 : 7, background: frame === i ? c.accent : c.bd }}
-              transition={{ duration: 0.3 }}
-              style={{ height: 7, borderRadius: 3.5, border: "none", cursor: "pointer", padding: 0 }}
-            />
-          ))}
-        </div>
-        <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: c.sb, height: 14 }}>
-          {FRAME_LABELS[frame]}
-        </div>
-      </motion.div>
+      ) : (
+        /* Mobile: stacked */
+        <>
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
+            style={{ textAlign: "center", position: "relative", zIndex: 1, maxWidth: 600 }}
+          >
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
+              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>iOS · Android · Web · Free to start</span>
+            </div>
+            <h1 style={{ fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px" }}>
+              Built for Coaches.
+            </h1>
+            <h1 className="text-gradient" style={{
+              fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900,
+              letterSpacing: "-0.045em", lineHeight: 1.03, margin: "0 0 20px",
+              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
+            }}>
+              Loved by Athletes.
+            </h1>
+            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 32px", lineHeight: 1.6, maxWidth: 380 }}>
+              One system. Total control.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => onEnterApp("coach")}
+                style={{ background: c.accent, border: "none", borderRadius: 11, color: "#000", fontWeight: 800, fontSize: 15, padding: "14px 30px", cursor: "pointer", boxShadow: theme === "dark" ? `0 8px 32px ${c.accent}30` : `0 4px 16px ${c.accent}60` }}>
+                Start Free →
+              </motion.button>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} onClick={scrollToHow}
+                style={{ background: "none", border: `1.5px solid ${c.bd}`, borderRadius: 11, color: c.tx, fontWeight: 600, fontSize: 15, padding: "14px 30px", cursor: "pointer" }}>
+                See How It Works
+              </motion.button>
+            </div>
+          </motion.div>
+          <div style={{ marginTop: 48, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
+        </>
+      )}
     </section>
   );
 }
@@ -508,8 +567,8 @@ function SplitSection({ onEnterApp }) {
       </Reveal>
 
       <div ref={ref} style={{
-        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-        gap: 14, maxWidth: 740, margin: "0 auto",
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+        gap: 20, maxWidth: 960, margin: "0 auto",
       }}>
         {cards.map((card, i) => (
           <motion.div
@@ -565,6 +624,72 @@ function SplitSection({ onEnterApp }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// ── REPLACE BADGE ─────────────────────────────────────────────────────────────
+function ReplaceBadge({ app, clr, lightClr, index, darkBg }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-40px" });
+  const col = darkBg ? clr : lightClr;
+
+  const style = {
+    background: col,
+    border: `1.5px solid ${col}`,
+    color: "#FFFFFF",
+    boxShadow: darkBg
+      ? `0 4px 20px ${col}55, 0 2px 8px ${col}35`
+      : `0 6px 18px ${col}55, 0 2px 4px ${col}40`,
+  };
+
+  const lineColor = "rgba(255,255,255,0.75)";
+  const lineHeight = 1.5;
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.5, y: 24 }}
+      animate={inView ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.5, y: 24 }}
+      transition={{
+        duration: 0.5, delay: index * 0.08,
+        type: "spring", stiffness: 260, damping: 16,
+      }}
+      whileHover={{
+        scale: 1.12, y: -3,
+        transition: { type: "spring", stiffness: 400, damping: 14 },
+      }}
+      style={{
+        position: "relative", display: "inline-block",
+        borderRadius: 100, padding: "9px 20px",
+        fontSize: 14, fontWeight: 700,
+        cursor: "default", letterSpacing: "-0.01em",
+        ...style,
+      }}
+    >
+      {/* Continuous bob */}
+      <motion.span
+        animate={{ y: [0, -2.5, 0] }}
+        transition={{
+          duration: 2.8 + (index % 3) * 0.3,
+          repeat: Infinity, ease: "easeInOut", delay: index * 0.15,
+        }}
+        style={{ display: "inline-block", position: "relative", zIndex: 1 }}
+      >
+        {app}
+      </motion.span>
+      {/* Animated strikethrough */}
+      <motion.div
+        initial={{ scaleX: 0 }}
+        animate={inView ? { scaleX: 1 } : { scaleX: 0 }}
+        transition={{ duration: 0.45, delay: 0.35 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: "absolute", left: 12, right: 12, top: "50%",
+          height: lineHeight, background: lineColor, borderRadius: 2,
+          transformOrigin: "left center", marginTop: -lineHeight / 2,
+          boxShadow: darkBg ? `0 0 6px ${col}80` : "none",
+        }}
+      />
+    </motion.div>
   );
 }
 
@@ -638,32 +763,25 @@ function EmotionalHitSection() {
       </div>
 
       {/* Replaces row */}
-      <Reveal delay={0.3}>
-        <div style={{ marginTop: 56, textAlign: "center" }}>
-          <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
+      <div style={{ marginTop: 64, textAlign: "center" }}>
+        <Reveal>
+          <div style={{ fontSize: 11, color: c.sb, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 22, fontWeight: 700 }}>
             Replaces
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
-            {[
-              ["Excel", "#FF5C5C"],
-              ["WhatsApp", "#06D6A0"],
-              ["Notes.app", "#FFD166"],
-              ["Notion", "#C77DFF"],
-              ["TrainingPeaks", "#FF8C42"],
-              ["Google Sheets", "#4ECDC4"],
-            ].map(([app, clr]) => (
-              <div key={app} style={{
-                background: `${clr}18`,
-                border: `1px solid ${clr}70`,
-                borderRadius: 100, padding: "5px 14px", fontSize: 12,
-                color: clr, textDecoration: "line-through", fontWeight: 600,
-              }}>
-                {app}
-              </div>
-            ))}
-          </div>
+        </Reveal>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12 }}>
+          {[
+            ["Excel",          "#FF5C5C", "#C53030"],
+            ["WhatsApp",       "#06D6A0", "#047857"],
+            ["Notes.app",      "#E5A82E", "#92630C"],
+            ["Notion",         "#C77DFF", "#7C3AED"],
+            ["TrainingPeaks",  "#FF8C42", "#C2410C"],
+            ["Google Sheets",  "#4ECDC4", "#0F766E"],
+          ].map(([app, clr, lightClr], i) => (
+            <ReplaceBadge key={app} app={app} clr={clr} lightClr={lightClr} index={i} darkBg={theme === "dark"} />
+          ))}
         </div>
-      </Reveal>
+      </div>
     </section>
   );
 }
@@ -764,34 +882,72 @@ const STEPS = [
 function HowItWorksSection() {
   const c = useC();
   const isMobile = useIsMobile();
-  const containerRef = useRef(null);
-  const [activeStep, setActiveStep] = useState(0);
+  const isDesktop = useIsDesktop();
 
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end end"],
-  });
+  const header = (
+    <Reveal>
+      <div style={{ textAlign: "center", marginBottom: 56 }}>
+        <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>
+          How it works
+        </div>
+        <h2 style={{ fontSize: "clamp(28px, 4.5vw, 44px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
+          Four steps. Forever.
+        </h2>
+      </div>
+    </Reveal>
+  );
 
-  useEffect(() => {
-    if (isMobile) return;
-    return scrollYProgress.on("change", v => {
-      setActiveStep(Math.min(3, Math.floor(v * 4.0)));
-    });
-  }, [scrollYProgress, isMobile]);
+  if (isDesktop) {
+    return (
+      <section id="how" style={{ padding: "100px clamp(24px, 5vw, 64px)", background: c.bg }}>
+        {header}
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          gap: 20, maxWidth: 1060, margin: "0 auto",
+        }}>
+          {STEPS.map((step, i) => (
+            <Reveal key={step.n} delay={i * 0.1}>
+              <motion.div
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                style={{
+                  background: c.s1, border: `1.5px solid ${c.bd}`,
+                  borderRadius: 22, padding: "28px 24px",
+                  display: "flex", flexDirection: "column", gap: 18,
+                }}
+              >
+                {/* Step header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                    background: c.accent, display: "flex", alignItems: "center",
+                    justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#000",
+                  }}>
+                    {step.n}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: c.tx }}>{step.title}</div>
+                    <div style={{ fontSize: 12, color: c.sb, lineHeight: 1.55, marginTop: 2 }}>{step.desc}</div>
+                  </div>
+                </div>
+                {/* Phone mockup */}
+                <div style={{
+                  background: c.s2, borderRadius: 16, border: `1px solid ${c.bd}`,
+                  overflow: "hidden",
+                }}>
+                  {step.frame(c)}
+                </div>
+              </motion.div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (isMobile) {
     return (
       <section id="how" style={{ padding: "80px clamp(16px, 4vw, 32px)", background: c.bg }}>
-        <Reveal>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>
-              How it works
-            </div>
-            <h2 style={{ fontSize: "clamp(28px, 6vw, 44px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
-              Four steps. Forever.
-            </h2>
-          </div>
-        </Reveal>
+        {header}
         {STEPS.map((step, i) => (
           <Reveal key={step.n} delay={i * 0.08}>
             <div style={{ display: "flex", gap: 16, marginBottom: 32, alignItems: "flex-start" }}>
@@ -816,95 +972,33 @@ function HowItWorksSection() {
     );
   }
 
+  // Tablet: single-column with inline phone
   return (
-    <section id="how" ref={containerRef} style={{ height: "400vh", position: "relative" }}>
-      <div style={{
-        position: "sticky", top: 0, height: "100vh",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        padding: "0 clamp(24px, 5vw, 64px)", background: c.bg, overflow: "hidden",
-      }}>
-        <Reveal>
-          <div style={{ textAlign: "center", marginBottom: 44 }}>
-            <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>
-              How it works
+    <section id="how" style={{ padding: "80px clamp(16px, 4vw, 32px)", background: c.bg }}>
+      {header}
+      {STEPS.map((step, i) => (
+        <Reveal key={step.n} delay={i * 0.08}>
+          <div style={{ display: "flex", gap: 16, marginBottom: 32, alignItems: "flex-start" }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+              background: c.accent, display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#000",
+            }}>
+              {step.n}
             </div>
-            <h2 style={{ fontSize: "clamp(28px, 4.5vw, 44px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
-              Four steps. Forever.
-            </h2>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: c.tx, marginBottom: 4 }}>{step.title}</div>
+              <div style={{ fontSize: 13, color: c.sb, lineHeight: 1.55, marginBottom: 14 }}>{step.desc}</div>
+              <div style={{ background: c.s1, borderRadius: 16, border: `1px solid ${c.bd}`, overflow: "hidden" }}>
+                {step.frame(c)}
+              </div>
+            </div>
           </div>
         </Reveal>
-
-        <div style={{
-          display: "flex", gap: "clamp(32px, 6vw, 72px)",
-          alignItems: "center", width: "100%", maxWidth: 820, justifyContent: "center",
-        }}>
-          {/* Steps list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 240, maxWidth: 280 }}>
-            {STEPS.map((step, i) => (
-              <motion.div
-                key={step.n}
-                animate={{ opacity: activeStep === i ? 1 : 0.35 }}
-                transition={{ duration: 0.3 }}
-                style={{ cursor: "pointer", display: "flex", gap: 14, alignItems: "flex-start" }}
-                onClick={() => setActiveStep(i)}
-              >
-                <div style={{
-                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                  background: activeStep === i ? c.accent : c.s2,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 900,
-                  color: activeStep === i ? "#000" : c.sb,
-                  transition: "background 0.3s, color 0.3s",
-                }}>
-                  {step.n}
-                </div>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: c.tx, marginBottom: 3 }}>{step.title}</div>
-                  <div style={{ fontSize: 12, color: c.sb, lineHeight: 1.55 }}>{step.desc}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Phone mockup */}
-          <div style={{ position: "relative" }}>
-            <div style={{
-              position: "absolute", inset: -40,
-              background: `radial-gradient(circle, ${c.accent}14 0%, transparent 70%)`,
-              filter: "blur(20px)", pointerEvents: "none",
-            }} />
-            <PhoneShell c={c}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeStep}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -14 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {STEPS[activeStep].frame(c)}
-                </motion.div>
-              </AnimatePresence>
-            </PhoneShell>
-          </div>
-        </div>
-
-        {/* Progress dots */}
-        <div style={{ display: "flex", gap: 8, marginTop: 36 }}>
-          {STEPS.map((_, i) => (
-            <motion.button
-              key={i}
-              onClick={() => setActiveStep(i)}
-              animate={{ width: activeStep === i ? 24 : 8, background: activeStep === i ? c.accent : c.bd }}
-              transition={{ duration: 0.3 }}
-              style={{ height: 8, borderRadius: 4, border: "none", cursor: "pointer", padding: 0 }}
-            />
-          ))}
-        </div>
-        <div style={{ marginTop: 10, fontSize: 10, color: c.sb }}>Scroll to advance</div>
-      </div>
+      ))}
     </section>
   );
+
 }
 
 // ── SECTION 5: PRICING ────────────────────────────────────────────────────────
@@ -945,7 +1039,7 @@ function PricingSection({ onEnterApp }) {
 
       <div ref={ref} style={{
         display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 14, maxWidth: 860, margin: "0 auto",
+        gap: 16, maxWidth: 1040, margin: "0 auto",
       }}>
         {PLANS.map((plan, i) => {
           const isOpen = expanded === plan.id;
