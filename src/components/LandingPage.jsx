@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import ThemeToggle from "./ThemeToggle";
 
-const A   = "#C8FF00";
-const AT  = "#4ECDC4";
+const A   = "#C8FF00";            // accent — same in both themes
+const AT  = "#4ECDC4";            // workout type colours — theme-independent
 const AW  = "#FFD166";
-const BG  = "#080808";
-const S1  = "#101010";
-const S2  = "#181818";
-const BD  = "#1E1E1E";
-const TX  = "#F5F6F8";
-const SB  = "#A8AEB7";
-const SB2 = "#D0D4DA";
-const MT  = "#2C2C2C";
-const RED = "#FF5C5C";
+const BG  = "var(--bg)";
+const S1  = "var(--bg-s1)";
+const S2  = "var(--bg-s2)";
+const BD  = "var(--border)";
+const TX  = "var(--text)";
+const SB  = "var(--text-sub)";
+const SB2 = "var(--text-sub)";
+const MT  = "var(--text-muted)";
+const RED = "var(--red)";
 
 // Workout-type colors — mirrors TYPE_COLORS in App.jsx so the landing page
 // speaks the same visual language as the real app.
@@ -509,22 +510,45 @@ function DesktopMockup({ style = {} }) {
   );
 }
 
-// ── PARALLAX HOOK ─────────────────────────────────────────────────────────────
+// ── PARALLAX HOOK (lerp — butter-smooth, no CSS transition jank) ──────────────
 function useParallax(speed = 0.5) {
   const ref = useRef(null);
   const [offset, setOffset] = useState(0);
+  const rafRef    = useRef(null);
+  const currentRef = useRef(0);
+  const targetRef  = useRef(0);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+
+    const tick = () => {
+      const diff = targetRef.current - currentRef.current;
+      if (Math.abs(diff) > 0.05) {
+        currentRef.current += diff * 0.1;        // lerp factor — tweak for feel
+        setOffset(currentRef.current);
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
     const onScroll = () => {
+      if (!el) return;
       const rect = el.getBoundingClientRect();
       const center = rect.top + rect.height / 2 - window.innerHeight / 2;
-      setOffset(center * speed);
+      targetRef.current = center * speed;
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(tick);
     };
+
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(rafRef.current);
+    };
   }, [speed]);
+
   return { ref, offset };
 }
 
@@ -547,8 +571,8 @@ function RevealDiv({ children, style = {}, delay = 0 }) {
   return (
     <div ref={ref} style={{
       opacity: visible ? 1 : 0,
-      transform: visible ? "translateY(0)" : "translateY(32px)",
-      transition: `opacity 0.7s ease ${delay}s, transform 0.7s ease ${delay}s`,
+      transform: visible ? "translateY(0)" : "translateY(20px)",
+      transition: `opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1) ${delay}s, transform 0.65s cubic-bezier(0.22, 1, 0.36, 1) ${delay}s`,
       ...style,
     }}>
       {children}
@@ -569,8 +593,8 @@ function FeatureCard({ icon, title, desc, delay = 0 }) {
           border: `1px solid ${hover ? A + "44" : BD}`,
           borderRadius: 16,
           padding: "28px 26px",
-          transition: "all 0.3s ease",
-          transform: hover ? "translateY(-4px)" : "none",
+          transition: "transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s ease, border-color 0.25s ease, box-shadow 0.3s ease",
+          transform: hover ? "translateY(-4px)" : "translateY(0)",
           boxShadow: hover ? `0 20px 40px rgba(200,255,0,0.06)` : "none",
           height: "100%",
           boxSizing: "border-box",
@@ -674,7 +698,7 @@ function FloatingPhoneSection({ screen, platform = "ios", side = "right", title,
       <div ref={phoneRef} style={{
         flex: "0 0 auto",
         transform: `translateY(${offset}px)`,
-        transition: "transform 0.05s linear",
+        willChange: "transform",
         filter: "drop-shadow(0 40px 60px rgba(0,0,0,0.7))",
       }}>
         <div style={{
@@ -711,7 +735,7 @@ function Navbar({ onGetStarted }) {
       padding: "0 clamp(20px, 4vw, 48px)",
       height: 64,
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      background: scrolled ? "rgba(8,8,8,0.88)" : "transparent",
+      background: scrolled ? "var(--bg-nav-scroll, rgba(8,8,8,0.88))" : "transparent",
       backdropFilter: scrolled ? "blur(18px) saturate(120%)" : "none",
       WebkitBackdropFilter: scrolled ? "blur(18px) saturate(120%)" : "none",
       borderBottom: scrolled ? `1px solid ${BD}` : "1px solid transparent",
@@ -728,10 +752,11 @@ function Navbar({ onGetStarted }) {
             href={`#${id}`}
             style={{ fontSize: 13, color: SB, textDecoration: "none", letterSpacing: "0.02em",
               transition: "color 0.2s", cursor: "pointer" }}
-            onMouseEnter={e => e.target.style.color = TX}
-            onMouseLeave={e => e.target.style.color = SB}
+            onMouseEnter={e => e.target.style.color = "var(--text)"}
+            onMouseLeave={e => e.target.style.color = "var(--text-sub)"}
           >{l}</a>
         ))}
+        <ThemeToggle />
         <button
           onClick={onGetStarted}
           style={{
@@ -753,12 +778,18 @@ function Hero({ onGetStarted }) {
   const { ref: mockupRef, offset: mockupOffset } = useParallax(0.15);
 
   useEffect(() => {
-    const fn = (e) => setMousePos({
-      x: (e.clientX / window.innerWidth - 0.5) * 2,
-      y: (e.clientY / window.innerHeight - 0.5) * 2,
-    });
-    window.addEventListener("mousemove", fn);
-    return () => window.removeEventListener("mousemove", fn);
+    let raf;
+    let next = { x: 0, y: 0 };
+    const fn = (e) => {
+      next = {
+        x: (e.clientX / window.innerWidth  - 0.5) * 2,
+        y: (e.clientY / window.innerHeight - 0.5) * 2,
+      };
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setMousePos(next));
+    };
+    window.addEventListener("mousemove", fn, { passive: true });
+    return () => { window.removeEventListener("mousemove", fn); cancelAnimationFrame(raf); };
   }, []);
 
   return (
@@ -898,12 +929,14 @@ function Hero({ onGetStarted }) {
         padding: "40px clamp(20px, 4vw, 48px) 20px",
         zIndex: 2,
         transform: `translateY(${mockupOffset * -0.4}px)`,
+        willChange: "transform",
         animation: "fadeInUp 0.9s ease 0.5s both",
       }}>
         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
           <div style={{
             transform: `perspective(1400px) rotateX(${6 + mousePos.y * 1.5}deg) rotateY(${mousePos.x * -1.5}deg)`,
-            transition: "transform 0.2s ease",
+            transition: "transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            willChange: "transform",
             width: "100%",
             maxWidth: 960,
             filter: "drop-shadow(0 60px 80px rgba(0,0,0,0.6))",
@@ -917,7 +950,8 @@ function Hero({ onGetStarted }) {
             right: "clamp(-40px, -2vw, 0px)",
             bottom: "-40px",
             transform: `rotate(6deg) translate(${mousePos.x * 10}px, ${mousePos.y * 6}px)`,
-            transition: "transform 0.2s ease",
+            transition: "transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            willChange: "transform",
             animation: "floatPhone 5s ease-in-out infinite 0.5s",
             filter: "drop-shadow(0 30px 50px rgba(0,0,0,0.8))",
             zIndex: 3,
@@ -931,7 +965,8 @@ function Hero({ onGetStarted }) {
             left: "clamp(-40px, -2vw, 0px)",
             bottom: "-60px",
             transform: `rotate(-8deg) translate(${mousePos.x * -8}px, ${mousePos.y * 4}px)`,
-            transition: "transform 0.2s ease",
+            transition: "transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            willChange: "transform",
             animation: "floatPhone 6s ease-in-out infinite 1s",
             filter: "drop-shadow(0 30px 50px rgba(0,0,0,0.8))",
             zIndex: 3,
@@ -1291,22 +1326,28 @@ export default function LandingPage({ onEnterApp }) {
 
     const prev = {
       htmlOverflow: html.style.overflow, htmlHeight: html.style.height,
+      htmlScrollBehavior: html.style.scrollBehavior,
       bodyOverflow: body.style.overflow, bodyHeight: body.style.height,
+      bodyWebkitScroll: body.style.webkitOverflowScrolling,
       rootOverflow: root?.style.overflow, rootHeight: root?.style.height,
     };
 
-    html.style.overflow = "auto";
-    html.style.height   = "auto";
-    body.style.overflow = "auto";
-    body.style.height   = "auto";
+    html.style.overflow       = "auto";
+    html.style.height         = "auto";
+    html.style.scrollBehavior = "smooth";
+    body.style.overflow       = "auto";
+    body.style.height         = "auto";
+    body.style.webkitOverflowScrolling = "touch";
     body.dataset.landing = "true";
     if (root) { root.style.overflow = "auto"; root.style.height = "auto"; }
 
     return () => {
-      html.style.overflow = prev.htmlOverflow;
-      html.style.height   = prev.htmlHeight;
-      body.style.overflow = prev.bodyOverflow;
-      body.style.height   = prev.bodyHeight;
+      html.style.overflow       = prev.htmlOverflow;
+      html.style.height         = prev.htmlHeight;
+      html.style.scrollBehavior = prev.htmlScrollBehavior;
+      body.style.overflow       = prev.bodyOverflow;
+      body.style.height         = prev.bodyHeight;
+      body.style.webkitOverflowScrolling = prev.bodyWebkitScroll;
       delete body.dataset.landing;
       if (root) { root.style.overflow = prev.rootOverflow; root.style.height = prev.rootHeight; }
     };
@@ -1316,8 +1357,8 @@ export default function LandingPage({ onEnterApp }) {
     <div style={{ background: BG, minHeight: "100vh", fontFamily: "-apple-system, 'Helvetica Neue', Helvetica, sans-serif", WebkitFontSmoothing: "antialiased" }}>
       <style>{`
         @keyframes floatPhone {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-14px); }
+          0%, 100% { transform: translateY(0px) rotate(0.01deg); }
+          50%       { transform: translateY(-12px) rotate(0.01deg); }
         }
         @keyframes fadeInUp {
           from { opacity: 0; transform: translateY(24px); }
@@ -1340,8 +1381,10 @@ export default function LandingPage({ onEnterApp }) {
           50% { opacity: 0.5; }
         }
         * { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
+        html, body { scroll-behavior: smooth; }
         body { margin: 0; }
+        img, video { will-change: auto; }
+        .theryn-animate { will-change: transform, opacity; }
 
         @media (max-width: 900px) {
           .theryn-hero-phone-left, .theryn-hero-phone-right { display: none !important; }

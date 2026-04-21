@@ -12,6 +12,8 @@ import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, sa
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
+import ThemeToggle from "./components/ThemeToggle";
+import { useTheme } from "./ThemeContext";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
@@ -47,15 +49,15 @@ export function playRestTimerBeep() {
 }
 
 // ── TOKENS ──────────────────────────────────────────────────────────────
-const A   = "#C8FF00";
-const BG  = "#080808";
-const S1  = "#101010";
-const S2  = "#181818";
-const BD  = "#1E1E1E";
-const TX  = "#F0F0F0";
-const SB  = "#585858";
-const MT  = "#2C2C2C";
-const RED = "#FF5C5C";
+const A   = "#C8FF00";            // accent — same in both themes
+const BG  = "var(--bg)";
+const S1  = "var(--bg-s1)";
+const S2  = "var(--bg-s2)";
+const BD  = "var(--border)";
+const TX  = "var(--text)";
+const SB  = "var(--text-sub)";
+const MT  = "var(--text-muted)";
+const RED = "var(--red)";
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────
 const DAYS          = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -566,8 +568,7 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
 };
 
 export default function GymApp() {
-  // Skip landing on native apps, or when returning from an OAuth redirect.
-  const [showLanding, setShowLanding] = useState(() => {
+  const [showLanding,     setShowLanding]     = useState(() => {
     if (Capacitor.isNativePlatform()) return false;
     if (typeof window === "undefined") return true;
     const { pathname, search, hash } = window.location;
@@ -622,14 +623,6 @@ export default function GymApp() {
   const [showTour, setShowTour] = useState(false);
   const [hasCustomizedRoutine, setHasCustomizedRoutine] = useState(false);
   const [role, setRole] = useState(null); // "athlete" | "coach" — null means not yet chosen
-  // Survives the OAuth page reload via localStorage so the role picker pre-
-  // selects what the user picked on the landing page before sign-in.
-  const [pendingRole, setPendingRole] = useState(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("theryn_pending_role_landing");
-  });
-  const pendingRoleRef = useRef(pendingRole);
-  useEffect(() => { pendingRoleRef.current = pendingRole; }, [pendingRole]);
   // Onboarding status lives in profiles.onboarding_completed (Supabase = source
   // of truth). Local state: 'loading' until the DB round-trip settles, then
   // 'needed' or 'done'. We no longer use localStorage for this — it was the
@@ -744,14 +737,12 @@ export default function GymApp() {
           if (error) console.error("Profile upsert error:", error.message);
         });
 
-        // Load stored role — if none, role stays null → RolePickerScreen will show.
-        // If the user is entering from a landing CTA (pendingRole set), we want
-        // the role picker to run regardless of stale stored state — skip restore.
+        // Load stored role — if none, role stays null → RolePickerScreen will show
         const storedRole = localStorage.getItem(`theryn_role_${user.id}`);
-        if (storedRole && !pendingRoleRef.current) setRole(storedRole);
+        if (storedRole) setRole(storedRole);
 
         // Show athlete tour on first-ever login (only for athlete role)
-        if (storedRole === "athlete" && !pendingRoleRef.current) {
+        if (storedRole === "athlete") {
           const tourKey = `theryn_tour_done_${user.id}`;
           if (!localStorage.getItem(tourKey)) {
             setShowTour(true);
@@ -992,22 +983,13 @@ export default function GymApp() {
   }, [tab]);
 
   if (showLanding) return (
-    <LandingPage onEnterApp={async (intendedRole) => {
-      // Landing CTA must always run sign-in → role picker, even for users with
-      // an existing Supabase session. Otherwise the stored role silently routes
-      // into a screen that can blank out (e.g. stale `athlete_web`).
-      const wantRole = intendedRole === "athlete" || intendedRole === "coach" ? intendedRole : null;
-      setPendingRole(wantRole);
-      pendingRoleRef.current = wantRole;
-      // Persist across the OAuth page reload; React state is wiped on redirect back.
-      if (wantRole) localStorage.setItem("theryn_pending_role_landing", wantRole);
-      else localStorage.removeItem("theryn_pending_role_landing");
-      // Wipe every cached role key — we don't know which user signed in last.
+    <LandingPage onEnterApp={async () => {
       Object.keys(localStorage).forEach(k => {
         if (k.startsWith("theryn_role_")) localStorage.removeItem(k);
       });
+      localStorage.removeItem("theryn_pending_role_landing");
       setRole(null);
-      try { await supabase.auth.signOut(); } catch { /* ignore */ }
+      try { await supabase.auth.signOut(); } catch {}
       setAuthUser(null);
       setShowLanding(false);
     }} />
@@ -1050,10 +1032,7 @@ export default function GymApp() {
     if (isWeb) {
       return (
         <RolePickerScreen
-          initialSelected={pendingRole}
           onSelect={(r) => {
-            setPendingRole(null);
-            localStorage.removeItem("theryn_pending_role_landing");
             if (r === "athlete" && isWeb) {
               // Athletes on web → download page
               setRole("athlete_web");
@@ -1068,9 +1047,7 @@ export default function GymApp() {
     }
     return (
       <RolePickerScreen
-        initialSelected={pendingRole}
         onSelect={(r) => {
-          setPendingRole(null);
           setRole(r);
           localStorage.setItem(`theryn_role_${authUser.id}`, r);
           if (r === "athlete") {
@@ -1180,7 +1157,7 @@ export default function GymApp() {
       {showTour && <TourOverlay onDone={() => { setShowTour(false); setTab("routine"); }}/>}
 
       {/* ── TAB BAR ── */}
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.97)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"22px", zIndex:100 }}>
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"var(--bg-nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"22px", zIndex:100 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => handleTabClick(t.id)} style={{ flex:1, background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", color:tab===t.id?A:SB, fontSize:"11px", fontWeight:tab===t.id?"700":"400", letterSpacing:"0.05em", textTransform:"uppercase", transition:"color 0.15s", WebkitTapHighlightColor:"transparent", padding:"2px 0" }}>
             <div style={{ transform: tab===t.id ? "scale(1.08)" : "scale(1)", transition:"transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}>
@@ -1827,11 +1804,11 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             background:`rgba(16,16,16,0.97)`,
             backdropFilter:"blur(16px)",
             WebkitBackdropFilter:"blur(16px)",
-            border:`1px solid ${restTimer.remaining <= 5 ? RED+"88" : BD}`,
+            border:`1px solid ${restTimer.remaining <= 5 ? "rgba(255,92,92,0.53)" : "var(--border)"}`,
             borderRadius:"16px",
             padding:"12px 14px",
             display:"flex", alignItems:"center", gap:"10px",
-            boxShadow:`0 -4px 24px rgba(0,0,0,0.5), 0 0 0 1px ${restTimer.remaining <= 5 ? RED+"33" : A+"11"}`,
+            boxShadow:`0 -4px 24px rgba(0,0,0,0.5), 0 0 0 1px ${restTimer.remaining <= 5 ? "rgba(255,92,92,0.2)" : "rgba(200,255,0,0.067)"}`,
           }}>
             {/* Progress ring */}
             <svg width="36" height="36" style={{ flexShrink:0, transform:"rotate(-90deg)" }}>
@@ -4028,6 +4005,10 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
         {/* Settings */}
         <div style={{ ...subLbl, paddingLeft:"4px", marginTop:"20px", marginBottom:"8px" }}>Settings</div>
         <div style={card}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0", marginBottom:"12px", borderBottom:`1px solid ${MT}`, paddingBottom:"12px" }}>
+            <span style={{ fontSize:"16px" }}>Appearance</span>
+            <ThemeToggle />
+          </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0" }}>
             <span style={{ fontSize:"16px" }}>Units</span>
             <div style={{ display:"flex", gap:"4px" }}>
@@ -4105,7 +4086,7 @@ function LoginScreen({ authError, onClearError }) {
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: { 
-            redirectTo: `${window.location.origin}/oauth/consent`,
+            redirectTo: window.location.origin,
             queryParams: { prompt: "select_account" }
           },
         });
@@ -4856,12 +4837,12 @@ function SidebarBrand() {
   return (
     <div className="sidebar-brand" style={{
       padding: "0 24px 32px", marginBottom: "8px",
-      borderBottom: `1px solid #1a1a1a`,
+      borderBottom: `1px solid var(--border-soft)`,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <div style={{
           width: "36px", height: "36px", borderRadius: "10px",
-          background: "#0A0A0A", border: `1px solid ${A}22`,
+          background: "var(--bg-s1)", border: `1px solid var(--border)`,
           display: "flex", alignItems: "center", justifyContent: "center",
           overflow: "hidden",
         }}>
@@ -4879,8 +4860,8 @@ function SidebarBrand() {
 // ─────────────────────────────────────────────
 // ROLE PICKER SCREEN
 // ─────────────────────────────────────────────
-function RolePickerScreen({ onSelect, initialSelected = null }) {
-  const [selected, setSelected] = React.useState(initialSelected);
+function RolePickerScreen({ onSelect }) {
+  const [selected, setSelected] = React.useState(null);
 
   const cards = [
     {
@@ -5147,12 +5128,6 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   const [showTour, setShowTour] = React.useState(false);
   const [toast, setToast] = React.useState(null); // { message, variant }
 
-  // Expand #root to full width on desktop for the coach dashboard
-  React.useEffect(() => {
-    document.body.dataset.app = "coach";
-    return () => { delete document.body.dataset.app; };
-  }, []);
-
   // Register notification tap handler once (deep-link listener)
   React.useEffect(() => {
     registerNotificationTapHandlers();
@@ -5386,7 +5361,8 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
       {/* Global Coach Avatar — web only (mobile uses Athletes tab profile sheet) */}
       {Capacitor.getPlatform() === "web" && (
-        <div style={{ position: "absolute", top: 20, right: 16, zIndex: 110 }}>
+        <div style={{ position: "absolute", top: 20, right: 16, zIndex: 110, display: "flex", gap: 8, alignItems: "center" }}>
+          <ThemeToggle />
           <button onClick={() => setShowProfile(true)} style={{
             width: "38px", height: "38px", borderRadius: "50%",
             background: profile?.setup ? profile.color : A, border: "none", cursor: "pointer",
@@ -5464,7 +5440,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: "15px", fontWeight: 800, color: BG,
             zIndex: 150,
-            boxShadow: `0 4px 14px rgba(0,0,0,0.5), 0 0 0 1px ${A}33`,
+            boxShadow: `0 4px 14px rgba(0,0,0,0.5), 0 0 0 1px rgba(200,255,0,0.2)`,
           }}
         >
           {profile?.setup ? profile.initials : (profile?.initials || coachDisplayName[0]?.toUpperCase() || "C")}
@@ -5562,6 +5538,10 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             {/* ── Settings ── */}
             <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.08em", marginBottom: "8px", fontWeight: 700, textTransform: "uppercase", paddingLeft: "4px" }}>Settings</div>
             <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px", border: `1px solid ${BD}` }}>
+              <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", borderBottom: `1px solid ${BD}` }}>
+                <div style={{ fontSize: "14px", color: TX }}>Appearance</div>
+                <ThemeToggle />
+              </div>
               <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", borderBottom: `1px solid ${BD}` }}>
                 <div style={{ fontSize: "14px", color: TX }}>Default currency</div>
                 <select
