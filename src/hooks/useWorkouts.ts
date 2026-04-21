@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { enqueueAction } from "../lib/offlineQueue";
 
 // ── Exercise name → UUID cache (module-level, shared across calls) ──────────
 let exerciseCache: Record<string, string> | null = null;
@@ -74,8 +75,6 @@ export interface WorkoutPayload {
   totalSets: number;
   totalVolume: number;
 }
-
-import { enqueueAction } from "../lib/offlineQueue";
 
 /**
  * Saves a completed workout session and all its sets to Supabase.
