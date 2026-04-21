@@ -59,6 +59,27 @@ body[data-landing="true"] #root {
   max-width: none;
 }
 
+/* Gradient text — combine with inline style background: gradient */
+.text-gradient {
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+/* Light theme overrides for landing page */
+body[data-theme="light"] {
+  background: #FFFFFF;
+  color: #0A0A0A;
+}
+
+body[data-theme="light"] input:focus,
+body[data-theme="light"] textarea:focus,
+body[data-theme="light"] select:focus {
+  border-color: #5BA800 !important;
+  box-shadow: 0 0 0 2px rgba(91, 168, 0, 0.15), 0 0 12px rgba(91, 168, 0, 0.08) !important;
+}
+
 /* ── Input Focus Highlights ─────────────────────────────────────────── */
 input:focus,
 textarea:focus,

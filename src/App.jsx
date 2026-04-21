@@ -4118,61 +4118,136 @@ function LoginScreen({ authError, onClearError }) {
     }
   };
 
+  const [loginTheme, setLoginTheme] = React.useState(
+    () => localStorage.getItem("theryn_theme") || "light"
+  );
+  const toggleLoginTheme = () => setLoginTheme(t => {
+    const n = t === "dark" ? "light" : "dark";
+    localStorage.setItem("theryn_theme", n);
+    return n;
+  });
+  const isDark = loginTheme === "dark";
+  const lc = isDark ? {
+    bg: "#080808", tx: "#F0F0F0", sb: "#585858", s1: "#101010", bd: "#1E1E1E",
+    wordmark: "#C8FF00", glow: "rgba(200,255,0,0.10)", btnShadow: "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
+    toggleBg: "#1E1E1E", toggleBd: "#2E2E2E", toggleIcon: "#C8FF00",
+  } : {
+    bg: "#FFFFFF", tx: "#0A0A0A", sb: "#888888", s1: "#F4F4F4", bd: "#E2E2E2",
+    wordmark: "#3D7200", glow: "rgba(61,114,0,0.07)", btnShadow: "0 4px 20px rgba(0,0,0,0.12)",
+    toggleBg: "#F0F0F0", toggleBd: "#E0E0E0", toggleIcon: "#444444",
+  };
+
   return (
     <div style={{
-      background: BG, height:"100vh",
+      background: lc.bg, minHeight: "100vh",
       fontFamily: "-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      color: TX, display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center",
-      padding:"48px 32px", boxSizing:"border-box",
+      color: lc.tx, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      padding: "64px 32px", boxSizing: "border-box",
+      position: "relative", overflow: "hidden",
     }}>
-      {Capacitor.getPlatform() === "web" && <ParticleCanvas />}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"16px", position:"relative", zIndex:2 }}>
-        <div style={{ width:"88px", height:"88px", borderRadius:"50%", background:"#080808", border:`1px solid ${A}22`, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", boxShadow:`0 0 32px ${A}22` }}>
-          <img src="/theryn-logo.svg" width="88" height="88" alt="Theryn Logo" style={{ objectFit: "contain" }} />
-        </div>
-        <div style={{ textAlign:"center" }}>
-          {Capacitor.getPlatform() === 'web' ? (
-            <div style={{ fontSize:"30px", fontWeight:"800", letterSpacing:"-0.05em", color:A, lineHeight:1.2, maxWidth:"300px" }}>
-              Theryn — Coaching, Without the Chaos
-            </div>
-          ) : (
-            <>
-              <div style={{ fontSize:"38px", fontWeight:"800", letterSpacing:"-0.05em", color:A, lineHeight:1 }}>Theryn</div>
-              <div style={{ fontSize:"16px", color:SB, marginTop:"8px", lineHeight:"1.6" }}>Your personal gym & body tracking log.</div>
-            </>
-          )}
-        </div>
-      </div>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes pulse { 0%,100% { opacity:0.35 } 50% { opacity:0.65 } }
+      `}</style>
 
-      <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:"10px", position:"relative", zIndex:2 }}>
+      {/* Theme toggle */}
+      <button onClick={toggleLoginTheme} style={{
+        position: "fixed", top: 16, right: 16, zIndex: 10,
+        width: 38, height: 38, borderRadius: "50%",
+        background: lc.toggleBg, border: `1px solid ${lc.toggleBd}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", fontSize: 16, color: lc.toggleIcon,
+      }}>
+        {isDark ? "☀" : "☽"}
+      </button>
+
+      {isDark && Capacitor.getPlatform() === "web" && <ParticleCanvas />}
+
+      {/* Bottom glow */}
+      <div style={{
+        position: "fixed", bottom: -80, left: "50%", transform: "translateX(-50%)",
+        width: 480, height: 280,
+        background: `radial-gradient(ellipse, ${lc.glow} 0%, transparent 65%)`,
+        filter: "blur(60px)", pointerEvents: "none", zIndex: 0,
+        animation: "pulse 5s ease-in-out infinite",
+      }} />
+
+      {/* Center card */}
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        position: "relative", zIndex: 2, width: "100%", maxWidth: 340,
+      }}>
+        {/* Logo */}
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%", background: lc.s1,
+          border: `1px solid ${lc.bd}`, overflow: "hidden",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginBottom: 24,
+          boxShadow: isDark
+            ? `0 0 0 6px rgba(200,255,0,0.06), 0 24px 48px rgba(0,0,0,0.6)`
+            : `0 0 0 6px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.10)`,
+        }}>
+          <img src="/theryn-logo.svg" width="72" height="72" alt="Theryn" style={{ objectFit: "contain" }} />
+        </div>
+
+        {Capacitor.getPlatform() === "web" ? (
+          <>
+            <div style={{ fontSize: 11, color: lc.wordmark, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
+            <h1 style={{
+              fontSize: "clamp(28px, 7vw, 36px)", fontWeight: 900,
+              letterSpacing: "-0.04em", lineHeight: 1.15,
+              textAlign: "center", color: lc.tx, margin: "0 0 12px",
+            }}>
+              Coaching,<br /><span style={{ color: lc.wordmark }}>without the chaos.</span>
+            </h1>
+            <p style={{ fontSize: 13, color: lc.sb, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>
+              Real-time insights. Zero spreadsheets.
+            </p>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 11, color: lc.wordmark, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
+            <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: lc.tx, lineHeight: 1.2, textAlign: "center", margin: "0 0 10px" }}>
+              Your gym.<br /><span style={{ color: lc.wordmark }}>Your data.</span>
+            </h1>
+            <p style={{ fontSize: 13, color: lc.sb, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>Track workouts, body, and progress — all in one place.</p>
+          </>
+        )}
+
+        {/* Error */}
         {(error || authError) && (
           <div
             onClick={() => { setError(null); onClearError?.(); }}
-            style={{ background:"rgba(255,92,92,0.1)", border:`1px solid ${RED}`, borderRadius:"8px", padding:"10px 14px", fontSize:"14px", color:RED, wordBreak:"break-all", cursor:"pointer" }}>
+            style={{ background: "rgba(255,92,92,0.10)", border: `1px solid ${RED}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, wordBreak: "break-all", cursor: "pointer", marginBottom: 12, width: "100%", boxSizing: "border-box" }}>
             {error || authError}
-            <div style={{ fontSize:"13px", color:SB, marginTop:"4px" }}>Tap to dismiss</div>
+            <div style={{ fontSize: 12, color: lc.sb, marginTop: 4 }}>Tap to dismiss</div>
           </div>
         )}
+
+        {/* CTA */}
         <button
           onClick={handleGoogleSignIn}
           disabled={loading}
           style={{
-            background: loading ? MT : A, border:"none", borderRadius:"12px", color:"#000",
-            fontWeight:"700", fontSize:"17px", padding:"16px 20px", cursor: loading ? "default" : "pointer",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:"10px", width:"100%",
-            opacity: loading ? 0.7 : 1,
+            background: loading ? lc.s1 : A, border: loading ? `1px solid ${lc.bd}` : "none",
+            borderRadius: 14, color: "#000",
+            fontWeight: 800, fontSize: 15, padding: "16px 20px",
+            cursor: loading ? "default" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+            width: "100%", opacity: loading ? 0.7 : 1,
+            boxShadow: loading ? "none" : lc.btnShadow,
+            letterSpacing: "-0.01em",
           }}
         >
           {loading ? (
             <>
-              <div style={{ width:"16px", height:"16px", borderRadius:"50%", border:"2px solid #000", borderTopColor:"transparent", animation:"spin 0.7s linear infinite" }}/>
-              Connecting…
-              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              <div style={{ width: 15, height: 15, borderRadius: "50%", border: `2px solid ${lc.tx}`, borderTopColor: "transparent", animation: "spin 0.7s linear infinite" }} />
+              <span style={{ color: lc.tx }}>Connecting…</span>
             </>
           ) : (
             <>
-              <svg width="18" height="18" viewBox="0 0 24 24">
+              <svg width="17" height="17" viewBox="0 0 24 24">
                 <path fill="#000" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#333" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                 <path fill="#555" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
@@ -4182,8 +4257,9 @@ function LoginScreen({ authError, onClearError }) {
             </>
           )}
         </button>
-        <div style={{ textAlign:"center", fontSize:"14px", color:MT }}>
-          A quick tour of the app will start after sign-in.
+
+        <div style={{ marginTop: 16, fontSize: 11, color: lc.sb, textAlign: "center", letterSpacing: "0.02em" }}>
+          Free to start · No credit card required
         </div>
       </div>
     </div>
