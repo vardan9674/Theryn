@@ -13,7 +13,7 @@ import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
 import ChatView from "./components/ChatView";
-import { loadConversationPreviews } from "./hooks/useChat";
+import { loadConversationPreviews, useAthleteUnread } from "./hooks/useChat";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
@@ -644,6 +644,14 @@ export default function GymApp() {
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [restTimerActive, setRestTimerActive] = useState(false);
+  const acceptedCoachLink = coachLinks.find(l => l.status === "accepted");
+  const { unread: coachUnread } = useAthleteUnread({
+    authUser,
+    coachId: acceptedCoachLink?.coach_id ?? null,
+    athleteId: acceptedCoachLink?.athlete_id ?? null,
+    chatOpen,
+  });
   // AthleteView used only in CoachApp — removed from athlete root
 
   // ── Check onboarding state on every sign-in (DB, not localStorage) ─────
@@ -1125,7 +1133,9 @@ export default function GymApp() {
   return (
     <div style={{ background:BG, minHeight:"100vh",
       fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      color:TX, position:"relative", paddingBottom:"110px" }}>
+      color:TX, position:"relative",
+      paddingBottom: restTimerActive ? "200px" : "110px",
+      transition: "padding-bottom 0.2s ease" }}>
 
       <style>{`
         @keyframes screenIn { from { opacity:0; } to { opacity:1; } }
@@ -1138,7 +1148,7 @@ export default function GymApp() {
       `}</style>
 
       <div key={tab} className="screen-enter">
-        {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
+        {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser} onRestTimerChange={setRestTimerActive}/>}
         {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => fetchRoutineRef.current?.()}/>}
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
@@ -1202,7 +1212,7 @@ export default function GymApp() {
             aria-label="Open chat with coach"
             style={{
               position: "fixed",
-              bottom: "calc(88px + 16px)",
+              bottom: restTimerActive ? "calc(88px + 84px)" : "calc(88px + 16px)",
               right: "20px",
               width: "52px",
               height: "52px",
@@ -1213,15 +1223,29 @@ export default function GymApp() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 105,
+              zIndex: 115,
               boxShadow: "0 4px 18px rgba(200,255,0,0.35), 0 2px 8px rgba(0,0,0,0.5)",
               WebkitTapHighlightColor: "transparent",
+              transition: "bottom 0.25s ease",
             }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
               stroke={BG} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
+            {coachUnread > 0 && (
+              <span style={{
+                position: "absolute",
+                top: 4,
+                right: 4,
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: "#FF3B30",
+                border: `2px solid ${BG}`,
+                pointerEvents: "none",
+              }}/>
+            )}
           </button>
 
           {chatOpen && (() => {
@@ -1245,7 +1269,7 @@ export default function GymApp() {
 // ════════════════════════════════════════════════════════════════════════
 // LOG SCREEN
 // ════════════════════════════════════════════════════════════════════════
-function LogScreen({ session, setSession, templates, setTemplates, exercisesChanged, setExercisesChanged, todayType, setTodayType, setPrevTemplates, showUndo, workoutActive, setWorkoutActive, workoutPaused, setWorkoutPaused, workoutElapsed, setWorkoutElapsed, workoutStartTime, setWorkoutStartTime, workoutHistory, setWorkoutHistory, profile, onProfileTap, units, hasCustomizedRoutine, setHasCustomizedRoutine, authUser }) {
+function LogScreen({ session, setSession, templates, setTemplates, exercisesChanged, setExercisesChanged, todayType, setTodayType, setPrevTemplates, showUndo, workoutActive, setWorkoutActive, workoutPaused, setWorkoutPaused, workoutElapsed, setWorkoutElapsed, workoutStartTime, setWorkoutStartTime, workoutHistory, setWorkoutHistory, profile, onProfileTap, units, hasCustomizedRoutine, setHasCustomizedRoutine, authUser, onRestTimerChange }) {
   const [showAddEx,          setShowAddEx]          = useState(false);
   const [newExName,          setNewExName]          = useState("");
   const [showTypePick,       setShowTypePick]       = useState(false);
@@ -1272,6 +1296,12 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   // Rest timer state (local to LogScreen)
   const [restTimer, setRestTimer] = useState(null); // { total, remaining, exName, active }
   const [customRest, setCustomRest] = useState({}); // exId → override seconds
+
+  // Notify parent so chat FAB can lift above the timer bar
+  useEffect(() => {
+    onRestTimerChange?.(!!restTimer);
+    return () => onRestTimerChange?.(false);
+  }, [restTimer, onRestTimerChange]);
   const [activeStopwatch, setActiveStopwatch] = useState(null); // { exId, setId, name }
   const restRef = useRef(null);
   const notifTimeoutRef = useRef(null);
