@@ -3151,7 +3151,7 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.6" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                   </div>
                   <div style={{ fontSize:"17px", fontWeight:"700", marginBottom:"6px" }}>No connections yet</div>
-                  <div style={{ fontSize:"14px", color:SB, lineHeight:"1.6" }}>Share your code with a coach, or enter an athlete's code to get started.</div>
+                  <div style={{ fontSize:"14px", color:SB, lineHeight:"1.6" }}>{mode === "athlete" ? "Share your code with a coach to get started." : "Enter an athlete's code to get started."}</div>
                 </div>
               )}
 
@@ -3159,14 +3159,16 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
               <div style={{ borderTop:`1px solid ${BD}`, margin:"4px 0 20px" }}/>
 
               {/* Action tiles */}
-              <div style={{ display:"grid", gridTemplateColumns: mode === "athlete" ? "1fr" : "1fr 1fr", gap:"10px" }}>
-                <button onClick={() => goTo("mycode")} style={{ background:S2, border:`1px solid ${BD}`, borderRadius:"16px", padding:"18px 14px", cursor:"pointer", textAlign:"left" }}>
-                  <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:`${A}20`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"12px" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M7 7h.01M12 7h.01M17 7h.01M7 12h.01M12 12h.01M17 12h.01M7 17h.01M12 17h.01"/></svg>
-                  </div>
-                  <div style={{ fontSize:"15px", fontWeight:"700", color:TX, marginBottom:"4px" }}>My Code</div>
-                  <div style={{ fontSize:"12px", color:SB, lineHeight:"1.5" }}>Share with your {mode === "athlete" ? "coach" : "athletes"}</div>
-                </button>
+              <div style={{ display:"grid", gridTemplateColumns: "1fr", gap:"10px" }}>
+                {mode === "athlete" && (
+                  <button onClick={() => goTo("mycode")} style={{ background:S2, border:`1px solid ${BD}`, borderRadius:"16px", padding:"18px 14px", cursor:"pointer", textAlign:"left" }}>
+                    <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:`${A}20`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"12px" }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M7 7h.01M12 7h.01M17 7h.01M7 12h.01M12 12h.01M17 12h.01M7 17h.01M12 17h.01"/></svg>
+                    </div>
+                    <div style={{ fontSize:"15px", fontWeight:"700", color:TX, marginBottom:"4px" }}>My Code</div>
+                    <div style={{ fontSize:"12px", color:SB, lineHeight:"1.5" }}>Share with your coach</div>
+                  </button>
+                )}
                 {mode === "coach" && (
                   <button onClick={() => goTo("connect")} style={{ background:S2, border:`1px solid ${BD}`, borderRadius:"16px", padding:"18px 14px", cursor:"pointer", textAlign:"left" }}>
                     <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:`${A}20`, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"12px" }}>
@@ -5468,15 +5470,9 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   }
 
   const [showProfile, setShowProfile] = React.useState(false);
-  const [coachInviteCode, setCoachInviteCode] = React.useState("⋯");
   const [editingName, setEditingName] = React.useState(false);
   const [editNameValue, setEditNameValue] = React.useState("");
   const [savingName, setSavingName] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!authUser?.id) return;
-    ensureInviteCode(authUser.id).then(setCoachInviteCode).catch(() => {});
-  }, [authUser?.id]);
 
   const coachDisplayName = profile?.display_name || authUser?.email?.split("@")[0] || "Coach";
 
@@ -5575,14 +5571,15 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
         {tab === "body"      && <CoachBodyTab       {...sharedTabProps}/>}
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
         {tab === "payments"  && <CoachPaymentsTab  {...sharedTabProps}/>}
-        {tab === "messages"  && (
+        <div style={{ display: tab === "messages" ? "block" : "none" }}>
           <CoachMessagesTab
             authUser={authUser}
             coachLinks={coachLinks}
             coachLinksLoaded={coachLinksLoaded}
             onUnreadChange={setCoachMsgUnread}
+            isActive={tab === "messages"}
           />
-        )}
+        </div>
       </div>
 
       {/* Connections modal — triggered from the profile drawer (was a tab) */}
@@ -5703,12 +5700,6 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
               </button>
             </div>
 
-            {/* ── Invite code card ── */}
-            <div style={{ background: S2, borderRadius: "12px", padding: "12px 16px", marginBottom: "18px", border: `1px solid ${BD}` }}>
-              <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.06em", marginBottom: "4px", fontWeight: 700, textTransform: "uppercase" }}>Invite Code</div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: A, letterSpacing: "0.1em" }}>{coachInviteCode}</div>
-            </div>
-
             {/* ── Settings ── */}
             <div style={{ fontSize: "10px", color: SB, letterSpacing: "0.08em", marginBottom: "8px", fontWeight: 700, textTransform: "uppercase", paddingLeft: "4px" }}>Settings</div>
             <div style={{ background: S2, borderRadius: "14px", overflow: "hidden", marginBottom: "12px", border: `1px solid ${BD}` }}>
@@ -5761,7 +5752,6 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLinksLoaded, selectedAthlete, setSelectedAthlete, onSwitchRole, onSignOut, setTab, showProfile, setShowProfile, setAthleteCache, onDigestSignals }) {
   const [expandedAthlete, setExpandedAthlete] = React.useState(null);
   const [athleteLoading, setAthleteLoading] = React.useState(false);
-  const [inviteCode, setInviteCode] = React.useState("⋯");
   const [permState, setPermState] = React.useState("granted");
   const [athleteSignals, setAthleteSignals] = React.useState({}); // { athleteId: { athlete, signals, streak } }
 
@@ -5818,12 +5808,6 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
 
   const displayName = profile?.display_name || authUser?.email?.split("@")[0] || "Coach";
   const myAthletes = coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted");
-
-  // Load real invite code
-  React.useEffect(() => {
-    if (!authUser?.id) return;
-    ensureInviteCode(authUser.id).then(setInviteCode).catch(() => {});
-  }, [authUser?.id]);
 
   function openAthleteView(link) {
     setSelectedAthlete(link);
@@ -5904,11 +5888,7 @@ function CoachAthletesTab({ authUser, profile, setProfile, coachLinks, coachLink
         <div style={{ textAlign: "center", padding: "48px 16px" }}>
           <div style={{ fontSize: "40px", marginBottom: "16px" }}>👥</div>
           <div style={{ fontSize: "16px", fontWeight: 700, color: TX, marginBottom: "8px" }}>No athletes yet</div>
-          <div style={{ fontSize: "13px", color: SB, marginBottom: "24px" }}>Share your invite code with athletes to connect.</div>
-          <div style={{ background: S2, border: `1px solid ${BD}`, borderRadius: "12px", padding: "14px 20px", display: "inline-block" }}>
-            <div style={{ fontSize: "11px", color: SB, marginBottom: "4px", letterSpacing: "0.06em" }}>YOUR INVITE CODE</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, color: A, letterSpacing: "0.12em" }}>{inviteCode}</div>
-          </div>
+          <div style={{ fontSize: "13px", color: SB, marginBottom: "24px" }}>Ask each athlete for their invite code, then add them from Profile → Connections.</div>
         </div>
       ) : (
         <>
@@ -6125,13 +6105,36 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
         </div>
       )}
 
+      {coachAthleteView && (
+        <AthleteView
+          athleteView={coachAthleteView}
+          setAthleteView={setCoachAthleteView}
+          athleteId={selectedAthlete?.athlete_id}
+          todayDay={getToday()}
+          onRoutineUpdated={(newRoutine) => {
+            setCoachAthleteView(p => p ? { ...p, routine: newRoutine } : null);
+            const athleteId = selectedAthlete?.athlete_id;
+            if (athleteId) setAthleteCache?.(athleteId, { ...(athleteData || {}), routine: newRoutine });
+          }}
+        />
+      )}
+
       {loadingAthlete ? (
         <div style={{ textAlign: "center", color: SB, padding: "48px 0" }}>
           <div style={{ width: "28px", height: "28px", borderRadius: "50%", border: `3px solid ${MT}`, borderTopColor: A, animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }}/>
           Loading routine…
         </div>
       ) : !routine || allDays.length === 0 ? (
-        <div style={{ textAlign: "center", color: SB, padding: "48px 0", fontSize: "14px" }}>No routine found for {athleteName}.</div>
+        <div style={{ textAlign: "center", padding: "48px 16px" }}>
+          <div style={{ fontSize: "40px", marginBottom: "12px" }}>📋</div>
+          <div style={{ fontSize: "15px", fontWeight: 700, color: TX, marginBottom: "6px" }}>No routine yet</div>
+          <div style={{ fontSize: "13px", color: SB, marginBottom: "20px" }}>{athleteName} has no routine. Build one and it will sync to their space.</div>
+          <button
+            onClick={() => setCoachAthleteView({ name: athleteName, routine: null, history: athleteData?.history, weights: athleteData?.weights, measurements: athleteData?.measurements })}
+            style={{ padding: "10px 18px", background: A, color: BG, border: "none", borderRadius: "12px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
+            Create routine
+          </button>
+        </div>
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -6158,20 +6161,6 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
               <span style={{ fontSize: "14px", color: A }}>✎</span> Edit
             </button>
           </div>
-
-          {coachAthleteView && (
-            <AthleteView
-              athleteView={coachAthleteView}
-              setAthleteView={setCoachAthleteView}
-              athleteId={selectedAthlete?.athlete_id}
-              todayDay={getToday()}
-              onRoutineUpdated={(newRoutine) => {
-                // Not strictly needed to update locally if realtime channel fires, 
-                // but we can update coachAthleteView to keep builder in sync
-                setCoachAthleteView(p => p ? { ...p, routine: newRoutine } : null);
-              }}
-            />
-          )}
 
           {/* Day type badge */}
           {routine[activeDay] && (
@@ -6393,7 +6382,7 @@ function CoachBodyTab({ authUser, selectedAthlete, setSelectedAthlete, coachLink
 // ─────────────────────────────────────────────
 // COACH MESSAGES TAB
 // ─────────────────────────────────────────────
-function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChange }) {
+function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChange, isActive = true }) {
   const [openConv, setOpenConv] = React.useState(null); // { link }
   const [previews, setPreviews] = React.useState({});
 
@@ -6402,20 +6391,57 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
     [coachLinks, authUser?.id]
   );
 
-  React.useEffect(() => {
+  const athleteIdsKey = myAthletes.map(a => a.athlete_id).sort().join(",");
+
+  const refreshPreviewsNow = React.useCallback(() => {
     if (!authUser?.id || myAthletes.length === 0) return;
     loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
-  }, [authUser?.id, myAthletes.length]);
+  }, [authUser?.id, athleteIdsKey]);
+
+  React.useEffect(() => {
+    refreshPreviewsNow();
+  }, [refreshPreviewsNow]);
+
+  // Realtime: refresh previews (and badge) whenever a new message lands in any
+  // of this coach's conversations — so the dot updates even when the coach is
+  // on another tab.
+  React.useEffect(() => {
+    if (!authUser?.id || myAthletes.length === 0) return;
+    let cancelled = false;
+    let channel = null;
+    (async () => {
+      const athleteIds = myAthletes.map(a => a.athlete_id);
+      const { data: convs } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("coach_id", authUser.id)
+        .in("athlete_id", athleteIds);
+      if (cancelled || !convs || convs.length === 0) return;
+      const convIdSet = new Set(convs.map(c => c.id));
+      channel = supabase
+        .channel(`coach-msgs:${authUser.id}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages" },
+          (payload) => {
+            const row = payload.new;
+            if (!row || !convIdSet.has(row.conversation_id)) return;
+            if (row.sender_id === authUser.id) return; // our own sends don't bump unread
+            refreshPreviewsNow();
+          }
+        )
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [authUser?.id, athleteIdsKey, refreshPreviewsNow]);
 
   React.useEffect(() => {
     const total = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
     onUnreadChange?.(total);
   }, [previews, onUnreadChange]);
-
-  function refreshPreviews() {
-    if (!authUser?.id || myAthletes.length === 0) return;
-    loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
-  }
 
   function formatRelTime(iso) {
     if (!iso) return "";
@@ -6498,7 +6524,7 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
           coachId={openConv.link.coach_id}
           athleteId={openConv.link.athlete_id}
           otherPartyName={openConv.link.athlete_name || "Athlete"}
-          onClose={() => { setOpenConv(null); refreshPreviews(); }}
+          onClose={() => { setOpenConv(null); refreshPreviewsNow(); }}
         />
       )}
     </div>
