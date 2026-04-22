@@ -400,3 +400,79 @@ export async function loadConversationPreviews(
 
   return result;
 }
+
+// ── Athlete-side unread count for a single coach conversation ────────────────
+export function useAthleteUnread(params: {
+  authUser: { id: string } | null;
+  coachId: string | null;
+  athleteId: string | null;
+  chatOpen: boolean;
+}): { unread: number; reset: () => void } {
+  const { authUser, coachId, athleteId, chatOpen } = params;
+  const [unread, setUnread] = useState(0);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const chatOpenRef = useRef(chatOpen);
+  useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
+
+  // Resolve conversation + initial count
+  useEffect(() => {
+    if (!authUser?.id || !coachId || !athleteId) {
+      setConversationId(null);
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: conv } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("coach_id", coachId)
+        .eq("athlete_id", athleteId)
+        .maybeSingle();
+      if (cancelled || !conv) return;
+      setConversationId(conv.id);
+
+      const { data: read } = await supabase
+        .from("conversation_reads")
+        .select("last_read_at")
+        .eq("conversation_id", conv.id)
+        .eq("user_id", athleteId)
+        .maybeSingle();
+      const lastRead = read?.last_read_at ?? null;
+
+      let q = supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conv.id)
+        .eq("sender_id", coachId);
+      if (lastRead) q = q.gt("created_at", lastRead);
+      const { count } = await q;
+      if (!cancelled) setUnread(count ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [authUser?.id, coachId, athleteId]);
+
+  // Realtime: increment on incoming coach messages while chat closed
+  useEffect(() => {
+    if (!conversationId || !coachId) return;
+    const ch = supabase
+      .channel(`athlete-unread-${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        (payload: { new: { sender_id: string } }) => {
+          if (payload.new.sender_id !== coachId) return;
+          if (chatOpenRef.current) return;
+          setUnread((u) => u + 1);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [conversationId, coachId]);
+
+  // Reset whenever chat opens
+  useEffect(() => { if (chatOpen) setUnread(0); }, [chatOpen]);
+
+  const reset = useCallback(() => setUnread(0), []);
+  return { unread, reset };
+}
