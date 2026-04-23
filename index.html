@@ -5,14 +5,161 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#080808" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Theryn</title>
+
+    <!-- ── Primary SEO ───────────────────────────────────────────────────── -->
+    <title>Theryn — Free Coaching & Gym App for Trainers and Athletes</title>
+    <meta name="description" content="Theryn is a free coaching and workout app for personal trainers, gym coaches, and athletes. Track workouts, send routines, message your coach in real time, and log body metrics — all in one dashboard." />
+    <meta name="keywords" content="free gym app, free coaching app, personal trainer app, workout tracker, online fitness coach, athlete tracking, coach messaging, gym dashboard, routine builder, fitness coaching platform" />
+    <meta name="author" content="Theryn" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://theryn.fit/" />
+
+    <!-- ── Open Graph (Facebook, LinkedIn, iMessage previews) ────────────── -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Theryn" />
+    <meta property="og:title" content="Theryn — Free Coaching & Gym App for Trainers and Athletes" />
+    <meta property="og:description" content="Track workouts, send routines, message your coach in real time. The free coaching and gym platform built for both sides of the training relationship." />
+    <meta property="og:url" content="https://theryn.fit/" />
+    <meta property="og:image" content="https://theryn.fit/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- ── Twitter Card ──────────────────────────────────────────────────── -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Theryn — Free Coaching & Gym App" />
+    <meta name="twitter:description" content="Track workouts, send routines, message your coach in real time. Free for trainers and athletes." />
+    <meta name="twitter:image" content="https://theryn.fit/og-image.png" />
+
+    <!-- ── Icons ─────────────────────────────────────────────────────────── -->
+    <link rel="icon" type="image/svg+xml" href="/ICON.svg" />
+    <link rel="apple-touch-icon" href="/ICON.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- ── Structured Data: Organization + SoftwareApplication + FAQ ─────── -->
+    <!-- Helps Google show rich results and gives AI search engines (Perplexity,
+         ChatGPT-Search, Bing Copilot) structured facts they can cite. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://theryn.fit/#org",
+          "name": "Theryn",
+          "url": "https://theryn.fit/",
+          "logo": "https://theryn.fit/theryn-logo.svg",
+          "sameAs": []
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://theryn.fit/#website",
+          "url": "https://theryn.fit/",
+          "name": "Theryn",
+          "publisher": { "@id": "https://theryn.fit/#org" },
+          "inLanguage": "en-US"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "Theryn",
+          "operatingSystem": "Web, iOS, Android",
+          "applicationCategory": "HealthApplication",
+          "description": "Free coaching and workout-tracking app for personal trainers, gym coaches, and athletes. Build routines, track workouts, message in real time, log body metrics.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "featureList": [
+            "Routine builder",
+            "Workout tracking",
+            "Coach–athlete real-time messaging",
+            "Body metrics and progress tracking",
+            "Multi-athlete coach dashboard",
+            "Payment tracking"
+          ],
+          "url": "https://theryn.fit/"
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is Theryn free?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Theryn is free to use for both coaches and athletes."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What does Theryn do?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Theryn is a coaching and gym app that lets personal trainers build routines, message athletes in real time, track their workouts and body metrics, and manage multiple athletes from a single dashboard."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Who is Theryn for?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Theryn is built for personal trainers, strength coaches, and the athletes they coach. Athletes can also use it on their own to track their own workouts and body progress."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I use Theryn on my phone?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Theryn runs in any modern mobile browser and is installable as a PWA. Native iOS and Android builds are also available."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       body { background: #080808; overflow-x: hidden; }
+      /* Fallback content for crawlers + users with JS disabled. Hidden as soon
+         as the SPA mounts (React replaces #root's children). */
+      .seo-fallback { max-width: 720px; margin: 0 auto; padding: 48px 20px; color: #F0F0F0; font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; line-height: 1.6; }
+      .seo-fallback h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; color: #C8FF00; }
+      .seo-fallback h2 { font-size: 18px; font-weight: 700; margin: 24px 0 8px; color: #F0F0F0; }
+      .seo-fallback p, .seo-fallback li { color: #C8C8C8; font-size: 15px; }
+      .seo-fallback ul { padding-left: 20px; margin-bottom: 12px; }
+      .seo-fallback a { color: #C8FF00; }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Crawler + no-JS fallback. React unmounts this on mount. -->
+      <main class="seo-fallback">
+        <h1>Theryn — Free Coaching & Gym App</h1>
+        <p><strong>Theryn</strong> is a free coaching and workout-tracking app for personal trainers, gym coaches, and athletes. Build routines, track workouts, message your coach in real time, and log body metrics — all in one dashboard.</p>
+
+        <h2>What you get</h2>
+        <ul>
+          <li><strong>Routine builder</strong> — design workouts once, assign to any athlete</li>
+          <li><strong>Workout tracking</strong> — sets, reps, weights, rest, personal records</li>
+          <li><strong>Real-time messaging</strong> — chat with your coach or athlete with read receipts and typing indicators</li>
+          <li><strong>Body metrics</strong> — weight, measurements, progress over time</li>
+          <li><strong>Coach dashboard</strong> — manage many athletes, see who trained today, track payments</li>
+        </ul>
+
+        <h2>Who it's for</h2>
+        <p>Personal trainers running an online coaching practice, strength coaches who work with multiple athletes, and anyone who wants a cleaner alternative to spreadsheets and screenshots for programming.</p>
+
+        <h2>Pricing</h2>
+        <p>Free for coaches and athletes.</p>
+
+        <h2>Get started</h2>
+        <p><a href="/">Open Theryn</a> — sign in with email and start tracking in under a minute.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
