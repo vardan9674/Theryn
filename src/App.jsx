@@ -891,9 +891,13 @@ export default function GymApp() {
       try {
         const routine = await loadRoutine(uid);
         if (routine) {
-          setTemplates(routine);
+          // Merge with DEFAULT_TEMPLATES so every day key always exists.
+          // The old loadRoutine returned a full 7-day object; the new one only
+          // returns days that are in the DB. Merging prevents undefined[day] crashes.
+          const merged = { ...DEFAULT_TEMPLATES, ...routine };
+          setTemplates(merged);
           setTodayType(routine[getToday()]?.type || 'Custom');
-          scheduleDailyRoutine(routine);
+          scheduleDailyRoutine(merged);
         }
       } catch (err) {
         console.error("fetchRoutine error:", err);
@@ -935,11 +939,14 @@ export default function GymApp() {
             const newRoutine = await loadRoutine(uid);
             if (!newRoutine) return;
 
-            const diffType = classifyRoutineUpdate(templates, newRoutine);
+            // Always merge with defaults so every day key is present
+            const mergedRoutine = { ...DEFAULT_TEMPLATES, ...newRoutine };
+
+            const diffType = classifyRoutineUpdate(templates, mergedRoutine);
 
             // Notes-only: apply immediately and silently
             if (diffType === "notes_only") {
-              setTemplates(newRoutine);
+              setTemplates(mergedRoutine);
               return;
             }
 
@@ -948,7 +955,7 @@ export default function GymApp() {
 
             if (!workoutActive || setsLogged === 0) {
               // No active session or nothing logged: apply immediately
-              setTemplates(newRoutine);
+              setTemplates(mergedRoutine);
               return;
             }
 
@@ -957,7 +964,7 @@ export default function GymApp() {
               version: payload?.new?.source_template_version || Date.now(),
               receivedAt: Date.now(),
               structural: true,
-              newRoutine,
+              newRoutine: mergedRoutine,
             });
           } catch {
             // Fallback: silent re-fetch
