@@ -954,7 +954,7 @@ export default function GymApp() {
 
             // Mid-workout with structural change: defer and show banner
             setPendingRoutineUpdate({
-              version: (payload?.new as any)?.source_template_version || Date.now(),
+              version: payload?.new?.source_template_version || Date.now(),
               receivedAt: Date.now(),
               structural: true,
               newRoutine,
