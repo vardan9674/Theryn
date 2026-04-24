@@ -16,7 +16,7 @@ import TemplateEditor from "./TemplateEditor.jsx";
  *   authUser   — current coach user
  *   myAthletes — CoachLink[] (accepted)
  */
-export default function CoachTemplatesTab({ authUser, myAthletes }) {
+export default function CoachTemplatesTab({ authUser, myAthletes, burstAthleteCache }) {
   const [templates, setTemplates]     = React.useState([]);
   const [loading, setLoading]         = React.useState(true);
   const [creating, setCreating]       = React.useState(false);
@@ -112,6 +112,7 @@ export default function CoachTemplatesTab({ authUser, myAthletes }) {
         template={editingTemplate.template}
         initialDays={editingTemplate.days}
         myAthletes={myAthletes}
+        onAthletesCacheInvalidate={burstAthleteCache}
         onBack={async () => { setEditingTemplate(null); await loadTemplates(); }}
         onSaved={async (newVersion, days) => {
           setEditingTemplate(prev => prev ? {
