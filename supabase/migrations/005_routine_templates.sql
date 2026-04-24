@@ -449,7 +449,9 @@ BEGIN
         p_template_id, v_athlete_id, v_coach_id,
         now(), v_template.version, false
       )
-      ON CONFLICT ON CONSTRAINT routine_template_assignments_active_unique
+      -- Partial unique index requires ON CONFLICT (cols) WHERE condition syntax,
+      -- NOT ON CONFLICT ON CONSTRAINT (which only works for named constraints).
+      ON CONFLICT (template_id, athlete_id) WHERE unassigned_at IS NULL
       DO UPDATE SET
         assigned_at         = EXCLUDED.assigned_at,
         last_pushed_version = EXCLUDED.last_pushed_version,

@@ -169,12 +169,26 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     if (!template?.id) return;
     setAssignLoading(true);
     try {
-      // Save first if there are unsaved changes
+      // Save template tree first (required so RPC has up-to-date exercises)
       await saveTemplateTree(template.id, days);
       const result = await assignTemplate(template.id, selectedIds);
       setShowAssign(false);
-      const count = result.succeeded?.length || 0;
-      showToast(`Assigned to ${count} athlete${count !== 1 ? "s" : ""}`);
+
+      const succeeded = result.succeeded?.length || 0;
+      const failed    = result.failed    || [];
+
+      if (succeeded > 0 && failed.length === 0) {
+        showToast(`Assigned to ${succeeded} athlete${succeeded !== 1 ? "s" : ""}`);
+      } else if (succeeded > 0) {
+        showToast(`Assigned to ${succeeded}, ${failed.length} failed`);
+      } else if (failed.length > 0) {
+        // Surface the first failure reason so the coach can act
+        const reason = failed[0]?.reason || "unknown error";
+        showToast(`Assign failed: ${reason}`, RED);
+      } else {
+        showToast("No athletes assigned", RED);
+      }
+
       const fresh = await getTemplateAssignments(template.id);
       setAssignments(fresh);
     } catch (e) {
