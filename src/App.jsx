@@ -4299,15 +4299,7 @@ function LoginScreen({ authError, onClearError }) {
     }
   };
 
-  const [loginTheme, setLoginTheme] = React.useState(
-    () => localStorage.getItem("theryn_theme") || "light"
-  );
-  const toggleLoginTheme = () => setLoginTheme(t => {
-    const n = t === "dark" ? "light" : "dark";
-    localStorage.setItem("theryn_theme", n);
-    return n;
-  });
-  const isDark = loginTheme === "dark";
+  const isDark = true;
   const lc = isDark ? {
     bg: "#080808", tx: "#F0F0F0", sb: "#585858", s1: "#101010", bd: "#1E1E1E",
     wordmark: "#C8FF00", glow: "rgba(200,255,0,0.10)", btnShadow: "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
@@ -4332,18 +4324,7 @@ function LoginScreen({ authError, onClearError }) {
         @keyframes pulse { 0%,100% { opacity:0.35 } 50% { opacity:0.65 } }
       `}</style>
 
-      {/* Theme toggle */}
-      <button onClick={toggleLoginTheme} style={{
-        position: "fixed", top: 16, right: 16, zIndex: 10,
-        width: 38, height: 38, borderRadius: "50%",
-        background: lc.toggleBg, border: `1px solid ${lc.toggleBd}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", fontSize: 16, color: lc.toggleIcon,
-      }}>
-        {isDark ? "☀" : "☽"}
-      </button>
-
-      {isDark && Capacitor.getPlatform() === "web" && <ParticleCanvas />}
+      {Capacitor.getPlatform() === "web" && <ParticleCanvas />}
 
       {/* Bottom glow */}
       <div style={{
