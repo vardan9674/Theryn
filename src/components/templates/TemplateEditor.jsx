@@ -153,14 +153,18 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     try {
       const result = await pushTemplateUpdate(template.id, athleteIds, { force, skipMidWeek });
       setShowPushModal(false);
-      const total = result.succeeded?.length || 0;
-      const skipped = (result.skipped_mid_week?.length || 0) + (result.skipped_overridden?.length || 0);
-      const conflicts = result.active_session_conflicts?.length || 0;
+      const total      = result.succeeded?.length || 0;
+      const midWeek    = result.skipped_mid_week?.length || 0;
+      const overridden = result.skipped_overridden?.length || 0;
+      const conflicts  = result.active_session_conflicts?.length || 0;
 
-      let msg = `Updated ${total} athlete${total !== 1 ? "s" : ""}`;
-      if (skipped > 0) msg += `, skipped ${skipped}`;
-      if (conflicts > 0) msg += `, ${conflicts} mid-session`;
-      showToast(msg);
+      const parts = [];
+      if (total > 0)      parts.push(`Updated ${total}`);
+      if (midWeek > 0)    parts.push(`${midWeek} skipped (mid-week)`);
+      if (overridden > 0) parts.push(`${overridden} skipped (customized)`);
+      if (conflicts > 0)  parts.push(`${conflicts} mid-session`);
+      if (parts.length === 0) parts.push("No athletes updated");
+      showToast(parts.join(" · "));
       onSaved?.(pendingSaveVersion, days);
     } catch (e) {
       showToast(e.message || "Push failed", RED);
