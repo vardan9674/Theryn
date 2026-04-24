@@ -186,6 +186,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
         setIsDirty(false);
       }
       const result = await assignTemplate(template.id, selectedIds);
+      console.log("[assign_template result]", JSON.stringify(result, null, 2));
       setShowAssign(false);
       // Bust the coach's cached view for every successfully assigned athlete
       if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
