@@ -936,7 +936,9 @@ export default function GymApp() {
           // ── Session-aware update logic (§6.7) ──────────────────────────
           // Fetch new routine quietly to compare diff type
           try {
-            const newRoutine = await loadRoutine(uid);
+            // forceNetwork=true: bypass localStorage cache so we always get the
+            // coach's just-pushed version, not the stale cached copy
+            const newRoutine = await loadRoutine(uid, true);
             if (!newRoutine) return;
 
             // Always merge with defaults so every day key is present
@@ -974,7 +976,19 @@ export default function GymApp() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Re-fetch routine when the athlete returns to the tab/app — catches
+    // pushes that happened while the screen was off or the tab was hidden.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchRoutine(true); // silent, no spinner
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      supabase.removeChannel(channel);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [authUser?.id]);
 
   useEffect(() => {

@@ -56,13 +56,15 @@ import { enqueueAction } from "../lib/offlineQueue";
  * Returns null if no routine exists.
  * Also returns routine metadata for template-awareness.
  */
-export async function loadRoutine(userId: string): Promise<Templates | null> {
+export async function loadRoutine(userId: string, forceNetwork = false): Promise<Templates | null> {
   const cacheKey = `theryn_routine_${userId}`;
   let cachedData = null;
-  try {
-    const cachedText = localStorage.getItem(cacheKey);
-    if (cachedText) cachedData = JSON.parse(cachedText);
-  } catch {}
+  if (!forceNetwork) {
+    try {
+      const cachedText = localStorage.getItem(cacheKey);
+      if (cachedText) cachedData = JSON.parse(cachedText);
+    } catch {}
+  }
 
   const fetchNetwork = async () => {
     const { data: routine, error: routineErr } = await supabase
