@@ -38,6 +38,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
   };
 
   const [days, setDays] = React.useState(buildInitialDays);
+  const [isDirty, setIsDirty] = React.useState(false);
   const [activeDay, setActiveDay] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
   const [toast, setToast] = React.useState(null);
@@ -66,6 +67,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
 
   const updateDay = (day_index, patch) => {
     setDays(prev => prev.map(d => d.day_index === day_index ? { ...d, ...patch } : d));
+    setIsDirty(true);
   };
 
   const addDay = () => {
@@ -75,11 +77,13 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     const label = INDEX_TO_DAY[next];
     setDays(prev => [...prev, { day_index:next, workout_type:"Custom", label, exercises:[] }]);
     setActiveDay(next);
+    setIsDirty(true);
   };
 
   const removeDay = (day_index) => {
     setDays(prev => prev.filter(d => d.day_index !== day_index));
     setActiveDay(days.find(d => d.day_index !== day_index)?.day_index ?? 0);
+    setIsDirty(true);
   };
 
   // ── Exercise mutations ───────────────────────────────────────────────────
@@ -122,6 +126,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     setSaving(true);
     try {
       const newVersion = await saveTemplateTree(template.id, days);
+      setIsDirty(false);
       setPendingSaveVersion(newVersion);
 
       // Reload assignments count
@@ -169,8 +174,11 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     if (!template?.id) return;
     setAssignLoading(true);
     try {
-      // Save template tree first (required so RPC has up-to-date exercises)
-      await saveTemplateTree(template.id, days);
+      // Only save (and bump version) if there are unsaved changes
+      if (isDirty) {
+        await saveTemplateTree(template.id, days);
+        setIsDirty(false);
+      }
       const result = await assignTemplate(template.id, selectedIds);
       setShowAssign(false);
 
