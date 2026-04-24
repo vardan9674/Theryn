@@ -961,9 +961,9 @@ export default function GymApp() {
   const todayKey = getToday();
   useEffect(() => {
     if (workoutActive) return;
-    const tmpl = templates[todayKey];
+    const tmpl = templates[todayKey] || { type: "Rest", exercises: [] };
     setSession(
-      tmpl.exercises.map((name, i) => ({
+      (tmpl.exercises || []).map((name, i) => ({
         id: Date.now() + i, name,
         sets: isCardioExercise(name)
           ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done:false }]
@@ -971,7 +971,7 @@ export default function GymApp() {
       }))
     );
     setTodayType(tmpl.type);
-  }, [templates[todayKey].exercises.join(','), templates[todayKey].type]);
+  }, [(templates[todayKey]?.exercises || []).join(','), templates[todayKey]?.type]);
 
   const TABS = [
     { id:"log",      label:"Log"      },
@@ -4168,23 +4168,10 @@ function LoginScreen({ authError, onClearError }) {
     }
   };
 
-  const [loginTheme, setLoginTheme] = React.useState(
-    () => localStorage.getItem("theryn_theme") || "light"
-  );
-  const toggleLoginTheme = () => setLoginTheme(t => {
-    const n = t === "dark" ? "light" : "dark";
-    localStorage.setItem("theryn_theme", n);
-    return n;
-  });
-  const isDark = loginTheme === "dark";
-  const lc = isDark ? {
+  const isDark = true;
+  const lc = {
     bg: "#080808", tx: "#F0F0F0", sb: "#585858", s1: "#101010", bd: "#1E1E1E",
     wordmark: "#C8FF00", glow: "rgba(200,255,0,0.10)", btnShadow: "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
-    toggleBg: "#1E1E1E", toggleBd: "#2E2E2E", toggleIcon: "#C8FF00",
-  } : {
-    bg: "#FFFFFF", tx: "#0A0A0A", sb: "#888888", s1: "#F4F4F4", bd: "#E2E2E2",
-    wordmark: "#3D7200", glow: "rgba(61,114,0,0.07)", btnShadow: "0 4px 20px rgba(0,0,0,0.12)",
-    toggleBg: "#F0F0F0", toggleBd: "#E0E0E0", toggleIcon: "#444444",
   };
 
   return (
@@ -4201,18 +4188,7 @@ function LoginScreen({ authError, onClearError }) {
         @keyframes pulse { 0%,100% { opacity:0.35 } 50% { opacity:0.65 } }
       `}</style>
 
-      {/* Theme toggle */}
-      <button onClick={toggleLoginTheme} style={{
-        position: "fixed", top: 16, right: 16, zIndex: 10,
-        width: 38, height: 38, borderRadius: "50%",
-        background: lc.toggleBg, border: `1px solid ${lc.toggleBd}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", fontSize: 16, color: lc.toggleIcon,
-      }}>
-        {isDark ? "☀" : "☽"}
-      </button>
-
-      {isDark && Capacitor.getPlatform() === "web" && <ParticleCanvas />}
+      {Capacitor.getPlatform() === "web" && <ParticleCanvas />}
 
       {/* Bottom glow */}
       <div style={{
