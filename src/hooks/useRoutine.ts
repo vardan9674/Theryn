@@ -40,12 +40,22 @@ import { enqueueAction } from "../lib/offlineQueue";
  * Returns null if no routine exists.
  * Uses a single nested query for minimal round-trips.
  */
+function fillMissingDays(templates: Templates): Templates {
+  const filled: Templates = { ...templates };
+  for (const d of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
+    if (!filled[d] || !Array.isArray(filled[d].exercises)) {
+      filled[d] = { type: "Rest", exercises: [] };
+    }
+  }
+  return filled;
+}
+
 export async function loadRoutine(userId: string): Promise<Templates | null> {
   const cacheKey = `theryn_routine_${userId}`;
   let cachedData = null;
   try {
     const cachedText = localStorage.getItem(cacheKey);
-    if (cachedText) cachedData = JSON.parse(cachedText);
+    if (cachedText) cachedData = fillMissingDays(JSON.parse(cachedText));
   } catch {}
 
   const fetchNetwork = async () => {
@@ -94,7 +104,15 @@ export async function loadRoutine(userId: string): Promise<Templates | null> {
       for (const ex of userExes || []) idToName[ex.id] = ex.name;
     }
 
-    const templates: Templates = {};
+    const templates: Templates = {
+      Mon: { type: "Rest", exercises: [] },
+      Tue: { type: "Rest", exercises: [] },
+      Wed: { type: "Rest", exercises: [] },
+      Thu: { type: "Rest", exercises: [] },
+      Fri: { type: "Rest", exercises: [] },
+      Sat: { type: "Rest", exercises: [] },
+      Sun: { type: "Rest", exercises: [] },
+    };
     for (const day of days) {
       const dayKey = INDEX_TO_DAY[(day as any).day_index];
       if (!dayKey) continue;
