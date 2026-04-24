@@ -79,6 +79,7 @@ export async function sendCoachRequest(
     coach_id: coachId,
     athlete_id: athleteId,
     status: "accepted",
+    permissions: "edit_routine",
   });
   if (error) throw new Error(error.message);
 
