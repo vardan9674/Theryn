@@ -9,7 +9,7 @@ import { Browser } from "@capacitor/browser";
 import { Share } from "@capacitor/share";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
-import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
+import { loadRoutine, saveRoutine, saveRoutineAsCoach, getRoutineMeta, classifyRoutineUpdate } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
 import ChatView from "./components/ChatView";
@@ -24,7 +24,7 @@ import {
 } from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
-import { saveRoutineAsCoach, getRoutineMeta, classifyRoutineUpdate } from "./hooks/useRoutine";
+import { resetAthleteToTemplate } from "./hooks/useTemplates";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -932,7 +932,7 @@ export default function GymApp() {
           // ── Session-aware update logic (§6.7) ──────────────────────────
           // Fetch new routine quietly to compare diff type
           try {
-            const newRoutine = await (await import("./hooks/useRoutine")).loadRoutine(uid);
+            const newRoutine = await loadRoutine(uid);
             if (!newRoutine) return;
 
             const diffType = classifyRoutineUpdate(templates, newRoutine);
@@ -6165,9 +6165,7 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
     if (!window.confirm("Reset this athlete's routine to the original template? Their current customizations will be archived.")) return;
     setResetting(true);
     try {
-      const { resetAthleteToTemplate } = await import("./hooks/useTemplates.ts");
       await resetAthleteToTemplate(routineMeta.sourceTemplateId, selectedAthlete.athlete_id);
-      const { loadRoutine } = await import("./hooks/useRoutine");
       const newRoutine = await loadRoutine(selectedAthlete.athlete_id);
       setAthleteCache?.(selectedAthlete.athlete_id, { ...(athleteData || {}), routine: newRoutine });
       setNoteToast({ type:"success", message:"Reset to template" });
