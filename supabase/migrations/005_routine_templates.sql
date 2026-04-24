@@ -511,6 +511,7 @@ DECLARE
   v_failed                JSONB[]  := ARRAY[]::JSONB[];
   v_week_start            DATE;
   v_is_mid_week           BOOLEAN;
+  v_existing_re_id        UUID;
 BEGIN
   -- Ownership check + advisory lock to prevent concurrent pushes
   PERFORM pg_advisory_xact_lock(hashtext('template:' || p_template_id::text));
@@ -600,22 +601,34 @@ BEGIN
         LOOP
           v_ex_id := resolve_exercise_id(v_ex.exercise_name, v_assignment.athlete_id);
 
-          INSERT INTO routine_exercises (
-            routine_day_id, exercise_id, sort_order,
-            target_sets, target_reps, notes, template_exercise_id
-          ) VALUES (
-            v_day_id, v_ex_id, v_ex.sort_order,
-            v_ex.target_sets, v_ex.target_reps, v_ex.notes, v_ex.id
-          )
-          ON CONFLICT (template_exercise_id) WHERE template_exercise_id IS NOT NULL
-          DO UPDATE SET
-            routine_day_id = EXCLUDED.routine_day_id,
-            exercise_id    = EXCLUDED.exercise_id,
-            sort_order     = EXCLUDED.sort_order,
-            target_sets    = EXCLUDED.target_sets,
-            target_reps    = EXCLUDED.target_reps,
-            notes          = EXCLUDED.notes,
-            removed_at     = NULL;
+          -- UPSERT by template_exercise_id scoped to this athlete's routine
+          -- (template_exercise_id is NOT globally unique — same ID appears in every athlete's routine)
+          SELECT re.id INTO v_existing_re_id
+          FROM routine_exercises re
+          JOIN routine_days rd ON rd.id = re.routine_day_id
+          WHERE rd.routine_id           = v_routine_id
+            AND re.template_exercise_id = v_ex.id
+          LIMIT 1;
+
+          IF v_existing_re_id IS NOT NULL THEN
+            UPDATE routine_exercises SET
+              routine_day_id = v_day_id,
+              exercise_id    = v_ex_id,
+              sort_order     = v_ex.sort_order,
+              target_sets    = v_ex.target_sets,
+              target_reps    = v_ex.target_reps,
+              notes          = v_ex.notes,
+              removed_at     = NULL
+            WHERE id = v_existing_re_id;
+          ELSE
+            INSERT INTO routine_exercises (
+              routine_day_id, exercise_id, sort_order,
+              target_sets, target_reps, notes, template_exercise_id
+            ) VALUES (
+              v_day_id, v_ex_id, v_ex.sort_order,
+              v_ex.target_sets, v_ex.target_reps, v_ex.notes, v_ex.id
+            );
+          END IF;
         END LOOP;
 
         -- Soft-delete exercises that are no longer in the template for this day
@@ -862,25 +875,36 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION handle_coach_athlete_status_change()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_template_ids UUID[];
+  v_tid UUID;
 BEGIN
   -- Only fire when status changes TO revoked or declined
-  IF NEW.status IN ('revoked', 'declined') AND OLD.status = 'accepted' THEN
-    -- Collect templates this coach had assigned to this athlete
-    SELECT array_agg(rta.template_id) INTO v_template_ids
-    FROM routine_template_assignments rta
-    WHERE rta.coach_id    = NEW.coach_id
-      AND rta.athlete_id  = NEW.athlete_id
-      AND rta.unassigned_at IS NULL;
+  IF NEW.status NOT IN ('revoked', 'declined') THEN RETURN NEW; END IF;
+  IF OLD.status IN ('revoked', 'declined')     THEN RETURN NEW; END IF;
 
-    IF v_template_ids IS NOT NULL THEN
-      DECLARE v_tid UUID; BEGIN
-        FOREACH v_tid IN ARRAY v_template_ids LOOP
-          PERFORM unassign_template(v_tid, ARRAY[NEW.athlete_id]);
-        END LOOP;
-      END;
-    END IF;
-  END IF;
+  -- Inline unassign logic (avoids calling unassign_template which checks auth.uid() as coach;
+  -- here the actor could be the athlete or an admin, not necessarily the coach)
+  FOR v_tid IN
+    SELECT rta.template_id
+    FROM routine_template_assignments rta
+    WHERE rta.coach_id      = NEW.coach_id
+      AND rta.athlete_id    = NEW.athlete_id
+      AND rta.unassigned_at IS NULL
+  LOOP
+    UPDATE routine_template_assignments SET unassigned_at = now()
+    WHERE template_id   = v_tid
+      AND athlete_id    = NEW.athlete_id
+      AND unassigned_at IS NULL;
+
+    -- Athlete keeps their routine but it becomes a personal fork
+    UPDATE routines SET
+      is_overridden      = true,
+      overridden_at      = COALESCE(overridden_at, now()),
+      source_template_id = NULL,
+      updated_at         = now()
+    WHERE user_id           = NEW.athlete_id
+      AND source_template_id = v_tid;
+  END LOOP;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
