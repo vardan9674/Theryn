@@ -5473,6 +5473,14 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     }
   }, []);
 
+  // Bust cache entries for a list of athlete IDs (e.g. after template push/assign).
+  // Next time the coach opens that athlete's view it will re-fetch from the server.
+  const burstAthleteCache = React.useCallback((athleteIds) => {
+    for (const id of (athleteIds || [])) {
+      delete athleteDataCacheRef.current[id];
+    }
+  }, []);
+
   // Load all athlete data whenever selection changes
   React.useEffect(() => {
     if (!selectedAthlete) { setAthleteData(null); return; }
@@ -5710,6 +5718,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
           <CoachTemplatesTab
             authUser={authUser}
             myAthletes={myAthletes}
+            burstAthleteCache={burstAthleteCache}
           />
         )}
         {tab === "routines"  && <CoachRoutinesTab  {...sharedTabProps}/>}

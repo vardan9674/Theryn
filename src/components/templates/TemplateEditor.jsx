@@ -15,7 +15,7 @@ import { assignTemplate } from "../../hooks/useTemplates.ts";
  *   onBack         — () => void
  *   onNameChange   — (name: string) => void
  */
-export default function TemplateEditor({ template, initialDays, myAthletes, onSaved, onBack, onNameChange }) {
+export default function TemplateEditor({ template, initialDays, myAthletes, onSaved, onBack, onNameChange, onAthletesCacheInvalidate }) {
   const INDEX_TO_DAY = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
   // ── Build working days state ─────────────────────────────────────────────
@@ -153,6 +153,8 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     try {
       const result = await pushTemplateUpdate(template.id, athleteIds, { force, skipMidWeek });
       setShowPushModal(false);
+      // Bust the coach's cached view for every successfully updated athlete
+      if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
       const total      = result.succeeded?.length || 0;
       const midWeek    = result.skipped_mid_week?.length || 0;
       const overridden = result.skipped_overridden?.length || 0;
@@ -185,6 +187,8 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
       }
       const result = await assignTemplate(template.id, selectedIds);
       setShowAssign(false);
+      // Bust the coach's cached view for every successfully assigned athlete
+      if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
 
       const succeeded = result.succeeded?.length || 0;
       const failed    = result.failed    || [];
