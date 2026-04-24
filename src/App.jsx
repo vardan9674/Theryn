@@ -4169,7 +4169,7 @@ function LoginScreen({ authError, onClearError }) {
   };
 
   const [loginTheme, setLoginTheme] = React.useState(
-    () => localStorage.getItem("theryn_theme") || "light"
+    () => localStorage.getItem("theryn_theme") || "dark"
   );
   const toggleLoginTheme = () => setLoginTheme(t => {
     const n = t === "dark" ? "light" : "dark";
