@@ -2,6 +2,7 @@ import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED, DAYS, DAY_INDEX, WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "./tokens.js";
 import { saveTemplateTree, getTemplateAssignments, pushTemplateUpdate } from "../../hooks/useTemplates.ts";
 import AssignAthletesSheet from "./AssignAthletesSheet.jsx";
+import { unassignTemplate } from "../../hooks/useTemplates.ts";
 import PushUpdateModal from "./PushUpdateModal.jsx";
 import { assignTemplate } from "../../hooks/useTemplates.ts";
 
@@ -175,7 +176,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     }
   }
 
-  // ── Assign ───────────────────────────────────────────────────────────────
+  // ── Assign / unassign ────────────────────────────────────────────────────
   async function handleAssignConfirm(selectedIds) {
     if (!template?.id) return;
     setAssignLoading(true);
@@ -185,26 +186,38 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
         await saveTemplateTree(template.id, days);
         setIsDirty(false);
       }
-      const result = await assignTemplate(template.id, selectedIds);
-      console.log("[assign_template result]", JSON.stringify(result, null, 2));
-      setShowAssign(false);
-      // Bust the coach's cached view for every successfully assigned athlete
-      if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
 
-      const succeeded = result.succeeded?.length || 0;
-      const failed    = result.failed    || [];
+      const currentlyAssigned = new Set(assignments.map(a => a.athlete_id));
+      const newSelected       = new Set(selectedIds);
 
-      if (succeeded > 0 && failed.length === 0) {
-        showToast(`Assigned to ${succeeded} athlete${succeeded !== 1 ? "s" : ""}`);
-      } else if (succeeded > 0) {
-        showToast(`Assigned to ${succeeded}, ${failed.length} failed`);
-      } else if (failed.length > 0) {
-        // Surface the first failure reason so the coach can act
-        const reason = failed[0]?.reason || "unknown error";
-        showToast(`Assign failed: ${reason}`, RED);
-      } else {
-        showToast("No athletes assigned", RED);
+      // Athletes to assign: newly checked
+      const toAssign   = selectedIds.filter(id => !currentlyAssigned.has(id));
+      // Athletes to remove: previously assigned but now unchecked
+      const toUnassign = [...currentlyAssigned].filter(id => !newSelected.has(id));
+
+      let assignedCount = 0, removedCount = 0, failedReasons = [];
+
+      if (toAssign.length > 0) {
+        const result = await assignTemplate(template.id, toAssign);
+        console.log("[assign_template result]", JSON.stringify(result, null, 2));
+        assignedCount = result.succeeded?.length || 0;
+        if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
+        failedReasons = (result.failed || []).map(f => f.reason);
       }
+
+      if (toUnassign.length > 0) {
+        await unassignTemplate(template.id, toUnassign);
+        removedCount = toUnassign.length;
+        onAthletesCacheInvalidate?.(toUnassign);
+      }
+
+      setShowAssign(false);
+
+      const parts = [];
+      if (assignedCount > 0) parts.push(`Assigned ${assignedCount}`);
+      if (removedCount > 0)  parts.push(`Removed ${removedCount}`);
+      if (failedReasons.length > 0) parts.push(`${failedReasons.length} failed: ${failedReasons[0]}`);
+      showToast(parts.length > 0 ? parts.join(" · ") : "No changes made", parts.length > 0 ? A : RED);
 
       const fresh = await getTemplateAssignments(template.id);
       setAssignments(fresh);
@@ -261,7 +274,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
             onClick={() => setShowAssign(true)}
             style={{ padding:"8px 14px", background:S2, border:`1px solid ${BD}`, borderRadius:10, color:A, fontSize:13, fontWeight:700, cursor:"pointer" }}
           >
-            Assign
+            {assignments.length > 0 ? `Athletes (${assignments.length})` : "Assign"}
           </button>
           <button
             onClick={handleSave}
@@ -394,6 +407,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
       {showAssign && (
         <AssignAthletesSheet
           athletes={myAthletes || []}
+          assignedAthleteIds={assignments.map(a => a.athlete_id)}
           templateName={template?.name || ""}
           onConfirm={handleAssignConfirm}
           onClose={() => setShowAssign(false)}

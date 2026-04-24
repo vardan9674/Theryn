@@ -2,16 +2,19 @@ import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED } from "./tokens.js";
 
 /**
- * Bottom-sheet checklist for selecting athletes to assign a template to.
+ * Bottom-sheet checklist for managing template assignments.
+ * Athletes already assigned start pre-checked. Unchecking one removes them.
  * Props:
- *   athletes     — CoachLink[] (accepted links)
- *   templateName — string
- *   onConfirm    — (selectedIds: string[]) => void
- *   onClose      — () => void
- *   loading      — bool
+ *   athletes            — CoachLink[] (accepted links)
+ *   assignedAthleteIds  — string[]  (currently assigned athlete IDs)
+ *   templateName        — string
+ *   onConfirm           — (selectedIds: string[]) => void
+ *   onClose             — () => void
+ *   loading             — bool
  */
-export default function AssignAthletesSheet({ athletes, templateName, onConfirm, onClose, loading }) {
-  const [selected, setSelected] = React.useState(new Set());
+export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [], templateName, onConfirm, onClose, loading }) {
+  const assignedSet = React.useMemo(() => new Set(assignedAthleteIds), [assignedAthleteIds]);
+  const [selected, setSelected] = React.useState(() => new Set(assignedAthleteIds));
 
   const toggle = (id) => {
     setSelected(prev => {
@@ -24,6 +27,20 @@ export default function AssignAthletesSheet({ athletes, templateName, onConfirm,
   const selectAll = () => setSelected(new Set(athletes.map(a => a.athlete_id)));
   const clearAll  = () => setSelected(new Set());
   const allSelected = athletes.length > 0 && selected.size === athletes.length;
+
+  // Compute delta for the confirm button label
+  const toAssign   = athletes.filter(a => selected.has(a.athlete_id) && !assignedSet.has(a.athlete_id)).length;
+  const toRemove   = athletes.filter(a => !selected.has(a.athlete_id) && assignedSet.has(a.athlete_id)).length;
+  const noChanges  = toAssign === 0 && toRemove === 0;
+
+  const confirmLabel = () => {
+    if (loading) return "Saving…";
+    if (noChanges) return "No changes";
+    const parts = [];
+    if (toAssign > 0) parts.push(`Add ${toAssign}`);
+    if (toRemove > 0) parts.push(`Remove ${toRemove}`);
+    return parts.join(" · ");
+  };
 
   return (
     <div
@@ -45,23 +62,23 @@ export default function AssignAthletesSheet({ athletes, templateName, onConfirm,
         <div style={{ width:36, height:4, borderRadius:2, background:MT, margin:"0 auto 20px" }}/>
         <div style={{ marginBottom:16 }}>
           <div style={{ fontSize:18, fontWeight:800, color:TX, letterSpacing:"-0.01em" }}>
-            Assign Template
+            Manage Athletes
           </div>
           <div style={{ fontSize:12, color:SB, marginTop:3 }}>
-            "{templateName}" will be copied to selected athletes
+            "{templateName}" · check to assign, uncheck to remove
           </div>
         </div>
 
         {/* Select-all bar */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div style={{ fontSize:12, color:SB }}>
-            {selected.size} of {athletes.length} selected
+            {selected.size} of {athletes.length} assigned
           </div>
           <button
             onClick={allSelected ? clearAll : selectAll}
             style={{ background:"none", border:`1px solid ${BD}`, borderRadius:8, padding:"5px 12px", color:A, fontSize:12, fontWeight:700, cursor:"pointer" }}
           >
-            {allSelected ? "Clear all" : "Select all"}
+            {allSelected ? "Remove all" : "Select all"}
           </button>
         </div>
 
@@ -73,15 +90,20 @@ export default function AssignAthletesSheet({ athletes, templateName, onConfirm,
             </div>
           ) : (
             athletes.map(link => {
-              const isSelected = selected.has(link.athlete_id);
+              const isSelected   = selected.has(link.athlete_id);
+              const wasAssigned  = assignedSet.has(link.athlete_id);
+              // Visual state: green=assigned+checked, yellow=will be removed, default=will be added
+              const borderColor  = isSelected ? (wasAssigned ? A + "55" : "#aadd0055") : (wasAssigned ? "#ff666655" : BD);
+              const bgColor      = isSelected ? (wasAssigned ? `${A}12` : "#aadd0010") : (wasAssigned ? "#ff666608" : S2);
+
               return (
                 <button
                   key={link.athlete_id}
                   onClick={() => toggle(link.athlete_id)}
                   style={{
                     display:"flex", alignItems:"center", gap:12,
-                    background: isSelected ? `${A}12` : S2,
-                    border: `1px solid ${isSelected ? A + "55" : BD}`,
+                    background: bgColor,
+                    border: `1px solid ${borderColor}`,
                     borderRadius:14, padding:"13px 16px",
                     cursor:"pointer", textAlign:"left", color:"inherit",
                     transition:"background 0.15s, border-color 0.15s",
@@ -111,10 +133,20 @@ export default function AssignAthletesSheet({ athletes, templateName, onConfirm,
                     {(link.athlete_name || "A")[0].toUpperCase()}
                   </div>
 
-                  <div>
+                  <div style={{ flex:1 }}>
                     <div style={{ fontSize:14, fontWeight:700, color:TX }}>
                       {link.athlete_name || "Athlete"}
                     </div>
+                    {wasAssigned && (
+                      <div style={{ fontSize:11, color: isSelected ? A : "#ff6666", marginTop:1, fontWeight:600 }}>
+                        {isSelected ? "Currently assigned" : "Will be removed"}
+                      </div>
+                    )}
+                    {!wasAssigned && isSelected && (
+                      <div style={{ fontSize:11, color:"#aadd00", marginTop:1, fontWeight:600 }}>
+                        Will be assigned
+                      </div>
+                    )}
                   </div>
                 </button>
               );
@@ -125,17 +157,18 @@ export default function AssignAthletesSheet({ athletes, templateName, onConfirm,
         {/* Confirm button */}
         <div style={{ marginTop:20 }}>
           <button
-            disabled={selected.size === 0 || loading}
+            disabled={noChanges || loading}
             onClick={() => onConfirm(Array.from(selected))}
             style={{
-              width:"100%", padding:"15px", background: selected.size > 0 ? A : MT,
-              color: selected.size > 0 ? BG : SB,
+              width:"100%", padding:"15px",
+              background: noChanges ? MT : A,
+              color: noChanges ? SB : BG,
               border:"none", borderRadius:12, fontSize:15, fontWeight:800,
-              cursor: selected.size > 0 && !loading ? "pointer" : "not-allowed",
+              cursor: noChanges || loading ? "not-allowed" : "pointer",
               transition:"background 0.15s",
             }}
           >
-            {loading ? "Assigning…" : `Assign to ${selected.size} athlete${selected.size !== 1 ? "s" : ""}`}
+            {confirmLabel()}
           </button>
         </div>
       </div>
