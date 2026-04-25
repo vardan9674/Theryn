@@ -580,7 +580,12 @@ export default function GymApp() {
       /[?&](code|error|access_token|refresh_token)=/.test(search) ||
       /[#&](access_token|refresh_token|error)=/.test(hash);
     const hasPending = !!localStorage.getItem("theryn_pending_role_landing");
-    return !(isOAuthConsent || hasOAuthParams || hasPending);
+    const isInOAuthFlow = isOAuthConsent || hasOAuthParams;
+    // If the pending key exists but we're not actually mid-OAuth, it's stale — clear it
+    if (hasPending && !isInOAuthFlow) {
+      localStorage.removeItem("theryn_pending_role_landing");
+    }
+    return !isInOAuthFlow;
   });
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
