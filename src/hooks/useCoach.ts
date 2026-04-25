@@ -78,9 +78,17 @@ export async function sendCoachRequest(
   const { error } = await supabase.from("coach_athletes").insert({
     coach_id: coachId,
     athlete_id: athleteId,
-    status: "pending",
+    status: "accepted",
   });
   if (error) throw new Error(error.message);
+
+  // Auto-accept: clear any other pending requests for this athlete so the
+  // "one active coach" rule stays consistent.
+  await supabase
+    .from("coach_athletes")
+    .delete()
+    .eq("athlete_id", athleteId)
+    .eq("status", "pending");
 }
 
 // ── Load all links for the current user (as coach OR athlete) ─────────────────
