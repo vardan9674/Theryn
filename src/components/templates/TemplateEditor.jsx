@@ -1,6 +1,6 @@
 import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED, DAYS, DAY_INDEX, WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "./tokens.js";
-import { saveTemplateTree, getTemplateAssignments, pushTemplateUpdate } from "../../hooks/useTemplates.ts";
+import { saveTemplateTree, getTemplateAssignments, pushTemplateUpdate, getActiveAssignmentsForAthletes } from "../../hooks/useTemplates.ts";
 import AssignAthletesSheet from "./AssignAthletesSheet.jsx";
 import { unassignTemplate } from "../../hooks/useTemplates.ts";
 import PushUpdateModal from "./PushUpdateModal.jsx";
@@ -47,6 +47,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
   const [showPushModal, setShowPushModal] = React.useState(false);
   const [assignments, setAssignments] = React.useState([]);
   const [assignLoading, setAssignLoading] = React.useState(false);
+  const [lockedByTemplate, setLockedByTemplate] = React.useState({});
   const [pushLoading, setPushLoading] = React.useState(false);
   const [pendingSaveVersion, setPendingSaveVersion] = React.useState(null);
   const [editingName, setEditingName] = React.useState(false);
@@ -57,6 +58,24 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     if (!template?.id) return;
     getTemplateAssignments(template.id).then(setAssignments).catch(() => {});
   }, [template?.id]);
+
+  // ── Load cross-template lock map when the assign sheet opens ─────────────
+  // Enforces the "1 athlete = 1 template" rule client-side, since the DB
+  // unique index is per-(template_id, athlete_id), not per-athlete.
+  React.useEffect(() => {
+    if (!showAssign) return;
+    const ids = (myAthletes || []).map(a => a.athlete_id);
+    if (ids.length === 0) { setLockedByTemplate({}); return; }
+    getActiveAssignmentsForAthletes(ids)
+      .then(map => {
+        const filtered = {};
+        for (const [athleteId, info] of Object.entries(map)) {
+          if (info.template_id !== template?.id) filtered[athleteId] = info;
+        }
+        setLockedByTemplate(filtered);
+      })
+      .catch(() => setLockedByTemplate({}));
+  }, [showAssign, myAthletes, template?.id]);
 
   const showToast = (msg, color = A) => {
     setToast({ msg, color });
@@ -408,6 +427,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
         <AssignAthletesSheet
           athletes={myAthletes || []}
           assignedAthleteIds={assignments.map(a => a.athlete_id)}
+          lockedByTemplate={lockedByTemplate}
           templateName={template?.name || ""}
           onConfirm={handleAssignConfirm}
           onClose={() => setShowAssign(false)}
