@@ -229,6 +229,42 @@ export async function saveRoutine(
     const { error: deleteErr } = await supabase.from("routine_days").delete().eq("routine_id", routineId);
     if (deleteErr) throw new Error(`Failed to delete routine days: ${deleteErr.message}`);
 
+    // Resolve every exercise name across every day in one round-trip via the
+    // batch_resolve_exercises RPC (migration 007). Old code did one query (or
+    // two, on miss + insert) per exercise — a 7-day × 5-exercise routine was
+    // ~35 round-trips. Now it's 1.
+    const allNames = new Set<string>();
+    for (const dayData of Object.values(templates)) {
+      for (const item of dayData.exercises ?? []) {
+        const name = exerciseName(item);
+        if (name && typeof name === "string") allNames.add(name);
+      }
+    }
+
+    const idByLowerName = new Map<string, string>();
+    if (allNames.size > 0) {
+      const namesArr = Array.from(allNames);
+      const { data: resolved, error: resolveErr } = await supabase.rpc(
+        "batch_resolve_exercises",
+        { p_names: namesArr, p_user_id: userId },
+      );
+      if (resolveErr) {
+        // RPC not yet deployed — fall back to per-name resolution. Slower but
+        // functionally correct, so client deploys can ship before/after the
+        // migration without coordination.
+        for (const n of namesArr) {
+          try {
+            const id = await getExerciseId(n, userId);
+            idByLowerName.set(n.toLowerCase(), id);
+          } catch {}
+        }
+      } else {
+        for (const r of (resolved as Array<{ name: string; id: string }> | null) ?? []) {
+          if (r?.name && r?.id) idByLowerName.set(r.name.toLowerCase(), r.id);
+        }
+      }
+    }
+
     for (const [dayKey, dayData] of Object.entries(templates)) {
       const dayIndex = DAY_TO_INDEX[dayKey];
       if (dayIndex === undefined) continue;
@@ -258,15 +294,14 @@ export async function saveRoutine(
           typeof item === "object" && item && typeof item.coachNote === "string"
             ? item.coachNote.trim()
             : "";
-        try {
-          const exId = await getExerciseId(name, userId);
-          exerciseRows.push({
-            routine_day_id: dayId,
-            exercise_id: exId,
-            sort_order: i,
-            notes: coachNote ? coachNote : null,
-          });
-        } catch (e) {}
+        const exId = idByLowerName.get(name.toLowerCase());
+        if (!exId) continue;
+        exerciseRows.push({
+          routine_day_id: dayId,
+          exercise_id: exId,
+          sort_order: i,
+          notes: coachNote ? coachNote : null,
+        });
       }
 
       if (exerciseRows.length > 0) {

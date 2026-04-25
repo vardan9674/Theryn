@@ -97,7 +97,8 @@ export async function loadCoachLinks(userId: string): Promise<CoachLink[]> {
     .from("coach_athletes")
     .select("id, coach_id, athlete_id, status, created_at")
     .or(`coach_id.eq.${userId},athlete_id.eq.${userId}`)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
 
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return [];

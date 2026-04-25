@@ -56,11 +56,16 @@ export function fmtMoney(amount: number | null | undefined, currency: string = "
   return `${sym}${body}`;
 }
 
+// Explicit column lists keep Supabase egress tight (no wasted bytes on
+// server-only fields) and decouple the wire shape from the DB shape.
+const FEE_COLS = "id, coach_id, athlete_id, amount, currency, cadence, start_date, active, notes";
+const PAYMENT_COLS = "id, coach_id, athlete_id, amount, currency, received_date, notes, created_at";
+
 // ── Fee CRUD ────────────────────────────────────────────────────────────
 export async function loadClientFees(coachId: string): Promise<ClientFee[]> {
   const { data, error } = await supabase
     .from("coach_client_fees")
-    .select("*")
+    .select(FEE_COLS)
     .eq("coach_id", coachId);
   if (error) throw new Error(error.message);
   return (data || []).map(row => ({
@@ -97,7 +102,7 @@ export async function upsertClientFee(
   const { data, error } = await supabase
     .from("coach_client_fees")
     .upsert(payload, { onConflict: "coach_id,athlete_id" })
-    .select("*")
+    .select(FEE_COLS)
     .single();
   if (error || !data) throw new Error(error?.message || "Failed to save fee");
   return { ...data, amount: Number(data.amount) } as ClientFee;
@@ -115,7 +120,7 @@ export async function loadPayments(
 ): Promise<PaymentEntry[]> {
   const { data, error } = await supabase
     .from("coach_payments")
-    .select("*")
+    .select(PAYMENT_COLS)
     .eq("coach_id", coachId)
     .order("received_date", { ascending: false })
     .limit(limit);
@@ -149,7 +154,7 @@ export async function savePayment(
   const { data, error } = await supabase
     .from("coach_payments")
     .insert(payload)
-    .select("*")
+    .select(PAYMENT_COLS)
     .single();
   if (error || !data) throw new Error(error?.message || "Failed to save payment");
   return { ...data, amount: Number(data.amount) } as PaymentEntry;
