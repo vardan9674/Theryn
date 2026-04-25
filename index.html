@@ -124,15 +124,20 @@
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       body { background: #080808; overflow-x: hidden; }
-      /* Fallback content for crawlers + users with JS disabled. Hidden as soon
-         as the SPA mounts (React replaces #root's children). */
-      .seo-fallback { max-width: 720px; margin: 0 auto; padding: 48px 20px; color: #F0F0F0; font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; line-height: 1.6; }
+      /* SEO/no-JS fallback. Lives in the DOM so crawlers and AI search
+         engines can read it, but hidden from JS users so they never see a
+         flash before React mounts. The <noscript> override below makes it
+         visible for users running without JavaScript. */
+      .seo-fallback { display: none; max-width: 720px; margin: 0 auto; padding: 48px 20px; color: #F0F0F0; font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; line-height: 1.6; }
       .seo-fallback h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; color: #C8FF00; }
       .seo-fallback h2 { font-size: 18px; font-weight: 700; margin: 24px 0 8px; color: #F0F0F0; }
       .seo-fallback p, .seo-fallback li { color: #C8C8C8; font-size: 15px; }
       .seo-fallback ul { padding-left: 20px; margin-bottom: 12px; }
       .seo-fallback a { color: #C8FF00; }
     </style>
+    <noscript>
+      <style>.seo-fallback { display: block !important; }</style>
+    </noscript>
   </head>
   <body>
     <div id="root">
