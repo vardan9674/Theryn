@@ -325,3 +325,33 @@ export async function getAthleteAssignment(athleteId: string): Promise<TemplateA
   if (error) throw new Error(error.message);
   return (data as TemplateAssignment | null);
 }
+
+/**
+ * Returns a map of athlete_id → { template_id, template_name } for every athlete
+ * in the input list that has an active assignment. Used to lock athletes already
+ * assigned to a different template so the "1 athlete = 1 template" rule is enforced
+ * in the UI (the DB unique index is per-template, not per-athlete).
+ */
+export async function getActiveAssignmentsForAthletes(
+  athleteIds: string[]
+): Promise<Record<string, { template_id: string; template_name: string }>> {
+  if (athleteIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("routine_template_assignments")
+    .select("athlete_id, template_id, routine_templates(name)")
+    .in("athlete_id", athleteIds)
+    .is("unassigned_at", null);
+
+  if (error) throw new Error(error.message);
+
+  const map: Record<string, { template_id: string; template_name: string }> = {};
+  for (const row of data || []) {
+    const r = row as any;
+    map[r.athlete_id] = {
+      template_id: r.template_id,
+      template_name: r.routine_templates?.name || "another template",
+    };
+  }
+  return map;
+}
