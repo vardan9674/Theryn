@@ -29,12 +29,18 @@ const LIGHT = {
 };
 
 function ThemeProvider({ children }) {
-  const theme = "dark";
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("theryn_theme") || "light"
+  );
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "dark");
-    localStorage.setItem("theryn_theme", "dark");
-  }, []);
-  const toggle = () => {}; // theme toggle removed
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+  const toggle = () =>
+    setTheme(t => {
+      const n = t === "dark" ? "light" : "dark";
+      localStorage.setItem("theryn_theme", n);
+      return n;
+    });
   return <ThemeCtx.Provider value={{ theme, toggle }}>{children}</ThemeCtx.Provider>;
 }
 
@@ -302,6 +308,17 @@ function Navbar({ onGetStarted }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button
+          onClick={toggle}
+          aria-label="Toggle theme"
+          style={{
+            width: 36, height: 36, borderRadius: 9, border: `1px solid ${c.bd}`,
+            background: c.s1, cursor: "pointer", display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {theme === "dark" ? <SunIcon color={c.sb2} /> : <MoonIcon color={c.sb2} />}
+        </button>
         <motion.button
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.96 }}
