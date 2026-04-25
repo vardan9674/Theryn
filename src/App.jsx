@@ -5514,14 +5514,29 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
   const myAthletes = React.useMemo(() => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"), [coachLinks, authUser?.id]);
 
-  React.useEffect(() => {
-    if (!authUser?.id || myAthletes.length === 0) return;
+  // Stable key — only changes when the actual athlete list changes — so we
+  // don't re-subscribe just because myAthletes got a new array reference.
+  const coachNotifAthleteIdsKey = React.useMemo(
+    () => myAthletes.map(l => l.athlete_id).sort().join(','),
+    [myAthletes]
+  );
 
+  React.useEffect(() => {
+    if (!authUser?.id || !coachNotifAthleteIdsKey) return;
+
+    // Server-side filter so each coach's connection only receives realtime
+    // broadcasts for their own athletes' workout_sessions inserts. Without
+    // this every coach receives every athlete's session in the entire DB.
     const channel = supabase
-      .channel('coach-notifications')
+      .channel(`coach-notifications:${authUser.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'workout_sessions' },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'workout_sessions',
+          filter: `user_id=in.(${coachNotifAthleteIdsKey})`,
+        },
         (payload) => {
           const newSession = payload.new;
           const matchedLink = myAthletes.find(l => l.athlete_id === newSession.user_id);
@@ -5533,7 +5548,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [authUser?.id, myAthletes]);
+  }, [authUser?.id, coachNotifAthleteIdsKey]);
 
   // ── App resume: fire catch-up notification for athletes finished while away
   React.useEffect(() => {
@@ -6600,13 +6615,30 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
     loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
   }, [authUser?.id, athleteIdsKey]);
 
+  // Trailing debounce so a burst of incoming messages collapses into one
+  // preview refresh (= one RPC call) instead of one per message.
+  const refreshTimerRef = React.useRef(null);
+  const scheduleRefresh = React.useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      refreshPreviewsNow();
+    }, 1500);
+  }, [refreshPreviewsNow]);
+
   React.useEffect(() => {
     refreshPreviewsNow();
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, [refreshPreviewsNow]);
 
   // Realtime: refresh previews (and badge) whenever a new message lands in any
   // of this coach's conversations — so the dot updates even when the coach is
-  // on another tab.
+  // on another tab. Refresh is debounced to handle bursts cheaply.
   React.useEffect(() => {
     if (!authUser?.id || myAthletes.length === 0) return;
     let cancelled = false;
@@ -6629,7 +6661,7 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
             const row = payload.new;
             if (!row || !convIdSet.has(row.conversation_id)) return;
             if (row.sender_id === authUser.id) return; // our own sends don't bump unread
-            refreshPreviewsNow();
+            scheduleRefresh();
           }
         )
         .subscribe();
@@ -6638,7 +6670,7 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [authUser?.id, athleteIdsKey, refreshPreviewsNow]);
+  }, [authUser?.id, athleteIdsKey, scheduleRefresh]);
 
   React.useEffect(() => {
     const total = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
