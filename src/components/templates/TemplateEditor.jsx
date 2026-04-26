@@ -197,55 +197,70 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
   }
 
   // ── Assign / unassign ────────────────────────────────────────────────────
+  // Optimistic: close the sheet and update local state immediately, then fire
+  // RPCs in parallel in the background. Roll back if the server rejects.
   async function handleAssignConfirm(selectedIds) {
     if (!template?.id) return;
-    setAssignLoading(true);
-    try {
-      // Only save (and bump version) if there are unsaved changes
-      if (isDirty) {
-        await saveTemplateTree(template.id, days);
-        setIsDirty(false);
-      }
 
-      const currentlyAssigned = new Set(assignments.map(a => a.athlete_id));
-      const newSelected       = new Set(selectedIds);
+    const currentlyAssigned = new Set(assignments.map(a => a.athlete_id));
+    const newSelected       = new Set(selectedIds);
+    const toAssign   = selectedIds.filter(id => !currentlyAssigned.has(id));
+    const toUnassign = [...currentlyAssigned].filter(id => !newSelected.has(id));
 
-      // Athletes to assign: newly checked
-      const toAssign   = selectedIds.filter(id => !currentlyAssigned.has(id));
-      // Athletes to remove: previously assigned but now unchecked
-      const toUnassign = [...currentlyAssigned].filter(id => !newSelected.has(id));
-
-      let assignedCount = 0, removedCount = 0, failedReasons = [];
-
-      if (toAssign.length > 0) {
-        const result = await assignTemplate(template.id, toAssign);
-        console.log("[assign_template result]", JSON.stringify(result, null, 2));
-        assignedCount = result.succeeded?.length || 0;
-        if (result.succeeded?.length) onAthletesCacheInvalidate?.(result.succeeded);
-        failedReasons = (result.failed || []).map(f => f.reason);
-      }
-
-      if (toUnassign.length > 0) {
-        await unassignTemplate(template.id, toUnassign);
-        removedCount = toUnassign.length;
-        onAthletesCacheInvalidate?.(toUnassign);
-      }
-
+    if (toAssign.length === 0 && toUnassign.length === 0 && !isDirty) {
       setShowAssign(false);
-
-      const parts = [];
-      if (assignedCount > 0) parts.push(`Assigned ${assignedCount}`);
-      if (removedCount > 0)  parts.push(`Removed ${removedCount}`);
-      if (failedReasons.length > 0) parts.push(`${failedReasons.length} failed: ${failedReasons[0]}`);
-      showToast(parts.length > 0 ? parts.join(" · ") : "No changes made", parts.length > 0 ? A : RED);
-
-      const fresh = await getTemplateAssignments(template.id);
-      setAssignments(fresh);
-    } catch (e) {
-      showToast(e.message || "Assign failed", RED);
-    } finally {
-      setAssignLoading(false);
+      showToast("No changes made", A);
+      return;
     }
+
+    // Snapshot for rollback
+    const prevAssignments = assignments;
+
+    // Optimistic local state — keep existing rows for athletes still selected,
+    // add stub rows for newly assigned. Server reconciles in the background.
+    const kept = assignments.filter(a => newSelected.has(a.athlete_id));
+    const added = toAssign.map(id => ({ athlete_id: id, _optimistic: true }));
+    setAssignments([...kept, ...added]);
+
+    // Close immediately + invalidate caches for affected athletes
+    setShowAssign(false);
+    if (toAssign.length || toUnassign.length) {
+      onAthletesCacheInvalidate?.([...toAssign, ...toUnassign]);
+    }
+
+    // Fire mutations in parallel in the background
+    (async () => {
+      try {
+        const ops = [];
+        if (isDirty) ops.push(saveTemplateTree(template.id, days).then(() => setIsDirty(false)));
+        if (toAssign.length > 0)   ops.push(assignTemplate(template.id, toAssign));
+        if (toUnassign.length > 0) ops.push(unassignTemplate(template.id, toUnassign));
+
+        const results = await Promise.all(ops);
+
+        // Find the assignTemplate result (if any) to surface failed reasons
+        const assignResult = toAssign.length > 0
+          ? results[results.length - (toUnassign.length > 0 ? 2 : 1)]
+          : null;
+        const assignedCount = assignResult?.succeeded?.length ?? toAssign.length;
+        const failedReasons = (assignResult?.failed || []).map(f => f.reason);
+        const removedCount  = toUnassign.length;
+
+        const parts = [];
+        if (assignedCount > 0) parts.push(`Assigned ${assignedCount}`);
+        if (removedCount > 0)  parts.push(`Removed ${removedCount}`);
+        if (failedReasons.length > 0) parts.push(`${failedReasons.length} failed: ${failedReasons[0]}`);
+        if (parts.length) showToast(parts.join(" · "), failedReasons.length ? RED : A);
+
+        // Reconcile with the authoritative server state
+        const fresh = await getTemplateAssignments(template.id);
+        setAssignments(fresh);
+      } catch (e) {
+        // Rollback on failure
+        setAssignments(prevAssignments);
+        showToast(e.message || "Assign failed — reverted", RED);
+      }
+    })();
   }
 
   const sortedDays = [...days].sort((a,b) => a.day_index - b.day_index);
