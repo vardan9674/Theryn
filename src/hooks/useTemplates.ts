@@ -35,6 +35,7 @@ export interface TemplateExercise {
   equipment?: string;
   category?: string;
   source_exercise_id?: string;
+  source_user_exercise_id?: string;
   target_sets: number;
   target_reps: string;
   notes?: string;
@@ -180,7 +181,7 @@ export async function saveTemplateTree(templateId: string, days: TemplateDay[]):
     if (dayErr || !dayRow) continue;
 
     if (day.exercises.length > 0) {
-      const exRows = day.exercises.map((ex, i) => ({
+      const exRows = day.exercises.map((ex: any, i) => ({
         template_day_id: dayRow.id,
         sort_order: i,
         exercise_name: ex.exercise_name,
@@ -188,6 +189,7 @@ export async function saveTemplateTree(templateId: string, days: TemplateDay[]):
         equipment: ex.equipment || null,
         category: ex.category || null,
         source_exercise_id: ex.source_exercise_id || null,
+        source_user_exercise_id: ex.source_user_exercise_id || null,
         target_sets: ex.target_sets ?? 3,
         target_reps: ex.target_reps ?? "8-12",
         notes: ex.notes || null,

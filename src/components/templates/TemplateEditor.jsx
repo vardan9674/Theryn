@@ -5,6 +5,7 @@ import AssignAthletesSheet from "./AssignAthletesSheet.jsx";
 import { unassignTemplate } from "../../hooks/useTemplates.ts";
 import PushUpdateModal from "./PushUpdateModal.jsx";
 import { assignTemplate } from "../../hooks/useTemplates.ts";
+import ExerciseAutocomplete from "./ExerciseAutocomplete.jsx";
 
 /**
  * Full-screen template editor.
@@ -377,6 +378,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
                     key={idx}
                     ex={ex}
                     idx={idx}
+                    userId={template?.owner_coach_id}
                     onChange={patch => updateExercise(currentDay.day_index, idx, patch)}
                     onRemove={() => removeExercise(currentDay.day_index, idx)}
                   />
@@ -451,7 +453,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
 }
 
 // ── Exercise Row sub-component ───────────────────────────────────────────────
-function ExerciseRow({ ex, idx, onChange, onRemove }) {
+function ExerciseRow({ ex, idx, userId, onChange, onRemove }) {
   const [expanded, setExpanded] = React.useState(!ex.exercise_name);
 
   return (
@@ -466,15 +468,12 @@ function ExerciseRow({ ex, idx, onChange, onRemove }) {
           {idx + 1}
         </div>
 
-        <input
+        <ExerciseAutocomplete
           value={ex.exercise_name}
-          onChange={e => onChange({ exercise_name: e.target.value })}
-          placeholder="Exercise name…"
-          style={{
-            flex:1, background:"none", border:"none", color:TX,
-            fontSize:14, fontWeight:700, outline:"none",
-            fontFamily:"inherit",
-          }}
+          sourceExerciseId={ex.source_exercise_id}
+          sourceUserExerciseId={ex.source_user_exercise_id}
+          userId={userId}
+          onChange={onChange}
         />
 
         <button

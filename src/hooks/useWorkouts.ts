@@ -25,20 +25,24 @@ export async function getExerciseId(name: string, userId: string): Promise<strin
     return pubEx.id;
   }
 
-  // Try user_exercises
-  const { data: userEx } = await supabase
+  // Try user_exercises — RLS surfaces both own rows and rows owned by the
+  // user's accepted coaches, so a coach-defined custom exercise resolves to
+  // the same id for the athlete (no duplicate row gets created below).
+  const { data: userExRows } = await supabase
     .from("user_exercises")
-    .select("id")
-    .eq("user_id", userId)
+    .select("id, user_id")
     .ilike("name", name.trim())
-    .maybeSingle();
+    .limit(2);
 
-  if (userEx?.id) {
-    exerciseCache[key] = userEx.id;
-    return userEx.id;
+  if (userExRows && userExRows.length > 0) {
+    // Prefer the row owned by the current user when both exist.
+    const own = userExRows.find(r => r.user_id === userId);
+    const chosen = own || userExRows[0];
+    exerciseCache[key] = chosen.id;
+    return chosen.id;
   }
 
-  // Create new user_exercise
+  // Create new user_exercise (private to current user)
   const { data: newEx, error } = await supabase
     .from("user_exercises")
     .insert({ user_id: userId, name: name.trim() })
@@ -51,6 +55,43 @@ export async function getExerciseId(name: string, userId: string): Promise<strin
 
   exerciseCache[key] = newEx.id;
   return newEx.id;
+}
+
+/**
+ * Creates a new private custom exercise for the user and returns its id +
+ * canonical name. Used by the template editor's autocomplete when the user
+ * commits a name that doesn't already exist in the public or custom library.
+ * Primes the module-level exerciseCache so subsequent getExerciseId calls
+ * during workout logging resolve without an extra round-trip.
+ */
+export async function createUserExercise(
+  userId: string,
+  name: string,
+  opts: { muscleGroup?: string; equipment?: string; category?: string } = {}
+): Promise<{ id: string; name: string }> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Exercise name cannot be empty");
+
+  const { data, error } = await supabase
+    .from("user_exercises")
+    .insert({
+      user_id:      userId,
+      name:         trimmed,
+      muscle_group: opts.muscleGroup ?? null,
+      equipment:    opts.equipment   ?? null,
+      category:     opts.category    ?? null,
+    })
+    .select("id, name")
+    .single();
+
+  if (error || !data?.id) {
+    throw new Error(`Failed to create exercise "${trimmed}": ${error?.message}`);
+  }
+
+  if (!exerciseCache) exerciseCache = {};
+  exerciseCache[trimmed.toLowerCase()] = data.id;
+
+  return { id: data.id, name: data.name };
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
