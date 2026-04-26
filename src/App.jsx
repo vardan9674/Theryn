@@ -9,12 +9,13 @@ import { Browser } from "@capacitor/browser";
 import { Share } from "@capacitor/share";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
-import { loadRoutine, saveRoutine, saveRoutineAsCoach, getRoutineMeta, classifyRoutineUpdate } from "./hooks/useRoutine";
+import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/LandingPage";
 import ChatView from "./components/ChatView";
-import { loadConversationPreviews, loadMyConversationPreviews } from "./hooks/useChat";
-import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachEditNotification, triggerAthleteFinishedNotification, scheduleCoachDailyDigest, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
+import { loadConversationPreviews } from "./hooks/useChat";
+import { requestNotificationPermissions, getNotificationPermissionState, markCoachSeen, getCoachLastSeen, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
   loadClientFees, upsertClientFee, deleteClientFee,
@@ -23,8 +24,6 @@ import {
   fmtMoney, SUPPORTED_CURRENCIES,
 } from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
-import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
-import { resetAthleteToTemplate } from "./hooks/useTemplates";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -580,12 +579,7 @@ export default function GymApp() {
       /[?&](code|error|access_token|refresh_token)=/.test(search) ||
       /[#&](access_token|refresh_token|error)=/.test(hash);
     const hasPending = !!localStorage.getItem("theryn_pending_role_landing");
-    const isInOAuthFlow = isOAuthConsent || hasOAuthParams;
-    // If the pending key exists but we're not actually mid-OAuth, it's stale — clear it
-    if (hasPending && !isInOAuthFlow) {
-      localStorage.removeItem("theryn_pending_role_landing");
-    }
-    return !isInOAuthFlow;
+    return !(isOAuthConsent || hasOAuthParams || hasPending);
   });
   const [tab,             setTab]             = useState("log");
   const [pendingTab,      setPendingTab]      = useState(null);
@@ -628,6 +622,9 @@ export default function GymApp() {
   const [authUser,   setAuthUser]   = useState(null);   // Supabase user object
   const [authLoading, setAuthLoading] = useState(true); // true while session is being checked
   const [authError,  setAuthError]  = useState(null);   // error message from OAuth callback
+
+  // Server push: register FCM token and capture timezone. No-op on web.
+  usePushNotifications(authUser?.id);
   const [showTour, setShowTour] = useState(false);
   const [hasCustomizedRoutine, setHasCustomizedRoutine] = useState(false);
   const [role, setRole] = useState(null); // "athlete" | "coach" — null means not yet chosen
@@ -647,31 +644,10 @@ export default function GymApp() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // Pending routine update from coach push (deferred when athlete is mid-workout)
-  const [pendingRoutineUpdate, setPendingRoutineUpdate] = useState(null); // { version, receivedAt, structural }
-
   // Coach links cached at root level to prevent flicker on tab switches
   const [coachLinks, setCoachLinks] = useState([]);
   const [coachLinksLoaded, setCoachLinksLoaded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [athleteChatUnread, setAthleteChatUnread] = useState(0);
-
-  // Athlete-side unread poll: sums unread counts across any conversations the
-  // current user participates in. Reuses the same RPC coaches use for previews.
-  useEffect(() => {
-    if (!authUser?.id) return;
-    if (chatOpen) { setAthleteChatUnread(0); return; }
-    let cancelled = false;
-    async function tick() {
-      const rows = await loadMyConversationPreviews();
-      if (cancelled) return;
-      const total = rows.reduce((s, r) => s + (r.unread_count || 0), 0);
-      setAthleteChatUnread(total);
-    }
-    tick();
-    const id = setInterval(tick, 30000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [authUser?.id, chatOpen]);
   // AthleteView used only in CoachApp — removed from athlete root
 
   // ── Check onboarding state on every sign-in (DB, not localStorage) ─────
@@ -896,13 +872,8 @@ export default function GymApp() {
       try {
         const routine = await loadRoutine(uid);
         if (routine) {
-          // Merge with DEFAULT_TEMPLATES so every day key always exists.
-          // The old loadRoutine returned a full 7-day object; the new one only
-          // returns days that are in the DB. Merging prevents undefined[day] crashes.
-          const merged = { ...DEFAULT_TEMPLATES, ...routine };
-          setTemplates(merged);
+          setTemplates(routine);
           setTodayType(routine[getToday()]?.type || 'Custom');
-          scheduleDailyRoutine(merged);
         }
       } catch (err) {
         console.error("fetchRoutine error:", err);
@@ -931,69 +902,17 @@ export default function GymApp() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'routines', filter: `user_id=eq.${uid}` },
-        async (payload) => {
+        (payload) => {
           // If we just saved locally, ignore the pulse
           if (Date.now() - isLocalSaveRef.current < 8000) return;
 
           console.log("External routine update detected:", payload);
-          triggerCoachEditNotification();
-
-          // ── Session-aware update logic (§6.7) ──────────────────────────
-          // Fetch new routine quietly to compare diff type
-          try {
-            // forceNetwork=true: bypass localStorage cache so we always get the
-            // coach's just-pushed version, not the stale cached copy
-            const newRoutine = await loadRoutine(uid, true);
-            if (!newRoutine) return;
-
-            // Always merge with defaults so every day key is present
-            const mergedRoutine = { ...DEFAULT_TEMPLATES, ...newRoutine };
-
-            const diffType = classifyRoutineUpdate(templates, mergedRoutine);
-
-            // Notes-only: apply immediately and silently
-            if (diffType === "notes_only") {
-              setTemplates(mergedRoutine);
-              return;
-            }
-
-            // Count logged sets this session
-            const setsLogged = (session || []).reduce((sum, ex) => sum + (ex.sets || []).filter(s => s.done).length, 0);
-
-            if (!workoutActive || setsLogged === 0) {
-              // No active session or nothing logged: apply immediately
-              setTemplates(mergedRoutine);
-              return;
-            }
-
-            // Mid-workout with structural change: defer and show banner
-            setPendingRoutineUpdate({
-              version: payload?.new?.source_template_version || Date.now(),
-              receivedAt: Date.now(),
-              structural: true,
-              newRoutine: mergedRoutine,
-            });
-          } catch {
-            // Fallback: silent re-fetch
-            fetchRoutine(true);
-          }
+          fetchRoutine(true); // Silent re-fetch
         }
       )
       .subscribe();
 
-    // Re-fetch routine when the athlete returns to the tab/app — catches
-    // pushes that happened while the screen was off or the tab was hidden.
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchRoutine(true); // silent, no spinner
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      supabase.removeChannel(channel);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [authUser?.id]);
 
   useEffect(() => {
@@ -1004,7 +923,6 @@ export default function GymApp() {
     routineSaveRef.current = setTimeout(() => {
       isLocalSaveRef.current = Date.now();
       saveRoutine(authUser.id, templates).catch(console.error);
-      scheduleDailyRoutine(templates);
     }, 2000);
     return () => clearTimeout(routineSaveRef.current);
   }, [templates, authUser?.id]);
@@ -1206,7 +1124,8 @@ export default function GymApp() {
 
   // ── Athlete experience (native app only — everything below is unchanged) ──
   return (
-    <div style={{ background:BG, minHeight:"100vh",
+    <div style={{ background:BG, height:"100%", overflowY:"auto",
+      WebkitOverflowScrolling:"touch", touchAction:"pan-y",
       fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif",
       color:TX, position:"relative", paddingBottom:"110px" }}>
 
@@ -1265,45 +1184,6 @@ export default function GymApp() {
       {/* ── IN-APP TOUR ── */}
       {showTour && <TourOverlay onDone={() => { setShowTour(false); setTab("routine"); }}/>}
 
-      {/* ── PENDING COACH UPDATE BANNER (mid-session structural change, §6.7) ── */}
-      {pendingRoutineUpdate && workoutActive && (
-        <div style={{
-          position:"fixed", top: "max(calc(env(safe-area-inset-top, 0px) + 8px), 52px)",
-          left:"50%", transform:"translateX(-50%)",
-          width:"calc(100% - 32px)", maxWidth:420,
-          background:"#C8FF00", color:"#080808",
-          borderRadius:12, padding:"10px 14px",
-          zIndex:180, boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
-          display:"flex", alignItems:"center", gap:10,
-        }}>
-          <div style={{ flex:1, fontSize:12, fontWeight:700, lineHeight:1.4 }}>
-            📋 Your coach updated your routine
-          </div>
-          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-            <button
-              onClick={() => {
-                if (window.confirm("Apply now? Any unsaved sets will be lost.")) {
-                  setTemplates(pendingRoutineUpdate.newRoutine);
-                  setPendingRoutineUpdate(null);
-                }
-              }}
-              style={{ background:"rgba(0,0,0,0.12)", border:"none", borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:800, cursor:"pointer", color:"#080808" }}
-            >
-              Apply now
-            </button>
-            <button
-              onClick={() => {
-                // Dismiss banner; will auto-apply on session end
-                setPendingRoutineUpdate(p => p ? { ...p, dismissed: true } : null);
-              }}
-              style={{ background:"rgba(0,0,0,0.06)", border:"none", borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:700, cursor:"pointer", color:"#080808" }}
-            >
-              After workout
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── TAB BAR ── */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.97)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"22px", zIndex:100 }}>
         {TABS.map(t => (
@@ -1344,28 +1224,6 @@ export default function GymApp() {
               stroke={BG} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            {athleteChatUnread > 0 && (
-              <div style={{
-                position: "absolute",
-                top: "-4px",
-                right: "-4px",
-                minWidth: "20px",
-                height: "20px",
-                borderRadius: "10px",
-                background: "#FF5C5C",
-                color: "#F0F0F0",
-                fontSize: "11px",
-                fontWeight: 800,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "0 6px",
-                border: `2px solid ${BG}`,
-                boxSizing: "border-box",
-              }}>
-                {athleteChatUnread > 9 ? "9+" : athleteChatUnread}
-              </div>
-            )}
           </button>
 
           {chatOpen && (() => {
@@ -1605,16 +1463,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         totalSets: doneSets,
         totalVolume: totalVol,
       };
-      setWorkoutHistory(p => {
-        const newHistory = [entry, ...p];
-        
-        const streak = calculateRoutineStreak(newHistory, templates);
-        scheduleStreakReminder(streak);
-        
-        return newHistory;
-      });
-
-      scheduleReflection(completedExercises);
+      setWorkoutHistory(p => [entry, ...p]);
 
       // Save to Supabase in background (if user is logged in)
       if (authUser) {
@@ -1633,12 +1482,6 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     setWorkoutPaused(false);
     setWorkoutElapsed(0);
     setWorkoutStartTime(null);
-
-    // ── Apply any pending coach template update now that the session has ended
-    if (pendingRoutineUpdate?.newRoutine) {
-      setTemplates(pendingRoutineUpdate.newRoutine);
-      setPendingRoutineUpdate(null);
-    }
 
     // Show workout summary first, template prompt comes after
     setWorkoutSummary(summary);
@@ -4318,7 +4161,15 @@ function LoginScreen({ authError, onClearError }) {
     }
   };
 
-  const isDark = true;
+  const [loginTheme, setLoginTheme] = React.useState(
+    () => localStorage.getItem("theryn_theme") || "light"
+  );
+  const toggleLoginTheme = () => setLoginTheme(t => {
+    const n = t === "dark" ? "light" : "dark";
+    localStorage.setItem("theryn_theme", n);
+    return n;
+  });
+  const isDark = loginTheme === "dark";
   const lc = isDark ? {
     bg: "#080808", tx: "#F0F0F0", sb: "#585858", s1: "#101010", bd: "#1E1E1E",
     wordmark: "#C8FF00", glow: "rgba(200,255,0,0.10)", btnShadow: "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
@@ -4343,7 +4194,18 @@ function LoginScreen({ authError, onClearError }) {
         @keyframes pulse { 0%,100% { opacity:0.35 } 50% { opacity:0.65 } }
       `}</style>
 
-      {Capacitor.getPlatform() === "web" && <ParticleCanvas />}
+      {/* Theme toggle */}
+      <button onClick={toggleLoginTheme} style={{
+        position: "fixed", top: 16, right: 16, zIndex: 10,
+        width: 38, height: 38, borderRadius: "50%",
+        background: lc.toggleBg, border: `1px solid ${lc.toggleBd}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", fontSize: 16, color: lc.toggleIcon,
+      }}>
+        {isDark ? "☀" : "☽"}
+      </button>
+
+      {isDark && Capacitor.getPlatform() === "web" && <ParticleCanvas />}
 
       {/* Bottom glow */}
       <div style={{
@@ -5391,14 +5253,6 @@ function CoachTabIcon({ tab, active }) {
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   );
-  if (tab === "templates") return (
-    <svg {...s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="8" height="8" rx="1"/>
-      <rect x="13" y="3" width="8" height="8" rx="1"/>
-      <rect x="3" y="13" width="8" height="8" rx="1"/>
-      <path d="M17 13v8M13 17h8"/>
-    </svg>
-  );
   return null;
 }
 
@@ -5473,14 +5327,6 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     }
   }, []);
 
-  // Bust cache entries for a list of athlete IDs (e.g. after template push/assign).
-  // Next time the coach opens that athlete's view it will re-fetch from the server.
-  const burstAthleteCache = React.useCallback((athleteIds) => {
-    for (const id of (athleteIds || [])) {
-      delete athleteDataCacheRef.current[id];
-    }
-  }, []);
-
   // Load all athlete data whenever selection changes
   React.useEffect(() => {
     if (!selectedAthlete) { setAthleteData(null); return; }
@@ -5514,117 +5360,103 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
   const myAthletes = React.useMemo(() => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"), [coachLinks, authUser?.id]);
 
-  // Stable key — only changes when the actual athlete list changes — so we
-  // don't re-subscribe just because myAthletes got a new array reference.
-  const coachNotifAthleteIdsKey = React.useMemo(
-    () => myAthletes.map(l => l.athlete_id).sort().join(','),
-    [myAthletes]
-  );
-
-  React.useEffect(() => {
-    if (!authUser?.id || !coachNotifAthleteIdsKey) return;
-
-    // Server-side filter so each coach's connection only receives realtime
-    // broadcasts for their own athletes' workout_sessions inserts. Without
-    // this every coach receives every athlete's session in the entire DB.
-    const channel = supabase
-      .channel(`coach-notifications:${authUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'workout_sessions',
-          filter: `user_id=in.(${coachNotifAthleteIdsKey})`,
-        },
-        (payload) => {
-          const newSession = payload.new;
-          const matchedLink = myAthletes.find(l => l.athlete_id === newSession.user_id);
-          if (matchedLink) {
-            triggerAthleteFinishedNotification(matchedLink.athlete_name, newSession.workout_type);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [authUser?.id, coachNotifAthleteIdsKey]);
-
-  // ── App resume: fire catch-up notification for athletes finished while away
-  React.useEffect(() => {
-    if (!authUser?.id) return;
-
-    const runCatchUp = async () => {
-      const lastSeen = getCoachLastSeen();
-      markCoachSeen();
-      if (!lastSeen) return;
-      // Only if we were away > 15 min (avoid spamming on quick app switches)
-      const awayMs = Date.now() - lastSeen.getTime();
-      if (awayMs < 15 * 60 * 1000) return;
-      try {
-        const sessions = await loadAthleteSessionsSince(authUser.id, lastSeen.toISOString());
-        if (sessions.length > 0) {
-          await triggerCoachCatchUp(sessions);
-        }
-      } catch (e) {
-        console.error('Coach catch-up failed', e);
-      }
-    };
-
-    runCatchUp();
-
-    let resumeSub;
-    try {
-      resumeSub = CapApp.addListener('appStateChange', (state) => {
-        if (state.isActive) runCatchUp();
-        else markCoachSeen();
-      });
-    } catch {}
-    return () => { try { resumeSub?.remove?.(); } catch {} };
-  }, [authUser?.id]);
-
-  // ── Schedule coach daily digest based on current athlete signals
+  // ── Collect athlete signals for in-app display (server handles push digest)
   const digestAthleteSignals = React.useRef({});
   const collectDigestSignals = React.useCallback((id, payload) => {
     digestAthleteSignals.current[id] = payload;
   }, []);
 
+  // ── Consume pending deep-link from a tapped push notification ───────────
   React.useEffect(() => {
-    if (!authUser?.id || myAthletes.length === 0) return;
-    // Wait a beat for rows to compute signals, then schedule digest
-    const t = setTimeout(() => {
-      const all = Object.values(digestAthleteSignals.current);
-      const urgent = all.filter(x => x.signals?.[0]?.severity === "urgent").length;
-      const warn = all.filter(x => x.signals?.[0]?.severity === "warn").length;
-      const celebrate = all.filter(x => x.signals?.some(s => s.severity === "celebrate")).length;
-      const topLines = all
-        .filter(x => x.signals?.[0]?.severity === "urgent" || x.signals?.[0]?.severity === "warn")
-        .slice(0, 2)
-        .map(x => `${x.athlete.athlete_name}: ${x.signals[0].message}`);
-      scheduleCoachDailyDigest({
-        urgent, warn, celebrate,
-        totalAthletes: myAthletes.length,
-        topLines,
-      }).catch(() => {});
-    }, 5000);
-    return () => clearTimeout(t);
-  }, [authUser?.id, myAthletes.length, coachLinksLoaded]);
-
-  // ── Consume pending deep-link from a tapped notification
-  React.useEffect(() => {
-    if (!coachLinksLoaded || myAthletes.length === 0) return;
+    if (!coachLinksLoaded) return;
     const link = consumePendingDeepLink();
     if (!link) return;
-    if (link.type === 'athlete_finished' && link.athleteName) {
-      const match = myAthletes.find(l => l.athlete_name === link.athleteName);
-      if (match) {
-        setSelectedAthlete(match);
-        setTab('progress');
-      }
-    } else if (link.type === 'coach_digest' || link.type === 'coach_catchup') {
-      setTab('athletes');
+
+    switch (link.type) {
+      // Chat: go to messages tab (athlete or coach)
+      case 'chat':
+        setTab('messages');
+        break;
+
+      // Athlete tapped a PR notification → go to log/history
+      case 'pr':
+        setTab('log');
+        break;
+
+      // Streak milestone → log tab
+      case 'streak_milestone':
+        setTab('log');
+        break;
+
+      // Coach: athlete detail (inactive alert, athlete_finished)
+      case 'athlete_detail':
+        if (link.athleteId) {
+          const match = myAthletes.find(l => l.athlete_id === link.athleteId);
+          if (match) { setSelectedAthlete(match); setTab('progress'); }
+          else setTab('athletes');
+        } else {
+          setTab('athletes');
+        }
+        break;
+
+      // Coach: connection request from athlete
+      case 'connection_request':
+        setTab('athletes');
+        break;
+
+      // Athlete: coaching tab / coaching section
+      case 'coaching':
+        setTab('log'); // lands on athlete home; they can navigate
+        break;
+
+      // Coach: payments tab
+      case 'payments':
+        setTab('payments');
+        break;
+
+      // General log / home
+      case 'log':
+        setTab('log');
+        break;
+
+      // Coach athletes list
+      case 'athletes':
+      case 'friday_wins':
+        setTab('athletes');
+        break;
+
+      // Legacy types kept for compatibility
+      case 'athlete_finished':
+        if (link.athleteName) {
+          const match2 = myAthletes.find(l => l.athlete_name === link.athleteName);
+          if (match2) { setSelectedAthlete(match2); setTab('progress'); }
+        }
+        break;
+      case 'coach_digest':
+      case 'coach_catchup':
+        setTab('athletes');
+        break;
+
+      default:
+        break;
     }
   }, [coachLinksLoaded, myAthletes]);
+
+  // ── Foreground push toast (chat & PR while app is open) ─────────────────
+  React.useEffect(() => {
+    const handler = (e) => {
+      const n = e.detail;
+      if (!n?.title) return;
+      // Simple ephemeral banner — reuse the app's existing toast/alert system
+      // by storing in a state the UI can render. We dispatch a custom event
+      // that any component can listen to for a toast.
+      window.dispatchEvent(new CustomEvent('theryn:show-toast', {
+        detail: { title: n.title, body: n.body, channel: n.data?.channel }
+      }));
+    };
+    window.addEventListener('theryn:foreground-notification', handler);
+    return () => window.removeEventListener('theryn:foreground-notification', handler);
+  }, []);
 
   function handleTourDone() {
     if (authUser?.id) localStorage.setItem(`theryn_coach_tour_done_${authUser.id}`, "1");
@@ -5657,8 +5489,8 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
   // Connections moved out of the main nav into the profile drawer (it's a
   // config-style flow, not a daily workflow). Payments takes the freed slot.
-  const COACH_TABS = ["athletes", "templates", "routines", "body", "progress", "payments", "messages"];
-  const COACH_LABELS = { athletes: "Athletes", templates: "Templates", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments", messages: "Messages" };
+  const COACH_TABS = ["athletes", "routines", "body", "progress", "payments", "messages"];
+  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments", messages: "Messages" };
 
   // Separate state for the Connections modal triggered from the profile drawer.
   const [showConnections, setShowConnections] = React.useState(false);
@@ -5729,13 +5561,6 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             onDigestSignals={collectDigestSignals}
           />
         </div>
-        {tab === "templates" && (
-          <CoachTemplatesTab
-            authUser={authUser}
-            myAthletes={myAthletes}
-            burstAthleteCache={burstAthleteCache}
-          />
-        )}
         {tab === "routines"  && <CoachRoutinesTab  {...sharedTabProps}/>}
         {tab === "body"      && <CoachBodyTab       {...sharedTabProps}/>}
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
@@ -6184,28 +6009,6 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
   const [savingNote, setSavingNote] = React.useState(false);
   const [coachAthleteView, setCoachAthleteView] = React.useState(null);
   const [noteToast, setNoteToast] = React.useState(null);
-  const [resetting, setResetting] = React.useState(false);
-  const [shownForkBanner, setShownForkBanner] = React.useState(false);
-
-  // Template meta for the selected athlete (is_overridden, source_template_id)
-  const routineMeta = selectedAthlete?.athlete_id ? getRoutineMeta(selectedAthlete.athlete_id) : null;
-  const isCustomized = !!(routineMeta?.isOverridden && routineMeta?.sourceTemplateId);
-
-  async function handleResetToTemplate() {
-    if (!selectedAthlete?.athlete_id || !routineMeta?.sourceTemplateId) return;
-    if (!window.confirm("Reset this athlete's routine to the original template? Their current customizations will be archived.")) return;
-    setResetting(true);
-    try {
-      await resetAthleteToTemplate(routineMeta.sourceTemplateId, selectedAthlete.athlete_id);
-      const newRoutine = await loadRoutine(selectedAthlete.athlete_id);
-      setAthleteCache?.(selectedAthlete.athlete_id, { ...(athleteData || {}), routine: newRoutine });
-      setNoteToast({ type:"success", message:"Reset to template" });
-    } catch(e) {
-      setNoteToast({ type:"error", message: e.message || "Reset failed" });
-    } finally {
-      setResetting(false);
-    }
-  }
 
   const athleteName = selectedAthlete?.athlete_name || "Athlete";
   const routine = athleteData?.routine || null;
@@ -6253,8 +6056,9 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
       const name = typeof ex === "string" ? ex : ex.name;
       exercises[exIndex] = { ...(typeof ex === "object" && ex ? ex : {}), name, coachNote: val.trim() };
       updated[day] = { ...updated[day], exercises };
-      // Use saveRoutineAsCoach so template-assigned routines are auto-forked on first edit
-      await saveRoutineAsCoach(selectedAthlete.athlete_id, updated, authUser?.id);
+      await saveRoutine(selectedAthlete.athlete_id, updated);
+      // Optimistically update only the routine field — don't disturb selectedAthlete.
+      // setAthleteCache is (id, data) => ...; passing a reducer here silently no-ops.
       const athleteId = selectedAthlete.athlete_id;
       setAthleteCache?.(athleteId, { ...(athleteData || {}), routine: updated });
       setEditingNote(null);
@@ -6278,34 +6082,7 @@ function CoachRoutinesTab({ authUser, selectedAthlete, setSelectedAthlete, coach
     <div style={{ padding: "20px 16px 0" }}>
       <div style={{ marginBottom: "20px" }}>
         <div style={{ fontSize: "20px", fontWeight: 800, color: TX }}>Routines</div>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:"4px", flexWrap:"wrap" }}>
-          <div style={{ fontSize: "12px", color: A }}>{athleteName}</div>
-          {isCustomized && (
-            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <span style={{
-                fontSize:10, background:`${A}18`, color:A, borderRadius:5,
-                padding:"2px 8px", fontWeight:800, letterSpacing:"0.04em",
-                border:`1px solid ${A}33`,
-              }}>
-                ✎ Customized
-              </span>
-              <button
-                onClick={handleResetToTemplate}
-                disabled={resetting}
-                style={{
-                  fontSize:10, background:"none", border:`1px solid #585858`,
-                  borderRadius:5, padding:"2px 8px", color:"#585858",
-                  cursor:resetting ? "wait":"pointer", fontWeight:700,
-                }}
-                title="Reset this client's routine back to the original template"
-              >
-                {resetting ? "Resetting…" : "Reset to template"}
-              </button>
-            </div>
-          )}
-        </div>
-        {/* One-time fork banner */}
-        {isCustomized && !shownForkBanner && (() => { setTimeout(() => setShownForkBanner(true), 4000); return null; })()}
+        <div style={{ fontSize: "12px", color: A, marginTop: "2px" }}>{athleteName}</div>
       </div>
 
       {/* Note save toast */}
@@ -6615,30 +6392,13 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
     loadConversationPreviews(authUser.id, myAthletes).then(setPreviews);
   }, [authUser?.id, athleteIdsKey]);
 
-  // Trailing debounce so a burst of incoming messages collapses into one
-  // preview refresh (= one RPC call) instead of one per message.
-  const refreshTimerRef = React.useRef(null);
-  const scheduleRefresh = React.useCallback(() => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = setTimeout(() => {
-      refreshTimerRef.current = null;
-      refreshPreviewsNow();
-    }, 1500);
-  }, [refreshPreviewsNow]);
-
   React.useEffect(() => {
     refreshPreviewsNow();
-    return () => {
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-    };
   }, [refreshPreviewsNow]);
 
   // Realtime: refresh previews (and badge) whenever a new message lands in any
   // of this coach's conversations — so the dot updates even when the coach is
-  // on another tab. Refresh is debounced to handle bursts cheaply.
+  // on another tab.
   React.useEffect(() => {
     if (!authUser?.id || myAthletes.length === 0) return;
     let cancelled = false;
@@ -6661,7 +6421,7 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
             const row = payload.new;
             if (!row || !convIdSet.has(row.conversation_id)) return;
             if (row.sender_id === authUser.id) return; // our own sends don't bump unread
-            scheduleRefresh();
+            refreshPreviewsNow();
           }
         )
         .subscribe();
@@ -6670,7 +6430,7 @@ function CoachMessagesTab({ authUser, coachLinks, coachLinksLoaded, onUnreadChan
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [authUser?.id, athleteIdsKey, scheduleRefresh]);
+  }, [authUser?.id, athleteIdsKey, refreshPreviewsNow]);
 
   React.useEffect(() => {
     const total = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);

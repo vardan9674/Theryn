@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true,
     },
+    PushNotifications: {
+      // iOS foreground display options. Android channels control display
+      // characteristics on that platform.
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
   },
 };
 

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "577642394892",
+    "project_id": "theryn-15fb2",
+    "storage_bucket": "theryn-15fb2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:577642394892:android:62a14fab0cc8497de38529",
+        "android_client_info": {
+          "package_name": "com.theryn.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwfzCjjX_mgXefEGUUg8Mg08cMDjgelCI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -14,3 +14,15 @@ vite.config.ts.timestamp-*.mjs
 
 # Claude Code agent working directories
 .claude/worktrees/
+
+# Sensitive credentials — never commit these
+*.p8
+theryn-fcm.json
+*-service-account*.json
+*-fcm*.json
+
+# Supabase temp files
+supabase/.temp/
+
+# Vercel
+.vercel/
