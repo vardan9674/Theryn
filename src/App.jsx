@@ -24,6 +24,7 @@ import {
   fmtMoney, SUPPORTED_CURRENCIES,
 } from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
+import PullToRefresh from "./components/PullToRefresh.jsx";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -837,6 +838,7 @@ export default function GymApp() {
   const routineSaveRef = useRef(null);
   const isLocalSaveRef = useRef(0);
   const fetchRoutineRef = useRef(null);
+  const refreshAllRef = useRef(null);
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
@@ -884,6 +886,23 @@ export default function GymApp() {
     };
     fetchRoutineRef.current = fetchRoutine;
 
+    // Aggregate refresh — used by pull-to-refresh on Routine + Log screens.
+    // Re-pulls routine + workout history + body weights + measurements in
+    // parallel and surfaces a single spinner.
+    refreshAllRef.current = async () => {
+      setRefreshing(true);
+      try {
+        await Promise.all([
+          fetchRoutine(true),
+          loadWorkoutHistory(uid).then(history => { if (history.length > 0) setWorkoutHistory(history); }).catch(console.error),
+          loadBodyWeights(uid).then(weights => { if (weights.length > 0) setWeightLog(weights); }).catch(console.error),
+          loadMeasurements(uid).then(measurements => { if (measurements.length > 0) setMeasureLog(measurements); }).catch(console.error),
+        ]);
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
     // Initial load
     fetchRoutine();
 
@@ -912,7 +931,66 @@ export default function GymApp() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // ── Assignment lifecycle listener ──────────────────────────────────────
+    // The `routines` channel above only fires on routine-row writes. The coach's
+    // assign/unassign RPCs touch `routine_template_assignments` first, and the
+    // routine row update may lag (or, on unassign, never fire at all). Without
+    // this channel the athlete sees the stale template until they restart the
+    // app. Listening here gives us instant assign-pickup and a hard reset on
+    // unassign.
+    const assignmentChannel = supabase
+      .channel(`assignment-sync:${uid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'routine_template_assignments', filter: `athlete_id=eq.${uid}` },
+        async (payload) => {
+          const isUnassigned =
+            payload.eventType === 'DELETE' ||
+            (payload.new?.unassigned_at != null && payload.old?.unassigned_at == null);
+
+          if (isUnassigned) {
+            // Coach removed this athlete from the template. Clear cached routine,
+            // strip template linkage on the routines row, and write defaults so
+            // the athlete falls back to a clean weekly schedule immediately.
+            try {
+              localStorage.removeItem(`theryn_routine_${uid}`);
+              localStorage.removeItem(`theryn_routine_meta_${uid}`);
+            } catch {}
+            try {
+              await supabase.from("routines").update({
+                source_template_id: null,
+                source_template_version: null,
+                is_overridden: false,
+                last_pushed_version: null,
+              }).eq("user_id", uid).eq("is_active", true);
+            } catch {}
+            try {
+              skipAutoSaveRef.current = true;
+              await saveRoutine(uid, DEFAULT_TEMPLATES);
+              setTimeout(() => { skipAutoSaveRef.current = false; }, 2000);
+            } catch (e) { console.error("reset-on-unassign saveRoutine failed:", e); }
+
+            setTemplates(DEFAULT_TEMPLATES);
+            setTodayType(DEFAULT_TEMPLATES[getToday()]?.type || 'Custom');
+            return;
+          }
+
+          // INSERT or re-assignment: drop the cached routine and force a
+          // network re-fetch so any template content the coach pushed lands
+          // immediately.
+          try {
+            localStorage.removeItem(`theryn_routine_${uid}`);
+            localStorage.removeItem(`theryn_routine_meta_${uid}`);
+          } catch {}
+          fetchRoutine(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(assignmentChannel);
+    };
   }, [authUser?.id]);
 
   useEffect(() => {
@@ -995,7 +1073,19 @@ export default function GymApp() {
     return () => { handler.then(h => h.remove()); };
   }, [tab]);
 
-  if (showLanding) return (
+  // Resolve the Supabase session before deciding what to render. Without this
+  // check, refreshing the page on web would always fall through to <LandingPage>
+  // because `showLanding` defaults to true on `/` — so a signed-in coach would
+  // get bounced to the marketing site on every reload.
+  if (authLoading) return (
+    <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ width:"32px", height:"32px", borderRadius:"50%", border:`3px solid ${MT}`, borderTopColor:A, animation:"spin 0.8s linear infinite" }}/>
+    </div>
+  );
+
+  // Landing only shows when there's no live session. Authenticated users skip
+  // straight into the app on refresh; signing out still routes back here.
+  const renderLanding = () => (
     <LandingPage onEnterApp={async (intendedRole) => {
       // Landing CTA must always run sign-in → role picker, even for users with
       // an existing Supabase session. Otherwise the stored role silently routes
@@ -1017,16 +1107,15 @@ export default function GymApp() {
     }} />
   );
 
-  // Show a minimal loading screen while Supabase checks for an existing session
-  if (authLoading) return (
-    <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ width:"32px", height:"32px", borderRadius:"50%", border:`3px solid ${MT}`, borderTopColor:A, animation:"spin 0.8s linear infinite" }}/>
-    </div>
-  );
+  if (showLanding && !authUser) return renderLanding();
 
-  if (!authUser) return (
-    <LoginScreen authError={authError} onClearError={() => setAuthError(null)}/>
-  );
+  if (!authUser) {
+    // On web, signing out (or any other no-auth state outside the native app)
+    // should return the user to the marketing landing page, not the bare
+    // LoginScreen. The native LoginScreen is iOS/Android-only.
+    if (Capacitor.getPlatform() === "web") return renderLanding();
+    return <LoginScreen authError={authError} onClearError={() => setAuthError(null)}/>;
+  }
 
   // While we check profiles.onboarding_completed, show the same spinner as
   // auth loading — no flash of Role picker or app chrome.
@@ -1140,8 +1229,16 @@ export default function GymApp() {
       `}</style>
 
       <div key={tab} className="screen-enter">
-        {tab==="log"      && <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>}
-        {tab==="routine"  && <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => fetchRoutineRef.current?.()}/>}
+        {tab==="log"      && (
+          <PullToRefresh refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}>
+            <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>
+          </PullToRefresh>
+        )}
+        {tab==="routine"  && (
+          <PullToRefresh refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}>
+            <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}/>
+          </PullToRefresh>
+        )}
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
         {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
@@ -3397,7 +3494,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
           <div>
             {!todayEntry && <div style={{ fontSize:"14px", color:SB, marginBottom:"10px" }}>Log your weight for today</div>}
             <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-              <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder={todayEntry ? String(todayEntry.weight) : "178.5"} value={inputW} onChange={e => setInputW(e.target.value)} onKeyDown={e => e.key==="Enter"&&logToday()}/>
+              <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder={todayEntry ? String(todayEntry.weight) : `Enter weight (${wLabel})`} value={inputW} onChange={e => setInputW(e.target.value)} onKeyDown={e => e.key==="Enter"&&logToday()}/>
               <button onClick={logToday} style={{ ...btnPrim, width:"100%" }}>{todayEntry ? "Update" : "Log"}</button>
             </div>
             {todayEntry && <div style={{ fontSize:"13px", color:SB, marginTop:"6px" }}>Enter a new value to update today's weight</div>}
@@ -4161,30 +4258,11 @@ function LoginScreen({ authError, onClearError }) {
     }
   };
 
-  const [loginTheme, setLoginTheme] = React.useState(
-    () => localStorage.getItem("theryn_theme") || "light"
-  );
-  const toggleLoginTheme = () => setLoginTheme(t => {
-    const n = t === "dark" ? "light" : "dark";
-    localStorage.setItem("theryn_theme", n);
-    return n;
-  });
-  const isDark = loginTheme === "dark";
-  const lc = isDark ? {
-    bg: "#080808", tx: "#F0F0F0", sb: "#585858", s1: "#101010", bd: "#1E1E1E",
-    wordmark: "#C8FF00", glow: "rgba(200,255,0,0.10)", btnShadow: "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
-    toggleBg: "#1E1E1E", toggleBd: "#2E2E2E", toggleIcon: "#C8FF00",
-  } : {
-    bg: "#FFFFFF", tx: "#0A0A0A", sb: "#888888", s1: "#F4F4F4", bd: "#E2E2E2",
-    wordmark: "#3D7200", glow: "rgba(61,114,0,0.07)", btnShadow: "0 4px 20px rgba(0,0,0,0.12)",
-    toggleBg: "#F0F0F0", toggleBd: "#E0E0E0", toggleIcon: "#444444",
-  };
-
   return (
     <div style={{
-      background: lc.bg, minHeight: "100vh",
+      background: BG, minHeight: "100vh",
       fontFamily: "-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      color: lc.tx, display: "flex", flexDirection: "column",
+      color: TX, display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
       padding: "64px 32px", boxSizing: "border-box",
       position: "relative", overflow: "hidden",
@@ -4194,24 +4272,13 @@ function LoginScreen({ authError, onClearError }) {
         @keyframes pulse { 0%,100% { opacity:0.35 } 50% { opacity:0.65 } }
       `}</style>
 
-      {/* Theme toggle */}
-      <button onClick={toggleLoginTheme} style={{
-        position: "fixed", top: 16, right: 16, zIndex: 10,
-        width: 38, height: 38, borderRadius: "50%",
-        background: lc.toggleBg, border: `1px solid ${lc.toggleBd}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", fontSize: 16, color: lc.toggleIcon,
-      }}>
-        {isDark ? "☀" : "☽"}
-      </button>
-
-      {isDark && Capacitor.getPlatform() === "web" && <ParticleCanvas />}
+      {Capacitor.getPlatform() === "web" && <ParticleCanvas />}
 
       {/* Bottom glow */}
       <div style={{
         position: "fixed", bottom: -80, left: "50%", transform: "translateX(-50%)",
         width: 480, height: 280,
-        background: `radial-gradient(ellipse, ${lc.glow} 0%, transparent 65%)`,
+        background: `radial-gradient(ellipse, rgba(200,255,0,0.10) 0%, transparent 65%)`,
         filter: "blur(60px)", pointerEvents: "none", zIndex: 0,
         animation: "pulse 5s ease-in-out infinite",
       }} />
@@ -4223,38 +4290,36 @@ function LoginScreen({ authError, onClearError }) {
       }}>
         {/* Logo */}
         <div style={{
-          width: 72, height: 72, borderRadius: "50%", background: lc.s1,
-          border: `1px solid ${lc.bd}`, overflow: "hidden",
+          width: 72, height: 72, borderRadius: "50%", background: S1,
+          border: `1px solid ${BD}`, overflow: "hidden",
           display: "flex", alignItems: "center", justifyContent: "center",
           marginBottom: 24,
-          boxShadow: isDark
-            ? `0 0 0 6px rgba(200,255,0,0.06), 0 24px 48px rgba(0,0,0,0.6)`
-            : `0 0 0 6px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.10)`,
+          boxShadow: `0 0 0 6px rgba(200,255,0,0.06), 0 24px 48px rgba(0,0,0,0.6)`,
         }}>
           <img src="/theryn-logo.svg" width="72" height="72" alt="Theryn" style={{ objectFit: "contain" }} />
         </div>
 
         {Capacitor.getPlatform() === "web" ? (
           <>
-            <div style={{ fontSize: 11, color: lc.wordmark, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
+            <div style={{ fontSize: 11, color: A, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
             <h1 style={{
               fontSize: "clamp(28px, 7vw, 36px)", fontWeight: 900,
               letterSpacing: "-0.04em", lineHeight: 1.15,
-              textAlign: "center", color: lc.tx, margin: "0 0 12px",
+              textAlign: "center", color: TX, margin: "0 0 12px",
             }}>
-              Coaching,<br /><span style={{ color: lc.wordmark }}>without the chaos.</span>
+              Coaching,<br /><span style={{ color: A }}>without the chaos.</span>
             </h1>
-            <p style={{ fontSize: 13, color: lc.sb, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>
+            <p style={{ fontSize: 13, color: SB, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>
               Real-time insights. Zero spreadsheets.
             </p>
           </>
         ) : (
           <>
-            <div style={{ fontSize: 11, color: lc.wordmark, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
-            <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: lc.tx, lineHeight: 1.2, textAlign: "center", margin: "0 0 10px" }}>
-              Your gym.<br /><span style={{ color: lc.wordmark }}>Your data.</span>
+            <div style={{ fontSize: 11, color: A, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
+            <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: TX, lineHeight: 1.2, textAlign: "center", margin: "0 0 10px" }}>
+              Your gym.<br /><span style={{ color: A }}>Your data.</span>
             </h1>
-            <p style={{ fontSize: 13, color: lc.sb, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>Track workouts, body, and progress — all in one place.</p>
+            <p style={{ fontSize: 13, color: SB, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>Track workouts, body, and progress — all in one place.</p>
           </>
         )}
 
@@ -4264,7 +4329,7 @@ function LoginScreen({ authError, onClearError }) {
             onClick={() => { setError(null); onClearError?.(); }}
             style={{ background: "rgba(255,92,92,0.10)", border: `1px solid ${RED}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: RED, wordBreak: "break-all", cursor: "pointer", marginBottom: 12, width: "100%", boxSizing: "border-box" }}>
             {error || authError}
-            <div style={{ fontSize: 12, color: lc.sb, marginTop: 4 }}>Tap to dismiss</div>
+            <div style={{ fontSize: 12, color: SB, marginTop: 4 }}>Tap to dismiss</div>
           </div>
         )}
 
@@ -4273,20 +4338,20 @@ function LoginScreen({ authError, onClearError }) {
           onClick={handleGoogleSignIn}
           disabled={loading}
           style={{
-            background: loading ? lc.s1 : A, border: loading ? `1px solid ${lc.bd}` : "none",
+            background: loading ? S1 : A, border: loading ? `1px solid ${BD}` : "none",
             borderRadius: 14, color: "#000",
             fontWeight: 800, fontSize: 15, padding: "16px 20px",
             cursor: loading ? "default" : "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
             width: "100%", opacity: loading ? 0.7 : 1,
-            boxShadow: loading ? "none" : lc.btnShadow,
+            boxShadow: loading ? "none" : "0 0 28px rgba(200,255,0,0.35), 0 4px 16px rgba(0,0,0,0.4)",
             letterSpacing: "-0.01em",
           }}
         >
           {loading ? (
             <>
-              <div style={{ width: 15, height: 15, borderRadius: "50%", border: `2px solid ${lc.tx}`, borderTopColor: "transparent", animation: "spin 0.7s linear infinite" }} />
-              <span style={{ color: lc.tx }}>Connecting…</span>
+              <div style={{ width: 15, height: 15, borderRadius: "50%", border: `2px solid ${TX}`, borderTopColor: "transparent", animation: "spin 0.7s linear infinite" }} />
+              <span style={{ color: TX }}>Connecting…</span>
             </>
           ) : (
             <>
@@ -4301,7 +4366,7 @@ function LoginScreen({ authError, onClearError }) {
           )}
         </button>
 
-        <div style={{ marginTop: 16, fontSize: 11, color: lc.sb, textAlign: "center", letterSpacing: "0.02em" }}>
+        <div style={{ marginTop: 16, fontSize: 11, color: SB, textAlign: "center", letterSpacing: "0.02em" }}>
           Free to start · No credit card required
         </div>
       </div>
@@ -5359,6 +5424,59 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   }, [selectedAthlete?.athlete_id]);
 
   const myAthletes = React.useMemo(() => coachLinks.filter(l => l.coach_id === authUser?.id && l.status === "accepted"), [coachLinks, authUser?.id]);
+
+  // Stable key — only changes when the actual athlete list changes — so we
+  // don't re-subscribe just because myAthletes got a new array reference.
+  const myAthleteIdsKey = React.useMemo(
+    () => myAthletes.map(l => l.athlete_id).sort().join(','),
+    [myAthletes]
+  );
+
+  // ── Live cache invalidation when an athlete logs / edits anything ──────
+  // When an athlete finishes a workout or updates body data, bust their
+  // cached snapshot and (if currently on screen) reload so the coach sees
+  // the change without flipping screens or refreshing.
+  React.useEffect(() => {
+    if (!authUser?.id || !myAthleteIdsKey) return;
+
+    const reloadAthleteIfRelevant = (athleteId) => {
+      if (!athleteId) return;
+      delete athleteDataCacheRef.current[athleteId];
+      if (selectedAthleteRef.current?.athlete_id === athleteId) {
+        loadAthleteData(athleteId).then(d => {
+          athleteDataCacheRef.current[athleteId] = d;
+          if (selectedAthleteRef.current?.athlete_id === athleteId) setAthleteData(d);
+        }).catch(() => {});
+      }
+    };
+
+    const filterIn = `user_id=in.(${myAthleteIdsKey})`;
+    const channel = supabase
+      .channel(`coach-live-data:${authUser.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'workout_sessions', filter: filterIn },
+        (payload) => reloadAthleteIfRelevant(payload.new?.user_id)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'workout_sessions', filter: filterIn },
+        (payload) => reloadAthleteIfRelevant(payload.new?.user_id)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'body_weights', filter: filterIn },
+        (payload) => reloadAthleteIfRelevant(payload.new?.user_id || payload.old?.user_id)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'body_measurements', filter: filterIn },
+        (payload) => reloadAthleteIfRelevant(payload.new?.user_id || payload.old?.user_id)
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [authUser?.id, myAthleteIdsKey]);
 
   // ── Collect athlete signals for in-app display (server handles push digest)
   const digestAthleteSignals = React.useRef({});
