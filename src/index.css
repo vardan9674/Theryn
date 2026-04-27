@@ -573,7 +573,8 @@ button {
   }
 }
 
-@keyframes drawerUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
+/* NOTE: an earlier duplicate `@keyframes drawerUp` here translated only Y, so
+ * elements that combined drawerUp with `transform: translateX(-50%)` rendered
+ * in the right half then snapped to center when the animation ended. The
+ * canonical definition at the top of this file (translate(-50%, …)) is the
+ * only one we keep. */
