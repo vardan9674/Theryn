@@ -324,7 +324,7 @@ function Navbar({ onGetStarted }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <img src="/theryn-logo.svg" alt="" style={{ width: 28, height: 28, borderRadius: 7 }} />
-        <span style={{ fontSize: 16, fontWeight: 900, color: c.tx, letterSpacing: "-0.05em" }}>theryn</span>
+        <span style={{ fontSize: 16, fontWeight: 900, color: c.tx, letterSpacing: "-0.05em" }}>Theryn</span>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1319,7 +1319,7 @@ function CloseSection({ onEnterApp }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src="/theryn-logo.svg" alt="Theryn" style={{ width: 24, height: 24, borderRadius: 6 }} />
-          <span style={{ fontSize: 14, fontWeight: 900, color: c.tx, letterSpacing: "-0.04em" }}>theryn</span>
+          <span style={{ fontSize: 14, fontWeight: 900, color: c.tx, letterSpacing: "-0.04em" }}>Theryn</span>
         </div>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
           {["Privacy", "Terms", "Support", "Contact"].map(l => (
