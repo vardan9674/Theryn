@@ -128,63 +128,8 @@ function PhoneShell({ children, c, size = "md" }) {
 
 // ── HERO ANIMATION FRAMES ─────────────────────────────────────────────────────
 function HeroFrame({ frame, c }) {
+  // Frame 0 — They train: live workout logging
   if (frame === 0) return (
-    <div style={{ padding: "12px 16px" }}>
-      <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-        Your invite code
-      </div>
-      <motion.div
-        animate={{ boxShadow: [`0 0 0px ${c.accent}00`, `0 0 28px ${c.accent}50`, `0 0 0px ${c.accent}00`] }}
-        transition={{ duration: 2.2, repeat: Infinity }}
-        style={{
-          background: c.s2, borderRadius: 14, padding: "18px 16px",
-          border: `1px solid ${c.accent}50`, textAlign: "center", marginBottom: 14,
-        }}
-      >
-        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.24em", color: c.accentText }}>K7M4NP</div>
-        <div style={{ fontSize: 9, color: c.sb, marginTop: 4 }}>Tap to share →</div>
-      </motion.div>
-      {[["Alex M.", c.accent, "Push Day"], ["Jordan K.", c.teal, "Upper"], ["Sam R.", c.warm, "Legs"]].map(([n, col, type]) => (
-        <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, background: c.s2, borderRadius: 9, padding: "7px 10px", marginBottom: 5 }}>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", background: col, opacity: 0.85, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: c.tx, fontWeight: 600 }}>{n}</span>
-          <span style={{ fontSize: 10, color: c.sb, marginLeft: "auto" }}>{type}</span>
-        </div>
-      ))}
-    </div>
-  );
-
-  if (frame === 1) return (
-    <div style={{ padding: "12px 16px" }}>
-      <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
-        New connection
-      </div>
-      <motion.div
-        initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        style={{
-          background: `linear-gradient(135deg, ${c.teal}18, ${c.accent}10)`,
-          border: `1px solid ${c.teal}60`, borderRadius: 14, padding: "14px",
-          display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
-        }}
-      >
-        <div style={{ width: 36, height: 36, borderRadius: "50%", background: c.teal, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff", flexShrink: 0 }}>M</div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: c.tx }}>Maya J.</div>
-          <div style={{ fontSize: 10, color: c.teal }}>Wants to join →</div>
-        </div>
-      </motion.div>
-      <motion.div
-        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.35 }}
-        style={{ background: c.accent, borderRadius: 10, padding: "11px", textAlign: "center" }}
-      >
-        <span style={{ fontSize: 12, fontWeight: 800, color: "#000" }}>Approve athlete</span>
-      </motion.div>
-      <div style={{ marginTop: 10, fontSize: 10, color: c.sb, textAlign: "center" }}>Now on your roster</div>
-    </div>
-  );
-
-  if (frame === 2) return (
     <div style={{ padding: "12px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div>
@@ -218,7 +163,8 @@ function HeroFrame({ frame, c }) {
     </div>
   );
 
-  return (
+  // Frame 1 — You see: coach dashboard with status badges
+  if (frame === 1) return (
     <div style={{ padding: "10px 12px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase" }}>Your athletes</div>
@@ -248,6 +194,79 @@ function HeroFrame({ frame, c }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+
+  // Frame 2 — You adjust: routine update with diff
+  if (frame === 2) return (
+    <div style={{ padding: "12px 16px" }}>
+      <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+        Routine updated
+      </div>
+      <motion.div
+        animate={{ boxShadow: [`0 0 0px ${c.accent}00`, `0 0 24px ${c.accent}45`, `0 0 0px ${c.accent}00`] }}
+        transition={{ duration: 2.2, repeat: Infinity }}
+        style={{ background: c.s2, borderRadius: 14, padding: "14px 16px", border: `1px solid ${c.accent}50`, marginBottom: 12 }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 700, color: c.tx, marginBottom: 8 }}>Bench Press</div>
+        <div style={{ fontSize: 11, color: c.sb, textDecoration: "line-through", marginBottom: 4 }}>4 × 8 @ 185 lbs</div>
+        <motion.div
+          initial={{ x: -8, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.25 }}
+          style={{ display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <span style={{ fontSize: 11, color: c.accent, fontWeight: 800 }}>↑</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: c.accentText }}>5 × 5 @ 205 lbs</span>
+        </motion.div>
+      </motion.div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", padding: "8px 12px", background: c.s2, borderRadius: 100, border: `1px solid ${c.bd}` }}>
+        <motion.span
+          animate={{ opacity: [1, 0.3, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity }}
+          style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }}
+        />
+        <span style={{ fontSize: 10, color: c.sb2, fontWeight: 600 }}>Pushed to Maya · live now</span>
+      </div>
+    </div>
+  );
+
+  // Frame 3 — They improve: PR celebration + progress
+  return (
+    <div style={{ padding: "12px 16px" }}>
+      <motion.div
+        animate={{ opacity: [1, 0.6, 1] }}
+        transition={{ duration: 2, repeat: Infinity }}
+        style={{ fontSize: 10, color: c.accentText, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10, fontWeight: 800 }}
+      >
+        New PR
+      </motion.div>
+      <motion.div
+        animate={{ boxShadow: [`0 0 0px ${c.accent}00`, `0 0 28px ${c.accent}50`, `0 0 0px ${c.accent}00`] }}
+        transition={{ duration: 2.2, repeat: Infinity }}
+        style={{ background: c.s2, borderRadius: 14, padding: "16px", textAlign: "center", border: `1px solid ${c.accent}50`, marginBottom: 12 }}
+      >
+        <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.03em", color: c.accentText, lineHeight: 1 }}>225 lbs</div>
+        <div style={{ fontSize: 10, color: c.sb, marginTop: 4 }}>Bench Press · +20 lbs in 4 weeks</div>
+      </motion.div>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 4, height: 32, marginBottom: 8, padding: "0 4px" }}>
+        {[35, 45, 50, 60, 75, 85, 100].map((h, i) => (
+          <motion.div
+            key={i}
+            initial={{ scaleY: 0 }} animate={{ scaleY: 1 }}
+            transition={{ delay: i * 0.06, duration: 0.4 }}
+            style={{
+              flex: 1, height: `${h}%`,
+              background: i === 6 ? c.accent : `${c.accent}55`,
+              borderRadius: 2, transformOrigin: "bottom",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: c.s2, borderRadius: 10, padding: "8px 10px" }}>
+        <div style={{ width: 24, height: 24, borderRadius: "50%", background: c.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#000" }}>M</div>
+        <span style={{ fontSize: 11, color: c.tx, fontWeight: 600 }}>Maya J.</span>
+        <span style={{ fontSize: 10, color: c.sb, marginLeft: "auto" }}>Up from 205</span>
+      </div>
     </div>
   );
 }
@@ -337,7 +356,7 @@ function Navbar({ onGetStarted }) {
 }
 
 // ── SECTION 1: HERO ───────────────────────────────────────────────────────────
-const FRAME_LABELS = ["Share code", "Athlete joins", "Log session", "Coach sees it"];
+const FRAME_LABELS = ["They train", "You see", "You adjust", "They improve"];
 
 function HeroSection({ onEnterApp }) {
   const c = useC();
@@ -435,7 +454,7 @@ function HeroSection({ onEnterApp }) {
           >
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 24 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>iOS · Android · Web · Free to start</span>
+              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>The operating system for serious coaches</span>
             </div>
             <h1 style={{
               fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
@@ -450,8 +469,11 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb, margin: "0 0 36px", lineHeight: 1.65, maxWidth: 420 }}>
-              One system. Total control.
+            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
+              Your athlete trains. You see it. You adjust. They improve.
+            </p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
+              Zero guesswork. Just real results.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <motion.button
@@ -497,7 +519,7 @@ function HeroSection({ onEnterApp }) {
           >
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>iOS · Android · Web · Free to start</span>
+              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>The operating system for serious coaches</span>
             </div>
             <h1 style={{ fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px" }}>
               Built for Coaches.
@@ -509,8 +531,19 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 32px", lineHeight: 1.6, maxWidth: 380 }}>
-              One system. Total control.
+            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
+              Your athlete trains. You see it. You adjust. They improve.
+            </p>
+          </motion.div>
+          <div style={{ marginTop: 40, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            style={{ textAlign: "center", marginTop: 20, position: "relative", zIndex: 1 }}
+          >
+            <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 24px", letterSpacing: "0.01em" }}>
+              Zero guesswork. Just real results.
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => onEnterApp("coach")}
@@ -523,7 +556,6 @@ function HeroSection({ onEnterApp }) {
               </motion.button>
             </div>
           </motion.div>
-          <div style={{ marginTop: 48, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
         </>
       )}
     </section>
@@ -540,16 +572,26 @@ function SplitSection({ onEnterApp }) {
     {
       role: "coach", title: "COACH", cta: "Start coaching →",
       headline: "20 athletes.\nOne screen.",
-      stat: "5 hrs saved weekly",
+      stat: "Closes the loop for every athlete.",
       accent: c.accent, accentText: c.accentText,
-      items: ["Full athlete roster", "Routine builder", "Needs-attention alerts", "Payment tracking"],
+      items: [
+        "Build routines, push instantly",
+        "Live data on every athlete",
+        "Catch slippage in real-time",
+        "Adjust plans on the fly",
+      ],
     },
     {
       role: "athlete", title: "ATHLETE", cta: "Join as athlete →",
       headline: "Tap.\nLog.\nDone.",
-      stat: "2-second set logging",
+      stat: "Today's plan, ready when you are.",
       accent: c.teal, accentText: c.tealText,
-      items: ["Coach-assigned routines", "Personal records", "Body tracking", "Progress charts"],
+      items: [
+        "Coach-assigned plans daily",
+        "Tap-to-log every set",
+        "PRs flagged automatically",
+        "Watch your strength climb",
+      ],
     },
   ];
 
@@ -558,10 +600,10 @@ function SplitSection({ onEnterApp }) {
       <Reveal>
         <div style={{ textAlign: "center", marginBottom: 48 }}>
           <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>
-            Find yourself
+            Built for both sides
           </div>
           <h2 style={{ fontSize: "clamp(30px, 5.5vw, 48px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
-            Who are you?
+            Pick your side.
           </h2>
         </div>
       </Reveal>
@@ -725,39 +767,96 @@ function EmotionalHitSection() {
             <span className="text-gradient" style={{
               background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
             }}>
-              Less effort.
+              Less chaos.
             </span>
           </h2>
-          <p style={{ fontSize: "clamp(14px, 2vw, 16px)", color: c.sb, maxWidth: 300, margin: "0 auto" }}>
-            Built for coaches who do the work, not the admin.
+          <p style={{ fontSize: "clamp(14px, 2vw, 16px)", color: c.sb, maxWidth: 340, margin: "0 auto" }}>
+            Built for coaches who coach—not manage tools.
           </p>
         </div>
       </Reveal>
 
       <div ref={ref} style={{
-        display: "flex", justifyContent: "center",
-        gap: "clamp(28px, 7vw, 80px)", flexWrap: "wrap",
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+        gap: 16, maxWidth: 960, margin: "0 auto",
       }}>
         {[
-          { target: 5, suffix: " hrs", label: "saved weekly", sub: "of admin per coach" },
-          { target: 2, suffix: "×", label: "retention rate", sub: "vs. WhatsApp coaching" },
-          { target: 100, suffix: "%", label: "real data", sub: "no self-reported guesses" },
-        ].map((s, i) => (
+          {
+            label: "ROSTER",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            ),
+            headline: "Your full roster.",
+            sub: "One glance.",
+            accent: c.accent,
+          },
+          {
+            label: "ALERTS",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            ),
+            headline: "Know who's slipping",
+            sub: "before they quit.",
+            accent: c.teal,
+          },
+          {
+            label: "LIVE UPDATES",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="13 2 13 9 20 9"/>
+                <path d="M21 3L13 11"/>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/>
+              </svg>
+            ),
+            headline: "Update their plan.",
+            sub: "They see it live.",
+            accent: c.warm,
+          },
+        ].map((item, i) => (
           <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 24 }}
-            animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
-            transition={{ duration: 0.5, delay: i * 0.14 }}
-            style={{ textAlign: "center" }}
+            key={item.headline}
+            initial={{ opacity: 0, y: 28 }}
+            animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 28 }}
+            transition={{ duration: 0.5, delay: i * 0.12 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            style={{
+              background: c.s1,
+              border: `1.5px solid ${c.bd}`,
+              borderRadius: 22,
+              padding: "28px 26px 26px",
+              cursor: "default",
+              transition: "border-color 0.25s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = item.accent}
+            onMouseLeave={e => e.currentTarget.style.borderColor = c.bd}
           >
             <div style={{
-              fontSize: "clamp(48px, 8.5vw, 72px)", fontWeight: 900,
-              letterSpacing: "-0.045em", color: c.tx, lineHeight: 1,
+              width: 52, height: 52, borderRadius: 16,
+              background: `${item.accent}20`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 20, color: item.accent,
+              flexShrink: 0,
             }}>
-              <CountUp target={s.target} suffix={s.suffix} />
+              {item.icon}
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: c.sb2, marginTop: 6 }}>{s.label}</div>
-            <div style={{ fontSize: 11, color: c.sb, marginTop: 3 }}>{s.sub}</div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: item.accent, marginBottom: 10 }}>
+              {item.label}
+            </div>
+            <div style={{ fontSize: "clamp(20px, 2.5vw, 24px)", fontWeight: 900, color: c.tx, letterSpacing: "-0.03em", lineHeight: 1.15 }}>
+              {item.headline}
+            </div>
+            <div style={{ fontSize: "clamp(20px, 2.5vw, 24px)", fontWeight: 900, color: c.sb, letterSpacing: "-0.03em", lineHeight: 1.15 }}>
+              {item.sub}
+            </div>
           </motion.div>
         ))}
       </div>
@@ -786,41 +885,11 @@ function EmotionalHitSection() {
   );
 }
 
-// ── SECTION 4: HOW IT WORKS ───────────────────────────────────────────────────
-const STEPS = [
+// ── SECTION 4: THE LOOP ───────────────────────────────────────────────────────
+const LOOP_PANELS = [
   {
-    n: "01", title: "Share code", desc: "6-character code. No forms, no email chains, no awkward setup calls.",
-    frame: (c) => (
-      <div style={{ padding: "12px 16px" }}>
-        <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Your invite code</div>
-        <div style={{ background: c.s2, borderRadius: 12, padding: "16px", textAlign: "center", border: `1px solid ${c.accent}50`, marginBottom: 10 }}>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.22em", color: c.accentText }}>K7M4NP</div>
-          <div style={{ fontSize: 9, color: c.sb, marginTop: 4 }}>Tap to copy</div>
-        </div>
-        <div style={{ fontSize: 10, color: c.sb, textAlign: "center" }}>Share via message or link</div>
-      </div>
-    ),
-  },
-  {
-    n: "02", title: "Athlete joins", desc: "Athlete enters code, requests to join. Coach approves in one tap.",
-    frame: (c) => (
-      <div style={{ padding: "12px 16px" }}>
-        <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>New request</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, background: `${c.teal}14`, border: `1px solid ${c.teal}50`, borderRadius: 12, padding: "12px", marginBottom: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: c.teal, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 13 }}>M</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: c.tx }}>Maya J.</div>
-            <div style={{ fontSize: 10, color: c.teal }}>Wants to join</div>
-          </div>
-        </div>
-        <div style={{ background: c.accent, borderRadius: 10, padding: "10px", textAlign: "center" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: "#000" }}>Approve →</span>
-        </div>
-      </div>
-    ),
-  },
-  {
-    n: "03", title: "Log sessions", desc: "Athletes log every set, weight, and rep. Auto-detected personal records.",
+    label: "Your athlete trains.",
+    caption: "Live logging. Every set, weight, rep. PRs auto-flagged.",
     frame: (c) => (
       <div style={{ padding: "12px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: c.tx, marginBottom: 10 }}>Push Day</div>
@@ -840,25 +909,23 @@ const STEPS = [
     ),
   },
   {
-    n: "04", title: "Coach sees everything", desc: "Volume, streaks, needs-attention flags. All real-time. Zero guessing.",
+    label: "You see it.",
+    caption: "Volume, streaks, attendance. Real-time. Zero DMs to chase.",
     frame: (c) => (
       <div style={{ padding: "10px 12px" }}>
-        {/* Header row */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase" }}>Your athletes</div>
           <div style={{ fontSize: 8, color: c.accentText, fontWeight: 700 }}>3 active</div>
         </div>
-        {/* Needs Attention banner */}
         <div style={{ background: "rgba(217,119,87,0.12)", border: "1px solid rgba(217,119,87,0.35)", borderRadius: 10, padding: "7px 10px", marginBottom: 8 }}>
           <div style={{ fontSize: 8, color: "#D97757", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>Needs attention</div>
           <div style={{ fontSize: 10, color: c.tx, fontWeight: 600 }}>Jordan M. — 6 days inactive</div>
         </div>
-        {/* Athlete cards */}
         {[
-          { name: "Maya J.",   init: "M", vol: "42k", bw: "↓138", sess: "5/5", badge: "New PR",    bc: c.accent,    bt: "#000" },
-          { name: "Alex R.",   init: "A", vol: "31k", bw: "→185", sess: "4/5", badge: "On track",  bc: c.teal,      bt: "#fff" },
-          { name: "Jordan M.", init: "J", vol: "8k",  bw: "↑192", sess: "1/5", badge: "Falling",   bc: "#D97757",   bt: "#fff" },
-        ].map(({ name, init, vol, bw, sess, badge, bc, bt }) => (
+          { name: "Maya J.",   init: "M", vol: "42k", bw: "↓138", sess: "5/5", badge: "New PR",    bc: c.accent },
+          { name: "Alex R.",   init: "A", vol: "31k", bw: "→185", sess: "4/5", badge: "On track",  bc: c.teal },
+          { name: "Jordan M.", init: "J", vol: "8k",  bw: "↑192", sess: "1/5", badge: "Falling",   bc: "#D97757" },
+        ].map(({ name, init, vol, bw, sess, badge, bc }) => (
           <div key={name} style={{ background: c.s2, borderRadius: 10, padding: "8px 10px", marginBottom: 5, display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: c.s1, border: `1px solid ${c.bd}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: c.sb2, flexShrink: 0 }}>{init}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -877,128 +944,175 @@ const STEPS = [
       </div>
     ),
   },
+  {
+    label: "You adjust.",
+    caption: "Push a new plan. They see it next session.",
+    frame: (c) => (
+      <div style={{ padding: "12px 16px" }}>
+        <div style={{ fontSize: 9, color: c.sb, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Routine updated</div>
+        <motion.div
+          animate={{ boxShadow: [`0 0 0px ${c.accent}00`, `0 0 22px ${c.accent}40`, `0 0 0px ${c.accent}00`] }}
+          transition={{ duration: 2.4, repeat: Infinity }}
+          style={{ background: c.s2, borderRadius: 12, padding: "12px 14px", border: `1px solid ${c.accent}50`, marginBottom: 10 }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: c.tx, marginBottom: 8 }}>Bench Press</div>
+          <div style={{ fontSize: 10, color: c.sb, textDecoration: "line-through", marginBottom: 4 }}>4 × 8 @ 185 lbs</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: c.accent }}>↑</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: c.accentText }}>5 × 5 @ 205 lbs</span>
+          </div>
+        </motion.div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", padding: "6px 10px", background: c.s2, borderRadius: 100, border: `1px solid ${c.bd}` }}>
+          <motion.span
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ duration: 1.4, repeat: Infinity }}
+            style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }}
+          />
+          <span style={{ fontSize: 9, color: c.sb2, fontWeight: 600 }}>Pushed to Maya · live now</span>
+        </div>
+      </div>
+    ),
+  },
+  {
+    label: "They improve.",
+    caption: "PRs land. Volume climbs. The loop closes — and starts again.",
+    frame: (c) => (
+      <div style={{ padding: "12px 16px" }}>
+        <div style={{ fontSize: 9, color: c.accentText, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10, fontWeight: 800 }}>New PR</div>
+        <div style={{ background: c.s2, borderRadius: 12, padding: "14px", textAlign: "center", border: `1px solid ${c.accent}50`, marginBottom: 10 }}>
+          <div style={{ fontSize: 30, fontWeight: 900, letterSpacing: "-0.03em", color: c.accentText, lineHeight: 1 }}>225 lbs</div>
+          <div style={{ fontSize: 9, color: c.sb, marginTop: 4 }}>Bench Press · +20 lbs in 4 weeks</div>
+        </div>
+        {/* Mini sparkline */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 3, height: 28, marginBottom: 8, padding: "0 4px" }}>
+          {[35, 45, 50, 60, 75, 85, 100].map((h, i) => (
+            <div key={i} style={{
+              flex: 1, height: `${h}%`,
+              background: i === 6 ? c.accent : `${c.accent}55`,
+              borderRadius: 2,
+            }} />
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: c.s2, borderRadius: 10, padding: "7px 10px" }}>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", background: c.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#000" }}>M</div>
+          <span style={{ fontSize: 10, color: c.tx, fontWeight: 600 }}>Maya J.</span>
+          <span style={{ fontSize: 9, color: c.sb, marginLeft: "auto" }}>Up from 205</span>
+        </div>
+      </div>
+    ),
+  },
 ];
 
 function HowItWorksSection() {
   const c = useC();
-  const isMobile = useIsMobile();
-  const isDesktop = useIsDesktop();
+  const { theme } = useTheme();
 
-  const header = (
-    <Reveal>
-      <div style={{ textAlign: "center", marginBottom: 56 }}>
-        <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>
-          How it works
-        </div>
-        <h2 style={{ fontSize: "clamp(28px, 4.5vw, 44px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
-          Four steps. Forever.
-        </h2>
-      </div>
-    </Reveal>
-  );
-
-  if (isDesktop) {
-    return (
-      <section id="how" style={{ padding: "100px clamp(24px, 5vw, 64px)", background: c.bg }}>
-        {header}
+  return (
+    <section id="how" style={{
+      padding: "100px clamp(16px, 4vw, 64px)",
+      background: c.bg,
+      position: "relative", overflow: "hidden",
+    }}>
+      {theme === "dark" && (
         <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr",
-          gap: 20, maxWidth: 1060, margin: "0 auto",
-        }}>
-          {STEPS.map((step, i) => (
-            <Reveal key={step.n} delay={i * 0.1}>
-              <motion.div
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                style={{
-                  background: c.s1, border: `1.5px solid ${c.bd}`,
-                  borderRadius: 22, padding: "28px 24px",
-                  display: "flex", flexDirection: "column", gap: 18,
-                }}
-              >
-                {/* Step header */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                    background: c.accent, display: "flex", alignItems: "center",
-                    justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#000",
-                  }}>
-                    {step.n}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: c.tx }}>{step.title}</div>
-                    <div style={{ fontSize: 12, color: c.sb, lineHeight: 1.55, marginTop: 2 }}>{step.desc}</div>
-                  </div>
-                </div>
-                {/* Phone mockup */}
-                <div style={{
-                  background: c.s2, borderRadius: 16, border: `1px solid ${c.bd}`,
-                  overflow: "hidden",
-                }}>
-                  {step.frame(c)}
-                </div>
-              </motion.div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-    );
-  }
+          position: "absolute", inset: 0, pointerEvents: "none",
+          background: `radial-gradient(ellipse 70% 50% at 50% 30%, rgba(200,255,0,0.04) 0%, transparent 70%)`,
+        }} />
+      )}
 
-  if (isMobile) {
-    return (
-      <section id="how" style={{ padding: "80px clamp(16px, 4vw, 32px)", background: c.bg }}>
-        {header}
-        {STEPS.map((step, i) => (
-          <Reveal key={step.n} delay={i * 0.08}>
-            <div style={{ display: "flex", gap: 16, marginBottom: 32, alignItems: "flex-start" }}>
+      <Reveal>
+        <div style={{ textAlign: "center", marginBottom: 56, position: "relative", zIndex: 1 }}>
+          <div style={{ fontSize: 10, color: c.sb, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 14, fontWeight: 700 }}>
+            The loop
+          </div>
+          <h2 style={{
+            fontSize: "clamp(34px, 5.5vw, 56px)", fontWeight: 900,
+            letterSpacing: "-0.045em", color: c.tx, lineHeight: 1.05, margin: 0,
+          }}>
+            <div>Your athlete trains.</div>
+            <div>You see it.</div>
+            <div>You adjust.</div>
+            <span className="text-gradient" style={{
+              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
+            }}>
+              They improve.
+            </span>
+          </h2>
+          <p style={{ fontSize: "clamp(14px, 2vw, 16px)", color: c.sb, maxWidth: 420, margin: "20px auto 0" }}>
+            Most people train blind. Theryn closes the loop.
+          </p>
+        </div>
+      </Reveal>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 18, maxWidth: 1200, margin: "0 auto",
+        position: "relative", zIndex: 1,
+      }}>
+        {LOOP_PANELS.map((panel, i) => (
+          <Reveal key={panel.label} delay={i * 0.12}>
+            <motion.div
+              whileHover={{ y: -4, transition: { duration: 0.2 } }}
+              style={{
+                background: c.s1, border: `1.5px solid ${c.bd}`,
+                borderRadius: 22, padding: "24px 20px 22px",
+                display: "flex", flexDirection: "column", alignItems: "center",
+                height: "100%",
+                transition: "border-color 0.25s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = `${c.accent}80`}
+              onMouseLeave={e => e.currentTarget.style.borderColor = c.bd}
+            >
+              {/* Step number badge */}
               <div style={{
-                width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-                background: c.accent, display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#000",
+                fontSize: 9, fontWeight: 800, letterSpacing: "0.18em",
+                color: c.sb, marginBottom: 14,
               }}>
-                {step.n}
+                {String(i + 1).padStart(2, "0")}
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: c.tx, marginBottom: 4 }}>{step.title}</div>
-                <div style={{ fontSize: 13, color: c.sb, lineHeight: 1.55, marginBottom: 14 }}>{step.desc}</div>
-                <div style={{ background: c.s1, borderRadius: 16, border: `1px solid ${c.bd}`, overflow: "hidden" }}>
-                  {step.frame(c)}
-                </div>
+              {/* Phone mockup */}
+              <PhoneShell c={c} size="sm">
+                {panel.frame(c)}
+              </PhoneShell>
+              {/* Label */}
+              <div style={{
+                fontSize: "clamp(15px, 1.6vw, 17px)", fontWeight: 900,
+                color: c.tx, letterSpacing: "-0.02em",
+                marginTop: 18, textAlign: "center",
+              }}>
+                {panel.label}
               </div>
-            </div>
+              {/* Caption */}
+              <div style={{
+                fontSize: 11.5, color: c.sb, lineHeight: 1.5,
+                marginTop: 6, textAlign: "center", maxWidth: 200,
+              }}>
+                {panel.caption}
+              </div>
+            </motion.div>
           </Reveal>
         ))}
-      </section>
-    );
-  }
+      </div>
 
-  // Tablet: single-column with inline phone
-  return (
-    <section id="how" style={{ padding: "80px clamp(16px, 4vw, 32px)", background: c.bg }}>
-      {header}
-      {STEPS.map((step, i) => (
-        <Reveal key={step.n} delay={i * 0.08}>
-          <div style={{ display: "flex", gap: 16, marginBottom: 32, alignItems: "flex-start" }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 9, flexShrink: 0,
-              background: c.accent, display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#000",
-            }}>
-              {step.n}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: c.tx, marginBottom: 4 }}>{step.title}</div>
-              <div style={{ fontSize: 13, color: c.sb, lineHeight: 1.55, marginBottom: 14 }}>{step.desc}</div>
-              <div style={{ background: c.s1, borderRadius: 16, border: `1px solid ${c.bd}`, overflow: "hidden" }}>
-                {step.frame(c)}
-              </div>
-            </div>
+      {/* Section payoff */}
+      <Reveal delay={0.5}>
+        <div style={{ textAlign: "center", marginTop: 48, position: "relative", zIndex: 1 }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 10,
+            fontSize: 13, fontWeight: 700, color: c.accent, letterSpacing: "0.01em",
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            <span>The loop closes. They keep improving.</span>
           </div>
-        </Reveal>
-      ))}
+        </div>
+      </Reveal>
     </section>
   );
-
 }
 
 // ── SECTION 5: PRICING ────────────────────────────────────────────────────────
@@ -1157,7 +1271,7 @@ function CloseSection({ onEnterApp }) {
             fontSize: "clamp(38px, 7.5vw, 68px)", fontWeight: 900,
             letterSpacing: "-0.045em", color: c.tx, lineHeight: 1.03, margin: "0 0 14px",
           }}>
-            Coach, don't chase.
+            The operating system for serious coaches.
           </h2>
           <p style={{ fontSize: "clamp(14px, 2vw, 16px)", color: c.sb, marginBottom: 36, maxWidth: 320, margin: "0 auto 36px" }}>
             Free to start. First athlete in under 2 minutes.
@@ -1237,7 +1351,6 @@ function LandingContent({ onEnterApp }) {
       <SplitSection onEnterApp={onEnterApp} />
       <EmotionalHitSection />
       <HowItWorksSection />
-      <PricingSection onEnterApp={onEnterApp} />
       <CloseSection onEnterApp={onEnterApp} />
     </div>
   );
