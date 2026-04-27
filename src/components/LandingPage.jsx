@@ -455,7 +455,7 @@ function HeroSection({ onEnterApp }) {
           >
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 24 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>The operating system for serious coaches</span>
+              <span style={{ fontSize: 11, color: c.tx, fontWeight: 600, letterSpacing: "0.03em" }}>Coaching platform for personal trainers</span>
             </div>
             <h1 style={{
               fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
@@ -520,7 +520,7 @@ function HeroSection({ onEnterApp }) {
           >
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
-              <span style={{ fontSize: 11, color: c.sb, fontWeight: 600, letterSpacing: "0.03em" }}>The operating system for serious coaches</span>
+              <span style={{ fontSize: 11, color: c.tx, fontWeight: 600, letterSpacing: "0.03em" }}>Coaching platform for personal trainers</span>
             </div>
             <h1 style={{ fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px" }}>
               Built for Coaches.
