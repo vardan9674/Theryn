@@ -50,14 +50,46 @@ export default function ExerciseAutocomplete({
   }, [open]);
 
   // Debounced fetch.
+  // - 0–1 chars: browse the library (top public + user customs, alphabetical).
+  // - 2+ chars: typo-tolerant RPC search.
   React.useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!userId) { setResults([]); setLoading(false); return; }
     const term = text.trim();
-    if (term.length < 2 || !userId) {
-      setResults([]);
-      setLoading(false);
+
+    // Browse mode — show the library immediately so users can pick without typing.
+    if (term.length < 2) {
+      setLoading(true);
+      const queryKey = `__browse__:${term}`;
+      lastQueryRef.current = queryKey;
+      (async () => {
+        const [pubRes, userRes] = await Promise.all([
+          supabase
+            .from("public_exercises")
+            .select("id, name, muscle_group, equipment")
+            .order("name", { ascending: true })
+            .limit(100),
+          supabase
+            .from("user_exercises")
+            .select("id, name, muscle_group, equipment")
+            .eq("user_id", userId)
+            .order("name", { ascending: true })
+            .limit(100),
+        ]);
+        if (lastQueryRef.current !== queryKey) return;
+        if (pubRes.error) console.error("[public_exercises]", pubRes.error.message);
+        if (userRes.error) console.error("[user_exercises]", userRes.error.message);
+        const customs = (userRes.data || []).map(r => ({ ...r, is_custom: true,  similarity: 1 }));
+        const publics = (pubRes.data  || []).map(r => ({ ...r, is_custom: false, similarity: 1 }));
+        // Customs first, then public library.
+        setResults([...customs, ...publics]);
+        setHighlight(0);
+        setLoading(false);
+      })();
       return;
     }
+
+    // Search mode — typo-tolerant RPC.
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       lastQueryRef.current = term;
@@ -65,7 +97,6 @@ export default function ExerciseAutocomplete({
         search_term: term,
         user_uid:    userId,
       });
-      // Drop stale responses if a newer query has fired.
       if (lastQueryRef.current !== term) return;
       if (error) {
         console.error("[search_exercises]", error.message);
