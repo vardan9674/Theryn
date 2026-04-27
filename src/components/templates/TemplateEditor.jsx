@@ -6,6 +6,23 @@ import { unassignTemplate } from "../../hooks/useTemplates.ts";
 import PushUpdateModal from "./PushUpdateModal.jsx";
 import { assignTemplate } from "../../hooks/useTemplates.ts";
 import ExerciseAutocomplete from "./ExerciseAutocomplete.jsx";
+import SwipeRow from "../common/SwipeRow.jsx";
+
+// Hook: tracks whether the viewport is phone-width (matches Apple Health's
+// "single-letter day pill" breakpoint).
+function useIsPhone() {
+  const [isPhone, setIsPhone] = React.useState(
+    typeof window !== "undefined" ? window.innerWidth < 480 : false
+  );
+  React.useEffect(() => {
+    const onResize = () => setIsPhone(window.innerWidth < 480);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return isPhone;
+}
+
+const DAY_LETTER = ["M","T","W","T","F","S","S"];
 
 /**
  * Full-screen template editor.
@@ -264,6 +281,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
   }
 
   const sortedDays = [...days].sort((a,b) => a.day_index - b.day_index);
+  const isPhone = useIsPhone();
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:200, background:BG, display:"flex", flexDirection:"column", overflowY:"auto" }}>
@@ -331,13 +349,17 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
             const isActive = d.day_index === activeDay;
             const color = TYPE_COLORS[d.workout_type] || A;
             return (
-              <button key={d.day_index} onClick={() => setActiveDay(d.day_index)} style={{
-                padding:"7px 14px", borderRadius:20, border:"none", cursor:"pointer", flexShrink:0,
-                fontSize:12, fontWeight:700,
+              <button key={d.day_index} onClick={() => setActiveDay(d.day_index)} aria-label={INDEX_TO_DAY[d.day_index]} style={{
+                padding: isPhone ? "8px 0" : "7px 14px",
+                width: isPhone ? 36 : "auto",
+                borderRadius: isPhone ? "50%" : 20,
+                border:"none", cursor:"pointer", flexShrink:0,
+                fontSize: isPhone ? 13 : 12, fontWeight:700,
                 background: isActive ? color : S2,
                 color: isActive ? BG : (d.workout_type === "Rest" ? SB : TX),
+                textAlign:"center",
               }}>
-                {INDEX_TO_DAY[d.day_index]}
+                {isPhone ? DAY_LETTER[d.day_index] : INDEX_TO_DAY[d.day_index]}
               </button>
             );
           })}
@@ -476,38 +498,34 @@ function ExerciseRow({ ex, idx, userId, onChange, onRemove }) {
 
   return (
     <div style={{ background:S2, borderRadius:14, border:`1px solid ${BD}`, overflow:"hidden" }}>
-      {/* Collapsed header */}
-      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px" }}>
-        <div style={{
-          width:26, height:26, borderRadius:8, background:`${A}15`,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          flexShrink:0, fontSize:11, fontWeight:800, color:A,
-        }}>
-          {idx + 1}
+      <SwipeRow onDelete={onRemove} bgColor={S2}>
+        {/* Collapsed header */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px" }}>
+          <div style={{
+            width:26, height:26, borderRadius:8, background:`${A}15`,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            flexShrink:0, fontSize:11, fontWeight:800, color:A,
+          }}>
+            {idx + 1}
+          </div>
+
+          <ExerciseAutocomplete
+            value={ex.exercise_name}
+            sourceExerciseId={ex.source_exercise_id}
+            sourceUserExerciseId={ex.source_user_exercise_id}
+            userId={userId}
+            onChange={onChange}
+            autoFocus={!ex.exercise_name}
+          />
+
+          <button
+            onClick={() => setExpanded(p => !p)}
+            style={{ background:"none", border:"none", color:SB, fontSize:16, cursor:"pointer", padding:"0 6px" }}
+            aria-label={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? "▲" : "▼"}
+          </button>
         </div>
-
-        <ExerciseAutocomplete
-          value={ex.exercise_name}
-          sourceExerciseId={ex.source_exercise_id}
-          sourceUserExerciseId={ex.source_user_exercise_id}
-          userId={userId}
-          onChange={onChange}
-          autoFocus={!ex.exercise_name}
-        />
-
-        <button
-          onClick={() => setExpanded(p => !p)}
-          style={{ background:"none", border:"none", color:SB, fontSize:16, cursor:"pointer", padding:"0 4px" }}
-        >
-          {expanded ? "▲" : "▼"}
-        </button>
-        <button
-          onClick={onRemove}
-          style={{ background:"none", border:"none", color:RED, fontSize:16, cursor:"pointer", padding:"0 4px", lineHeight:1 }}
-        >
-          ×
-        </button>
-      </div>
 
       {/* Expanded: sets / reps / notes */}
       {expanded && (
@@ -552,6 +570,7 @@ function ExerciseRow({ ex, idx, userId, onChange, onRemove }) {
           </div>
         </div>
       )}
+      </SwipeRow>
     </div>
   );
 }
