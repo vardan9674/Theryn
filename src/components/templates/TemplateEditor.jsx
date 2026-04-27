@@ -269,9 +269,12 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
     <div style={{ position:"fixed", inset:0, zIndex:200, background:BG, display:"flex", flexDirection:"column", overflowY:"auto" }}>
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div style={{
-        padding:"20px 16px 16px",
+        paddingTop:"calc(env(safe-area-inset-top, 0px) + 14px)",
+        paddingRight:"calc(env(safe-area-inset-right, 0px) + 14px)",
+        paddingLeft:"calc(env(safe-area-inset-left, 0px) + 14px)",
+        paddingBottom:14,
         borderBottom:`1px solid ${BD}`,
-        display:"flex", alignItems:"center", gap:12,
+        display:"flex", alignItems:"center", gap:10,
         position:"sticky", top:0, background:BG, zIndex:10,
       }}>
         <button onClick={onBack} style={{ background:"none", border:"none", color:SB, fontSize:22, cursor:"pointer", padding:0, lineHeight:1, flexShrink:0 }}>←</button>
@@ -304,17 +307,17 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
         </div>
 
         {/* Actions */}
-        <div style={{ display:"flex", gap:8, flexShrink:0 }}>
+        <div style={{ display:"flex", gap:6, flexShrink:0, alignItems:"center" }}>
           <button
             onClick={() => setShowAssign(true)}
-            style={{ padding:"8px 14px", background:S2, border:`1px solid ${BD}`, borderRadius:10, color:A, fontSize:13, fontWeight:700, cursor:"pointer" }}
+            style={{ padding:"7px 12px", background:S2, border:`1px solid ${BD}`, borderRadius:9, color:A, fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
           >
-            {assignments.length > 0 ? `Athletes (${assignments.length})` : "Assign"}
+            {assignments.length > 0 ? `· ${assignments.length}` : "Assign"}
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
-            style={{ padding:"8px 16px", background:saving ? MT : A, border:"none", borderRadius:10, color:saving ? SB : BG, fontSize:13, fontWeight:800, cursor:saving ? "wait":"pointer" }}
+            disabled={saving || !isDirty}
+            style={{ padding:"7px 14px", background:(saving || !isDirty) ? MT : A, border:"none", borderRadius:9, color:(saving || !isDirty) ? SB : BG, fontSize:12, fontWeight:800, cursor:(saving || !isDirty) ? "default":"pointer", whiteSpace:"nowrap" }}
           >
             {saving ? "…" : "Save"}
           </button>
@@ -489,6 +492,7 @@ function ExerciseRow({ ex, idx, userId, onChange, onRemove }) {
           sourceUserExerciseId={ex.source_user_exercise_id}
           userId={userId}
           onChange={onChange}
+          autoFocus={!ex.exercise_name}
         />
 
         <button
