@@ -1619,7 +1619,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       resetSession(currentExercises);
     } else {
       // Reset using the stored template (ignoring any mid-workout changes)
-      resetSession(templates[day].exercises);
+      resetSession(templates[day]?.exercises || []);
     }
     setExercisesChanged(false);
     setShowTemplatePrompt(false);
