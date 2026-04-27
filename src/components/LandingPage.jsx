@@ -1275,7 +1275,7 @@ function CloseSection({ onEnterApp }) {
             fontSize: "clamp(38px, 7.5vw, 68px)", fontWeight: 900,
             letterSpacing: "-0.045em", color: c.tx, lineHeight: 1.03, margin: "0 0 14px",
           }}>
-            The operating system for serious coaches.
+            Your athletes are ready. Are you?
           </h2>
           <p style={{ fontSize: "clamp(14px, 2vw, 16px)", color: c.sb, marginBottom: 36, maxWidth: 320, margin: "0 auto 36px" }}>
             Free to start. First athlete in under 2 minutes.
