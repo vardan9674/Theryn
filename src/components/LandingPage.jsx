@@ -6,6 +6,7 @@ import {
   useMotionValue,
   useScroll,
   useSpring,
+  useTransform,
 } from "framer-motion";
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
@@ -356,6 +357,39 @@ function Navbar({ onGetStarted }) {
   );
 }
 
+// ── WORD REVEAL ───────────────────────────────────────────────────────────────
+function WordReveal({ text }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-40px" });
+  const words = text.split(" ");
+  return (
+    <span ref={ref} style={{ display: "inline" }}>
+      {words.map((word, i) => (
+        <span key={i} style={{ display: "inline-block", overflow: "hidden", verticalAlign: "bottom" }}>
+          <motion.span
+            style={{ display: "inline-block", willChange: "transform" }}
+            initial={{ y: "110%" }}
+            animate={inView ? { y: "0%" } : { y: "110%" }}
+            transition={{ duration: 0.55, delay: i * 0.07, ease: [0.25, 0.1, 0.25, 1] }}
+          >
+            {word}
+          </motion.span>
+          {i < words.length - 1 && " "}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+const heroContainerVariants = {
+  hidden: {},
+  show: { transition: { delayChildren: 0.25, staggerChildren: 0.09 } },
+};
+const heroItemVariants = {
+  hidden: { opacity: 0, y: 32, filter: "blur(4px)" },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.65, ease: [0.25, 0.1, 0.25, 1] } },
+};
+
 // ── SECTION 1: HERO ───────────────────────────────────────────────────────────
 const FRAME_LABELS = ["They train", "You see", "You adjust", "They improve"];
 
@@ -364,6 +398,11 @@ function HeroSection({ onEnterApp }) {
   const { theme } = useTheme();
   const isDesktop = useIsDesktop();
   const [frame, setFrame] = useState(0);
+
+  // Scroll parallax for desktop phone
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
+  const phoneParallaxY = useTransform(scrollYProgress, [0, 1], [0, -30]);
 
   useEffect(() => {
     const t = setInterval(() => setFrame(f => (f + 1) % 4), 1500);
@@ -380,58 +419,69 @@ function HeroSection({ onEnterApp }) {
       transition={{ duration: 0.7, delay: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
       style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}
     >
-      <div style={{ position: "relative" }}>
-        <div style={{
-          position: "absolute", bottom: -30, left: "50%", transform: "translateX(-50%)",
-          width: 160, height: 60,
-          background: `radial-gradient(ellipse, ${c.accent}25 0%, transparent 70%)`,
-          filter: "blur(20px)", pointerEvents: "none",
-        }} />
-        <PhoneShell c={c} size={isDesktop ? "lg" : "md"}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={frame}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28 }}
-            >
-              <HeroFrame frame={frame} c={c} />
-            </motion.div>
-          </AnimatePresence>
-        </PhoneShell>
-      </div>
-      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 18 }}>
-        {[0,1,2,3].map(i => (
-          <motion.button
-            key={i}
-            onClick={() => setFrame(i)}
-            animate={{ width: frame === i ? 22 : 7, background: frame === i ? c.accent : c.bd }}
-            transition={{ duration: 0.3 }}
-            style={{ height: 7, borderRadius: 3.5, border: "none", cursor: "pointer", padding: 0 }}
-          />
-        ))}
-      </div>
-      <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: c.sb, height: 14 }}>
-        {FRAME_LABELS[frame]}
-      </div>
+      {/* Float wrapper */}
+      <motion.div
+        animate={{ y: [0, -12, 0] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        style={{ display: "flex", flexDirection: "column", alignItems: "center", willChange: "transform" }}
+      >
+        <div style={{ position: "relative" }}>
+          <div style={{
+            position: "absolute", bottom: -30, left: "50%", transform: "translateX(-50%)",
+            width: 160, height: 60,
+            background: `radial-gradient(ellipse, ${c.accent}25 0%, transparent 70%)`,
+            filter: "blur(20px)", pointerEvents: "none",
+          }} />
+          <PhoneShell c={c} size={isDesktop ? "lg" : "md"}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={frame}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.28 }}
+              >
+                <HeroFrame frame={frame} c={c} />
+              </motion.div>
+            </AnimatePresence>
+          </PhoneShell>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 18 }}>
+          {[0,1,2,3].map(i => (
+            <motion.button
+              key={i}
+              onClick={() => setFrame(i)}
+              animate={{ width: frame === i ? 22 : 7, background: frame === i ? c.accent : c.bd }}
+              transition={{ duration: 0.3 }}
+              style={{ height: 7, borderRadius: 3.5, border: "none", cursor: "pointer", padding: 0 }}
+            />
+          ))}
+        </div>
+        <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: c.sb, height: 14 }}>
+          {FRAME_LABELS[frame]}
+        </div>
+      </motion.div>
     </motion.div>
   );
 
   return (
-    <section style={{
+    <section ref={heroRef} style={{
       minHeight: "100svh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
       padding: "80px clamp(16px, 4vw, 64px) 60px",
       position: "relative", overflow: "hidden", background: c.bg,
     }}>
-      {/* Radial glows */}
-      <div style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        background: theme === "dark"
-          ? `radial-gradient(ellipse 65% 50% at 50% 18%, rgba(200,255,0,0.09) 0%, transparent 68%), radial-gradient(ellipse 45% 40% at 82% 65%, rgba(78,205,196,0.05) 0%, transparent 60%)`
-          : `radial-gradient(ellipse 65% 50% at 50% 18%, rgba(200,255,0,0.18) 0%, transparent 68%)`,
-      }} />
+      {/* Radial glows — breathing */}
+      <motion.div
+        animate={{ opacity: [0.7, 1, 0.7] }}
+        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+        style={{
+          position: "absolute", inset: 0, pointerEvents: "none", willChange: "opacity",
+          background: theme === "dark"
+            ? `radial-gradient(ellipse 65% 50% at 50% 18%, rgba(200,255,0,0.09) 0%, transparent 68%), radial-gradient(ellipse 45% 40% at 82% 65%, rgba(78,205,196,0.05) 0%, transparent 60%)`
+            : `radial-gradient(ellipse 65% 50% at 50% 18%, rgba(200,255,0,0.18) 0%, transparent 68%)`,
+        }}
+      />
       {/* Grid */}
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
@@ -448,35 +498,36 @@ function HeroSection({ onEnterApp }) {
         }}>
           {/* Text block */}
           <motion.div
-            initial={{ opacity: 0, x: -32 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
-            style={{ flex: "1 1 0", minWidth: 0, maxWidth: 560 }}
+            variants={heroContainerVariants}
+            initial="hidden"
+            animate="show"
+            style={{ flex: "1 1 0", minWidth: 0, maxWidth: 560, willChange: "transform" }}
           >
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 24 }}>
+            <motion.div variants={heroItemVariants} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 24 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
               <span style={{ fontSize: 11, color: c.tx, fontWeight: 600, letterSpacing: "0.03em" }}>Coaching platform for personal trainers</span>
-            </div>
-            <h1 style={{
+            </motion.div>
+            <motion.h1 variants={heroItemVariants} style={{
               fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
-              letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px",
+              letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px", willChange: "transform",
             }}>
-              Built for Coaches.
-            </h1>
-            <h1 className="text-gradient" style={{
+              <WordReveal text="Built for Coaches." />
+            </motion.h1>
+            <motion.h1 variants={heroItemVariants} className="text-gradient" style={{
               fontSize: "clamp(44px, 5.5vw, 72px)", fontWeight: 900,
               letterSpacing: "-0.045em", lineHeight: 1.03, margin: "0 0 24px",
-              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
+              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 50%, ${c.accent} 100%)`,
+              backgroundSize: "200% auto", animation: "gradientShimmer 5s ease infinite", willChange: "transform",
             }}>
               Loved by Athletes.
-            </h1>
-            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb2, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
+            </motion.h1>
+            <motion.p variants={heroItemVariants} style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb2, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
               Your athlete <span style={{ color: c.accent, fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ color: c.teal, fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
-            </p>
-            <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
+            </motion.p>
+            <motion.p variants={heroItemVariants} style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
               Close the loop. Watch them improve.
-            </p>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            </motion.p>
+            <motion.div variants={heroItemVariants} style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <motion.button
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                 onClick={() => onEnterApp("coach")}
@@ -496,7 +547,7 @@ function HeroSection({ onEnterApp }) {
                   padding: "14px 30px", cursor: "pointer",
                 }}
               >See How It Works</motion.button>
-            </div>
+            </motion.div>
           </motion.div>
 
           {/* Phone */}
@@ -504,7 +555,7 @@ function HeroSection({ onEnterApp }) {
             initial={{ opacity: 0, x: 32 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, delay: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
-            style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}
+            style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", y: phoneParallaxY, willChange: "transform" }}
           >
             {phoneBlock}
           </motion.div>
@@ -513,28 +564,29 @@ function HeroSection({ onEnterApp }) {
         /* Mobile: stacked */
         <>
           <motion.div
-            initial={{ opacity: 0, y: 32 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
+            variants={heroContainerVariants}
+            initial="hidden"
+            animate="show"
             style={{ textAlign: "center", position: "relative", zIndex: 1, maxWidth: 600 }}
           >
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
+            <motion.div variants={heroItemVariants} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c.s1, borderRadius: 100, padding: "5px 14px", border: `1px solid ${c.bd}`, marginBottom: 20 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.accent, display: "inline-block" }} />
               <span style={{ fontSize: 11, color: c.tx, fontWeight: 600, letterSpacing: "0.03em" }}>Coaching platform for personal trainers</span>
-            </div>
-            <h1 style={{ fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px" }}>
-              Built for Coaches.
-            </h1>
-            <h1 className="text-gradient" style={{
+            </motion.div>
+            <motion.h1 variants={heroItemVariants} style={{ fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 1.03, color: c.tx, margin: "0 0 4px", willChange: "transform" }}>
+              <WordReveal text="Built for Coaches." />
+            </motion.h1>
+            <motion.h1 variants={heroItemVariants} className="text-gradient" style={{
               fontSize: "clamp(42px, 8.5vw, 76px)", fontWeight: 900,
               letterSpacing: "-0.045em", lineHeight: 1.03, margin: "0 0 20px",
-              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
+              background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 50%, ${c.accent} 100%)`,
+              backgroundSize: "200% auto", animation: "gradientShimmer 5s ease infinite", willChange: "transform",
             }}>
               Loved by Athletes.
-            </h1>
-            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb2, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
+            </motion.h1>
+            <motion.p variants={heroItemVariants} style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb2, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
               Your athlete <span style={{ color: c.accent, fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ color: c.teal, fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
-            </p>
+            </motion.p>
           </motion.div>
           <div style={{ marginTop: 40, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
           <motion.div
@@ -604,7 +656,7 @@ function SplitSection({ onEnterApp }) {
             Built for both sides
           </div>
           <h2 style={{ fontSize: "clamp(30px, 5.5vw, 48px)", fontWeight: 900, letterSpacing: "-0.045em", color: c.tx }}>
-            Pick your side.
+            <WordReveal text="Pick your side." />
           </h2>
         </div>
       </Reveal>
@@ -767,7 +819,7 @@ function EmotionalHitSection() {
             fontSize: "clamp(38px, 7.5vw, 68px)", fontWeight: 900,
             letterSpacing: "-0.045em", color: c.tx, lineHeight: 1.04, margin: "0 0 16px",
           }}>
-            More results.<br />
+            <WordReveal text="More results." /><br />
             <span className="text-gradient" style={{
               background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
             }}>
@@ -1033,9 +1085,9 @@ function HowItWorksSection() {
             fontSize: "clamp(34px, 5.5vw, 56px)", fontWeight: 900,
             letterSpacing: "-0.045em", color: c.tx, lineHeight: 1.05, margin: 0,
           }}>
-            <div>Your athlete trains.</div>
-            <div>You see it.</div>
-            <div>You adjust.</div>
+            <div><WordReveal text="Your athlete trains." /></div>
+            <div><WordReveal text="You see it." /></div>
+            <div><WordReveal text="You adjust." /></div>
             <span className="text-gradient" style={{
               background: `linear-gradient(120deg, ${c.accent} 0%, ${c.teal} 100%)`,
             }}>
