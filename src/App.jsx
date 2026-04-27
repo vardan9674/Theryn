@@ -1104,6 +1104,22 @@ export default function GymApp() {
       try { await supabase.auth.signOut(); } catch { /* ignore */ }
       setAuthUser(null);
       setShowLanding(false);
+      if (Capacitor.getPlatform() === "web") {
+        try {
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+              redirectTo: `${window.location.origin}/oauth/consent`,
+              queryParams: { prompt: "select_account" },
+            },
+          });
+          if (error) throw error;
+        } catch (err) {
+          console.error("Landing sign-in failed:", err);
+          setAuthError(err?.message || "Sign-in failed. Please try again.");
+          setShowLanding(true);
+        }
+      }
     }} />
   );
 
