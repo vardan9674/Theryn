@@ -470,8 +470,8 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
-              Your athlete trains. You see it. You adjust. They improve.
+            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb2, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
+              Your athlete <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.warm})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ background: `linear-gradient(90deg, ${c.warm}, #FF8C42)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, #FF8C42, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
             </p>
             <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
               Zero guesswork. Just real results.
@@ -532,8 +532,8 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
-              Your athlete trains. You see it. You adjust. They improve.
+            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb2, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
+              Your athlete <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.warm})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ background: `linear-gradient(90deg, ${c.warm}, #FF8C42)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, #FF8C42, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
             </p>
           </motion.div>
           <div style={{ marginTop: 40, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
