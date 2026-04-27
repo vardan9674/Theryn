@@ -24,6 +24,7 @@ export default function ExerciseAutocomplete({
   userId,
   onChange,
   placeholder = "Exercise name…",
+  autoFocus = false,
 }) {
   const [text, setText]         = React.useState(value || "");
   const [open, setOpen]         = React.useState(false);
@@ -33,8 +34,18 @@ export default function ExerciseAutocomplete({
   const [creating, setCreating] = React.useState(false);
 
   const wrapperRef = React.useRef(null);
+  const inputRef = React.useRef(null);
   const debounceRef = React.useRef(null);
   const lastQueryRef = React.useRef("");
+
+  // Auto-focus + open library when this row was just added by + Add Exercise.
+  React.useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      inputRef.current.focus();
+      setOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync external value updates (e.g. parent reset).
   React.useEffect(() => { setText(value || ""); }, [value]);
@@ -189,6 +200,7 @@ export default function ExerciseAutocomplete({
   return (
     <div ref={wrapperRef} style={{ position: "relative", flex: 1 }}>
       <input
+        ref={inputRef}
         value={text}
         onChange={e => {
           setText(e.target.value);
