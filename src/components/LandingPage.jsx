@@ -470,8 +470,8 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
-              Your athlete trains. You see it. You adjust. They improve.
+            <p style={{ fontSize: "clamp(15px, 1.5vw, 18px)", color: c.sb2, margin: "0 0 28px", lineHeight: 1.65, maxWidth: 420 }}>
+              Your athlete <span style={{ color: c.accent, fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ color: c.teal, fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
             </p>
             <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
               Zero guesswork. Just real results.
@@ -532,8 +532,8 @@ function HeroSection({ onEnterApp }) {
             }}>
               Loved by Athletes.
             </h1>
-            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
-              Your athlete trains. You see it. You adjust. They improve.
+            <p style={{ fontSize: "clamp(15px, 2.5vw, 18px)", color: c.sb2, margin: "0 auto 0", lineHeight: 1.6, maxWidth: 380 }}>
+              Your athlete <span style={{ color: c.accent, fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ color: c.teal, fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
             </p>
           </motion.div>
           <div style={{ marginTop: 40, position: "relative", zIndex: 1 }}>{phoneBlock}</div>
@@ -676,17 +676,20 @@ function ReplaceBadge({ app, clr, lightClr, index, darkBg }) {
   const inView = useInView(ref, { once: true, margin: "-40px" });
   const col = darkBg ? clr : lightClr;
 
-  const style = {
-    background: col,
-    border: `1.5px solid ${col}`,
-    color: "#FFFFFF",
-    boxShadow: darkBg
-      ? `0 4px 20px ${col}55, 0 2px 8px ${col}35`
-      : `0 6px 18px ${col}55, 0 2px 4px ${col}40`,
+  const style = darkBg ? {
+    background: `${col}14`,
+    border: `1.5px solid ${col}60`,
+    color: col,
+    boxShadow: `0 4px 16px ${col}20`,
+  } : {
+    background: `${col}12`,
+    border: `1.5px solid ${col}70`,
+    color: lightClr,
+    boxShadow: `0 4px 14px ${col}18`,
   };
 
-  const lineColor = "rgba(255,255,255,0.75)";
-  const lineHeight = 1.5;
+  const lineColor = col;
+  const lineHeight = 2;
 
   return (
     <motion.div
