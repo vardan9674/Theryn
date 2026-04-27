@@ -5655,8 +5655,10 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
       
       {showTour && <CoachTourOverlay onDone={handleTourDone}/>}
 
-      {/* Global Coach Avatar — web only (mobile uses Athletes tab profile sheet) */}
-      {Capacitor.getPlatform() === "web" && (
+      {/* Global Coach Avatar — web only (mobile uses Athletes tab profile sheet).
+          Hidden on the Templates tab so it doesn't float over the editor's
+          day-pill row / header actions. */}
+      {Capacitor.getPlatform() === "web" && tab !== "templates" && (
         <div style={{ position: "absolute", top: 20, right: 16, zIndex: 110 }}>
           <button onClick={() => setShowProfile(true)} style={{
             width: "38px", height: "38px", borderRadius: "50%",
