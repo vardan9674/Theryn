@@ -5749,8 +5749,9 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
       {/* Floating profile avatar — visible on every tab (native only; web has its own top-right).
           `max()` ensures a minimum 44px offset on Android (where env() may be 0)
-          and respects the iOS notch when present. */}
-      {Capacitor.getPlatform() !== "web" && (
+          and respects the iOS notch when present.
+          Hidden on Templates so it doesn't sit on top of the editor's Save / Assign actions. */}
+      {Capacitor.getPlatform() !== "web" && tab !== "templates" && (
         <button
           onClick={() => setShowProfile(true)}
           aria-label="Open profile"
