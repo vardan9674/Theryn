@@ -24,6 +24,7 @@ import {
   fmtMoney, SUPPORTED_CURRENCIES,
 } from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
+import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
 import PullToRefresh from "./components/PullToRefresh.jsx";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
@@ -5334,6 +5335,14 @@ function CoachTabIcon({ tab, active }) {
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   );
+  if (tab === "templates") return (
+    <svg {...s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="8" height="8" rx="1"/>
+      <rect x="13" y="3" width="8" height="8" rx="1"/>
+      <rect x="3" y="13" width="8" height="8" rx="1"/>
+      <path d="M17 13v8M13 17h8"/>
+    </svg>
+  );
   return null;
 }
 
@@ -5405,6 +5414,14 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     // so the optimistic change is visible immediately.
     if (selectedAthleteRef.current?.athlete_id === id) {
       setAthleteData(data);
+    }
+  }, []);
+
+  // Bust cache entries for a list of athlete IDs (e.g. after template push/assign).
+  // Next time the coach opens that athlete's view it will re-fetch from the server.
+  const burstAthleteCache = React.useCallback((athleteIds) => {
+    for (const id of (athleteIds || [])) {
+      delete athleteDataCacheRef.current[id];
     }
   }, []);
 
@@ -5623,8 +5640,8 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
 
   // Connections moved out of the main nav into the profile drawer (it's a
   // config-style flow, not a daily workflow). Payments takes the freed slot.
-  const COACH_TABS = ["athletes", "routines", "body", "progress", "payments", "messages"];
-  const COACH_LABELS = { athletes: "Athletes", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments", messages: "Messages" };
+  const COACH_TABS = ["athletes", "templates", "routines", "body", "progress", "payments", "messages"];
+  const COACH_LABELS = { athletes: "Athletes", templates: "Templates", routines: "Routines", body: "Body", progress: "Progress", payments: "Payments", messages: "Messages" };
 
   // Separate state for the Connections modal triggered from the profile drawer.
   const [showConnections, setShowConnections] = React.useState(false);
@@ -5695,6 +5712,13 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
             onDigestSignals={collectDigestSignals}
           />
         </div>
+        {tab === "templates" && (
+          <CoachTemplatesTab
+            authUser={authUser}
+            myAthletes={myAthletes}
+            burstAthleteCache={burstAthleteCache}
+          />
+        )}
         {tab === "routines"  && <CoachRoutinesTab  {...sharedTabProps}/>}
         {tab === "body"      && <CoachBodyTab       {...sharedTabProps}/>}
         {tab === "progress"  && <CoachProgressTab  {...sharedTabProps}/>}
