@@ -1040,9 +1040,9 @@ export default function GymApp() {
   const todayKey = getToday();
   useEffect(() => {
     if (workoutActive) return;
-    const tmpl = templates[todayKey];
+    const tmpl = templates[todayKey] || { type: "Rest", exercises: [] };
     setSession(
-      tmpl.exercises.map((name, i) => ({
+      (tmpl.exercises || []).map((name, i) => ({
         id: Date.now() + i, name,
         sets: isCardioExercise(name)
           ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done:false }]
@@ -1050,7 +1050,7 @@ export default function GymApp() {
       }))
     );
     setTodayType(tmpl.type);
-  }, [templates[todayKey].exercises.join(','), templates[todayKey].type]);
+  }, [(templates[todayKey]?.exercises || []).join(','), templates[todayKey]?.type]);
 
   const TABS = [
     { id:"log",      label:"Log"      },
@@ -1619,7 +1619,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       resetSession(currentExercises);
     } else {
       // Reset using the stored template (ignoring any mid-workout changes)
-      resetSession(templates[day].exercises);
+      resetSession(templates[day]?.exercises || []);
     }
     setExercisesChanged(false);
     setShowTemplatePrompt(false);
