@@ -474,7 +474,7 @@ function HeroSection({ onEnterApp }) {
               Your athlete <span style={{ color: c.accent, fontWeight: 700 }}>trains.</span> You <span style={{ background: `linear-gradient(90deg, ${c.accent}, ${c.teal})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>see it.</span> You <span style={{ color: c.teal, fontWeight: 700 }}>adjust.</span> They <span style={{ background: `linear-gradient(90deg, ${c.teal}, ${c.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", fontWeight: 700 }}>improve.</span>
             </p>
             <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 28px", letterSpacing: "0.01em" }}>
-              Zero guesswork. Just real results.
+              Close the loop. Watch them improve.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <motion.button
@@ -544,7 +544,7 @@ function HeroSection({ onEnterApp }) {
             style={{ textAlign: "center", marginTop: 20, position: "relative", zIndex: 1 }}
           >
             <p style={{ fontSize: 13, fontWeight: 700, color: c.accent, margin: "0 0 24px", letterSpacing: "0.01em" }}>
-              Zero guesswork. Just real results.
+              Close the loop. Watch them improve.
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
               <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => onEnterApp("coach")}
