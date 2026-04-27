@@ -30,7 +30,7 @@ const LIGHT = {
 
 function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("theryn_theme") || "light"
+    () => localStorage.getItem("theryn_theme") || "dark"
   );
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -99,17 +99,18 @@ function CountUp({ target, suffix = "" }) {
 // ── PHONE SHELL ───────────────────────────────────────────────────────────────
 function PhoneShell({ children, c, size = "md" }) {
   const w = size === "sm" ? 190 : size === "lg" ? 270 : 220;
+  const h = size === "sm" ? 320 : size === "lg" ? 430 : 380;
   return (
     <div style={{
-      width: w, background: c.s1, borderRadius: 36,
-      border: `1.5px solid ${c.bd}`,
-      boxShadow: `0 24px 56px rgba(0,0,0,0.4), 0 0 0 1px ${c.bd}`,
+      width: w, height: h, background: c.s2, borderRadius: 36,
+      border: `1.5px solid ${c.mt}`,
+      boxShadow: `0 24px 56px rgba(0,0,0,0.55), 0 0 0 1px ${c.mt}`,
       overflow: "hidden", position: "relative", flexShrink: 0,
     }}>
       {/* iOS notch */}
       <div style={{
         position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-        width: 72, height: 20, background: c.s1,
+        width: 72, height: 20, background: c.s2,
         borderRadius: "0 0 14px 14px", zIndex: 10,
       }} />
       {/* Status bar */}
