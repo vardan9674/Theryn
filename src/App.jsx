@@ -840,6 +840,7 @@ export default function GymApp() {
   const isLocalSaveRef = useRef(0);
   const fetchRoutineRef = useRef(null);
   const refreshAllRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   // ── Load data from Supabase when user logs in ─────────────────────────
   useEffect(() => {
@@ -1230,10 +1231,10 @@ export default function GymApp() {
 
   // ── Athlete experience (native app only — everything below is unchanged) ──
   return (
-    <div style={{ background:BG, height:"100%", overflowY:"auto",
+    <div ref={scrollContainerRef} style={{ background:BG, height:"100%", overflowY:"auto",
       WebkitOverflowScrolling:"touch", touchAction:"pan-y",
       fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      color:TX, position:"relative", paddingBottom:"110px" }}>
+      color:TX, position:"relative", paddingBottom:"calc(110px + env(safe-area-inset-bottom, 0px))" }}>
 
       <style>{`
         @keyframes screenIn { from { opacity:0; } to { opacity:1; } }
@@ -1247,12 +1248,12 @@ export default function GymApp() {
 
       <div key={tab} className="screen-enter">
         {tab==="log"      && (
-          <PullToRefresh refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}>
+          <PullToRefresh refreshing={refreshing} scrollContainerRef={scrollContainerRef} onRefresh={() => refreshAllRef.current?.()}>
             <LogScreen session={session} setSession={setSession} templates={templates} setTemplates={setTemplates} exercisesChanged={exercisesChanged} setExercisesChanged={setExercisesChanged} todayType={todayType} setTodayType={setTodayType} setPrevTemplates={setPrevTemplates} showUndo={showUndo} workoutActive={workoutActive} setWorkoutActive={setWorkoutActive} workoutPaused={workoutPaused} setWorkoutPaused={setWorkoutPaused} workoutElapsed={workoutElapsed} setWorkoutElapsed={setWorkoutElapsed} workoutStartTime={workoutStartTime} setWorkoutStartTime={setWorkoutStartTime} workoutHistory={workoutHistory} setWorkoutHistory={setWorkoutHistory} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} hasCustomizedRoutine={hasCustomizedRoutine} setHasCustomizedRoutine={setHasCustomizedRoutine} authUser={authUser}/>
           </PullToRefresh>
         )}
         {tab==="routine"  && (
-          <PullToRefresh refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}>
+          <PullToRefresh refreshing={refreshing} scrollContainerRef={scrollContainerRef} onRefresh={() => refreshAllRef.current?.()}>
             <RoutineScreen templates={templates} setTemplates={setTemplates} setPrevTemplates={setPrevTemplates} showUndo={showUndo} profile={profile} onProfileTap={() => setTab("profile")} onCustomized={() => setHasCustomizedRoutine(true)} authUser={authUser} coachLinks={coachLinks} setCoachLinks={setCoachLinks} coachLinksLoaded={coachLinksLoaded} refreshing={refreshing} onRefresh={() => refreshAllRef.current?.()}/>
           </PullToRefresh>
         )}
@@ -1603,7 +1604,22 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   const dismissSummary = () => {
     setWorkoutSummary(null);
-    setShowTemplatePrompt(true);
+    // Only prompt about saving to routine if the exercise list (or day type)
+    // actually differs from the stored routine. Logging weight/reps for the
+    // same exercises is not a routine change.
+    const day = dayKey;
+    const stored = templates[day]?.exercises || [];
+    const storedNames = stored.map(e => typeof e === "string" ? e : e.name);
+    const currentNames = session.map(e => e.name);
+    const sameType = templates[day]?.type === todayType;
+    const sameExercises =
+      storedNames.length === currentNames.length &&
+      storedNames.every((n, i) => n === currentNames[i]);
+    if (!sameType || !sameExercises) {
+      setShowTemplatePrompt(true);
+    } else {
+      setExercisesChanged(false);
+    }
   };
 
   const resetSession = (exercises) => {
@@ -1629,11 +1645,21 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     const day = dayKey;
     const currentExercises = session.map(e => e.name);
     if (save) {
-      setPrevTemplates({ ...templates });
-      setTemplates(p => ({ ...p, [day]: { ...p[day], type: todayType, exercises: currentExercises } }));
-      showUndo("Routine updated");
-      // Reset using the (now-saved) current exercises
-      resetSession(currentExercises);
+      const stored = templates[day]?.exercises || [];
+      const storedNames = stored.map(e => typeof e === "string" ? e : e.name);
+      const sameType = templates[day]?.type === todayType;
+      const sameExercises =
+        storedNames.length === currentExercises.length &&
+        storedNames.every((n, i) => n === currentExercises[i]);
+      if (sameType && sameExercises) {
+        // No actual change to the routine — don't write or notify.
+        resetSession(currentExercises);
+      } else {
+        setPrevTemplates({ ...templates });
+        setTemplates(p => ({ ...p, [day]: { ...p[day], type: todayType, exercises: currentExercises } }));
+        showUndo("Routine updated");
+        resetSession(currentExercises);
+      }
     } else {
       // Reset using the stored template (ignoring any mid-workout changes)
       resetSession(templates[day]?.exercises || []);
