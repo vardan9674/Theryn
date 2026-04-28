@@ -117,6 +117,7 @@ export interface WorkoutPayload {
 }
 
 import { enqueueAction } from "../lib/offlineQueue";
+import { registerActionHandler } from "../lib/actionRegistry";
 
 /**
  * Saves a completed workout session and all its sets to Supabase.
@@ -311,6 +312,11 @@ export async function loadWorkoutHistory(
     if (typeof window !== "undefined" && navigator.onLine) fetchNetwork().catch(()=>{});
     return cachedData;
   }
-  
+
   return fetchNetwork();
 }
+
+// Register the offline-flush handler for workout saves. Called once on import.
+registerActionHandler("SAVE_WORKOUT", (userId, payload) =>
+  saveCompletedWorkout(userId, payload as any, true)
+);

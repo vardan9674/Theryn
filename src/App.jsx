@@ -3139,19 +3139,24 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
 
   const handleShare = async () => {
     if (!myCode) return;
+    const text =
+      mode === "athlete"
+        ? `Let's train together on Theryn — I'd love to have you as my coach. Sign in and enter my code ${myCode} to connect.`
+        : `I'd like to coach you on Theryn. Sign in and enter my code ${myCode} to connect.`;
+    const url = "https://thery.fit";
     try {
       await Share.share({
-        title: "Theryn Invite Code",
-        text: `Join me on Theryn! My coach/athlete invite code is: ${myCode}`,
-        url: "https://theryn.app",
-        dialogTitle: "Share Invite Code",
+        title: "Join me on Theryn",
+        text,
+        url,
+        dialogTitle: "Share invite",
       });
     } catch (e) {
       // Fallback for web if needed
       if (navigator.share) {
         navigator.share({
-          title: "Theryn Invite Code",
-          text: `Join me on Theryn! My coach/athlete invite code is: ${myCode}`,
+          title: "Join me on Theryn",
+          text: `${text}\n\n${url}`,
         }).catch(() => {});
       }
     }

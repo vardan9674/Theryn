@@ -1,5 +1,6 @@
 import { openDB, IDBPDatabase } from "idb";
 import { supabase } from "./supabase";
+import { getActionHandler } from "./actionRegistry";
 
 export interface QueuedAction {
   id?: number;
@@ -133,40 +134,17 @@ async function drainActionOutbox(db: IDBPDatabase): Promise<void> {
   const all: QueuedAction[] = await db.getAll("action-outbox");
   if (!all.length) return;
 
-  // Dynamic import avoids the offlineQueue ↔ hooks circular dependency.
-  const [{ saveCompletedWorkout }, { saveBodyWeight, saveMeasurement }, { saveRoutine }] =
-    await Promise.all([
-      import("../hooks/useWorkouts"),
-      import("../hooks/useBody"),
-      import("../hooks/useRoutine"),
-    ]);
-
   for (const entry of all) {
     if (entry.id == null) continue;
+    const handler = getActionHandler(entry.type);
+    if (!handler) {
+      // No handler registered yet (hook not yet imported) or unknown type.
+      // Skip — the queue stays intact for a later pass once the app has
+      // loaded the relevant module.
+      continue;
+    }
     try {
-      switch (entry.type) {
-        case "SAVE_WORKOUT": {
-          await saveCompletedWorkout(entry.userId, entry.payload as any, true);
-          break;
-        }
-        case "SAVE_WEIGHT": {
-          const p = entry.payload as { weight: number; date: string };
-          await saveBodyWeight(entry.userId, p.weight, p.date, true);
-          break;
-        }
-        case "SAVE_MEASUREMENT": {
-          const p = entry.payload as { data: any; date: string };
-          await saveMeasurement(entry.userId, p.data, p.date, true);
-          break;
-        }
-        case "SAVE_ROUTINE": {
-          await saveRoutine(entry.userId, entry.payload as any, true);
-          break;
-        }
-        default:
-          // Unknown action type — drop so it doesn't poison the queue.
-          break;
-      }
+      await handler(entry.userId, entry.payload);
       await db.delete("action-outbox", entry.id);
     } catch (err) {
       if (isPermanentClientError(err)) {
