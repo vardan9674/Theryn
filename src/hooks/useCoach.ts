@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { loadRoutine } from "./useRoutine";
 import { loadWorkoutHistory } from "./useWorkouts";
+import { loadBodyWeights, loadMeasurements } from "./useBody";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export interface CoachLink {
@@ -156,8 +157,6 @@ export async function removeCoachLink(linkId: string): Promise<void> {
     .eq("id", linkId);
   if (error) throw new Error(error.message);
 }
-
-import { loadBodyWeights, loadMeasurements } from "./useBody";
 
 // ── Load an athlete's full data for the coach view ────────────────────────────
 export async function loadAthleteData(athleteId: string) {

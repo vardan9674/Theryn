@@ -90,6 +90,7 @@ export function usePushNotifications(userId: string | null | undefined): void {
   const userIdRef = useRef(userId);
   const listenersWired = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inProgressRef = useRef(false);
 
   useEffect(() => {
     userIdRef.current = userId;
@@ -106,18 +107,21 @@ export function usePushNotifications(userId: string | null | undefined): void {
     // Called on mount AND every time the app comes back to foreground.
     // This means: enable notifications in Settings → open app → token registers.
     const tryRegister = async () => {
+      // Prevent concurrent invocations — most importantly suppresses the
+      // appStateChange re-entry that fires while requestPermissions() is open,
+      // which otherwise causes a duplicate register() → duplicate token sync.
+      if (inProgressRef.current) return;
+      inProgressRef.current = true;
       try {
         const perm = await PushNotifications.checkPermissions();
         console.log('[push] permission state:', perm.receive);
 
         if (perm.receive === 'granted') {
-          // Already granted — just kick FCM to get/refresh the token.
           await PushNotifications.register();
           return;
         }
 
         if (perm.receive === 'denied') {
-          // User explicitly denied. Don't re-prompt — they need to go to Settings.
           console.info('[push] notifications denied by user — skipping registration');
           return;
         }
@@ -137,6 +141,8 @@ export function usePushNotifications(userId: string | null | undefined): void {
         }
       } catch (e) {
         console.error('[push] tryRegister failed:', e);
+      } finally {
+        inProgressRef.current = false;
       }
     };
 
