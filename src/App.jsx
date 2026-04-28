@@ -26,6 +26,7 @@ import {
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
 import PullToRefresh from "./components/PullToRefresh.jsx";
+import { consumeBackPress, useBackHandler } from "./lib/backStack";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -917,6 +918,12 @@ export default function GymApp() {
     // Evaluate the offline queue silently upon boot
     processOfflineQueue();
 
+    // Re-flush whenever the device regains network. Without this, items
+    // queued during an offline session would never upload until the next
+    // app start.
+    const onOnline = () => { processOfflineQueue(); };
+    window.addEventListener("online", onOnline);
+
     // Listen for ALL changes (INSERT, UPDATE, DELETE) to routines row
     const channel = supabase
       .channel('routine-sync')
@@ -992,6 +999,7 @@ export default function GymApp() {
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(assignmentChannel);
+      window.removeEventListener("online", onOnline);
     };
   }, [authUser?.id]);
 
@@ -1062,11 +1070,19 @@ export default function GymApp() {
     { id:"prs",      label:"Records"  },
   ];
 
+  // ── Modal back-button registrations (GymApp scope) ───────────────────
+  // Modals declared deeper (LogScreen, AthleteScreen, ExercisePicker, etc.)
+  // register their own handlers in their own components.
+  useBackHandler(showPrompt, () => setShowPrompt(false));
+  useBackHandler(showTour, () => setShowTour(false));
+
   // ── Android back button handler ──────────────────────────────────────
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const handler = CapApp.addListener('backButton', ({ canGoBack }) => {
-      // Priority: close any overlay first
+    const handler = CapApp.addListener('backButton', () => {
+      // Highest priority: any open modal/sheet that registered itself.
+      if (consumeBackPress()) return;
+      // Then: navigate within tabs.
       if (tab === 'profile') { setTab('log'); return; }
       if (tab !== 'log') { setTab('log'); return; }
       // On Log tab with nothing open → minimize app
@@ -1373,6 +1389,14 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const [pendingUndo,        setPendingUndo]        = useState(null); // { msg, action }
   const [pendingUndoTimer,   setPendingUndoTimer]   = useState(null);
   const timerRef = useRef(null);
+
+  // Android back-button: dismiss any open sheet inside LogScreen.
+  useBackHandler(showAddEx, () => setShowAddEx(false));
+  useBackHandler(showTypePick, () => setShowTypePick(false));
+  useBackHandler(showHistory, () => setShowHistory(false));
+  useBackHandler(showEndConfirm, () => setShowEndConfirm(false));
+  useBackHandler(showTemplatePrompt, () => setShowTemplatePrompt(false));
+  useBackHandler(!!workoutSummary, () => setWorkoutSummary(null));
 
   const wUnit = units === "metric" ? "kg" : "lbs";
   const dUnit = units === "metric" ? "km" : "mi";
@@ -2321,7 +2345,7 @@ function RoutineExerciseCard({ ex, updateEx }) {
         <div style={{ display:"flex", gap:"8px", marginTop:"10px", paddingBottom: "4px" }} onClick={e => e.stopPropagation()}>
           <div style={{ flex:1 }}>
             <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Sets</label>
-            <input type="number" placeholder="Optional" value={sets} onChange={e => updateEx({ name, sets: e.target.value ? Number(e.target.value) : "", reps, weight })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
+            <input type="number" inputMode="numeric" placeholder="Optional" value={sets} onChange={e => updateEx({ name, sets: e.target.value ? Number(e.target.value) : "", reps, weight })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
           </div>
           <div style={{ flex:1 }}>
             <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Reps</label>
@@ -2329,7 +2353,7 @@ function RoutineExerciseCard({ ex, updateEx }) {
           </div>
           <div style={{ flex:1 }}>
             <label style={{ display:"block", fontSize:"11px", color:SB, marginBottom:"4px" }}>Lbs</label>
-            <input type="number" placeholder="Optional" value={weight} onChange={e => updateEx({ name, sets, reps, weight: e.target.value ? Number(e.target.value) : "" })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
+            <input type="number" inputMode="decimal" placeholder="Optional" value={weight} onChange={e => updateEx({ name, sets, reps, weight: e.target.value ? Number(e.target.value) : "" })} style={{ width:"100%", background:S2, border:`1px solid ${BD}`, color:TX, borderRadius:"6px", padding:"8px", fontSize:"14px" }} />
           </div>
         </div>
       )}
@@ -2591,6 +2615,9 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
   const [showCoach,     setShowCoach]     = useState(false);
   const [newEx,         setNewEx]         = useState("");
   const todayDay = getToday();
+
+  // Android back-button: dismiss the coach connection sheet first.
+  useBackHandler(showCoach, () => setShowCoach(false));
 
   // Any accepted connection (as athlete or coach)
   const isConnected = coachLinks.some(l => l.status === "accepted");
@@ -3537,7 +3564,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
           <div>
             {!todayEntry && <div style={{ fontSize:"14px", color:SB, marginBottom:"10px" }}>Log your weight for today</div>}
             <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-              <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder={todayEntry ? String(todayEntry.weight) : `Enter weight (${wLabel})`} value={inputW} onChange={e => setInputW(e.target.value)} onKeyDown={e => e.key==="Enter"&&logToday()}/>
+              <input style={{ ...inputSt, width:"100%" }} type="number" inputMode="decimal" step="0.1" placeholder={todayEntry ? String(todayEntry.weight) : `Enter weight (${wLabel})`} value={inputW} onChange={e => setInputW(e.target.value)} onKeyDown={e => e.key==="Enter"&&logToday()}/>
               <button onClick={logToday} style={{ ...btnPrim, width:"100%" }}>{todayEntry ? "Update" : "Log"}</button>
             </div>
             {todayEntry && <div style={{ fontSize:"13px", color:SB, marginTop:"6px" }}>Enter a new value to update today's weight</div>}
@@ -3609,7 +3636,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
                     <div>
                       <div style={{ fontSize:"13px", color:SB, marginBottom:"8px" }}>{fmtDate(entry.date)}</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-                        <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" value={editW} onChange={e => setEditW(e.target.value)} autoFocus onKeyDown={e => e.key==="Enter" && saveEdit(entry.id)}/>
+                        <input style={{ ...inputSt, width:"100%" }} type="number" inputMode="decimal" step="0.1" value={editW} onChange={e => setEditW(e.target.value)} autoFocus onKeyDown={e => e.key==="Enter" && saveEdit(entry.id)}/>
                         <div style={{ display:"flex", gap:"8px" }}>
                           <button onClick={() => saveEdit(entry.id)} style={{ ...btnPrim, flex:1 }}>Save</button>
                           <button onClick={() => setEditingId(null)} style={{ ...btnGhost, flex:1 }}>Cancel</button>
@@ -3700,7 +3727,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
                       {activeFields.map(f => (
                         <div key={f.key}>
                           <div style={{ ...subLbl, marginBottom:"4px" }}>{f.label}</div>
-                          <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder="—" value={mInputs[f.key]||""} onChange={e => setMInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
+                          <input style={{ ...inputSt, width:"100%" }} type="number" inputMode="decimal" step="0.1" placeholder="—" value={mInputs[f.key]||""} onChange={e => setMInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
                         </div>
                       ))}
                     </div>
@@ -3730,7 +3757,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
                           {activeFields.map(f => (
                             <div key={f.key}>
                               <div style={{ ...subLbl, marginBottom:"4px" }}>{f.label}</div>
-                              <input style={{ ...inputSt, width:"100%" }} type="number" step="0.1" placeholder="—" value={mEditInputs[f.key]||""} onChange={e => setMEditInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
+                              <input style={{ ...inputSt, width:"100%" }} type="number" inputMode="decimal" step="0.1" placeholder="—" value={mEditInputs[f.key]||""} onChange={e => setMEditInputs(p => ({ ...p, [f.key]:e.target.value }))}/>
                             </div>
                           ))}
                         </div>
@@ -5398,6 +5425,21 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
   React.useEffect(() => {
     registerNotificationTapHandlers();
   }, []);
+
+  // ── Android back button (coach side) ──
+  // Pop the topmost registered modal first; otherwise back out of athlete
+  // detail; otherwise return to the athletes tab; finally minimize the app.
+  useBackHandler(showTour, () => setShowTour(false));
+  React.useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handler = CapApp.addListener('backButton', () => {
+      if (consumeBackPress()) return;
+      if (selectedAthlete) { setSelectedAthlete(null); return; }
+      if (tab !== 'athletes') { setTab('athletes'); return; }
+      CapApp.minimizeApp();
+    });
+    return () => { handler.then(h => h.remove()); };
+  }, [tab, selectedAthlete]);
 
   // ── Persist + restore selected athlete across reloads
   const SELECTED_KEY = authUser?.id ? `theryn_coach_selected_${authUser.id}` : null;

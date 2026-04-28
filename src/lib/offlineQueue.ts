@@ -56,14 +56,26 @@ export async function enqueueMessage(
   }
 }
 
-export async function processOfflineQueue(): Promise<void> {
-  let db: IDBPDatabase;
-  try {
-    db = await getDB();
-  } catch {
-    return;
-  }
+let processing = false;
 
+export async function processOfflineQueue(): Promise<void> {
+  if (processing) return;
+  processing = true;
+  try {
+    let db: IDBPDatabase;
+    try {
+      db = await getDB();
+    } catch {
+      return;
+    }
+    await drainMessageOutbox(db);
+    await drainActionOutbox(db);
+  } finally {
+    processing = false;
+  }
+}
+
+async function drainMessageOutbox(db: IDBPDatabase): Promise<void> {
   const all: OutboxEntry[] = await db.getAllFromIndex("message-outbox", "by-created-at");
   const due = all.filter((e) => e.nextRetryAt <= Date.now());
 
@@ -91,6 +103,53 @@ export async function processOfflineQueue(): Promise<void> {
       }
     } catch {
       // Network offline — leave entry untouched for next flush
+    }
+  }
+}
+
+async function drainActionOutbox(db: IDBPDatabase): Promise<void> {
+  const all: QueuedAction[] = await db.getAll("action-outbox");
+  if (!all.length) return;
+
+  // Dynamic import avoids the offlineQueue ↔ hooks circular dependency.
+  const [{ saveCompletedWorkout }, { saveBodyWeight, saveMeasurement }, { saveRoutine }] =
+    await Promise.all([
+      import("../hooks/useWorkouts"),
+      import("../hooks/useBody"),
+      import("../hooks/useRoutine"),
+    ]);
+
+  for (const entry of all) {
+    if (entry.id == null) continue;
+    try {
+      switch (entry.type) {
+        case "SAVE_WORKOUT": {
+          await saveCompletedWorkout(entry.userId, entry.payload as any, true);
+          break;
+        }
+        case "SAVE_WEIGHT": {
+          const p = entry.payload as { weight: number; date: string };
+          await saveBodyWeight(entry.userId, p.weight, p.date, true);
+          break;
+        }
+        case "SAVE_MEASUREMENT": {
+          const p = entry.payload as { data: any; date: string };
+          await saveMeasurement(entry.userId, p.data, p.date, true);
+          break;
+        }
+        case "SAVE_ROUTINE": {
+          await saveRoutine(entry.userId, entry.payload as any, true);
+          break;
+        }
+        default:
+          // Unknown action type — drop so it doesn't poison the queue.
+          break;
+      }
+      await db.delete("action-outbox", entry.id);
+    } catch {
+      // Network/server error — leave for next flush. Items stay in insertion
+      // order and the outer loop continues so a stuck head doesn't block
+      // independent later writes from being retried on subsequent passes.
     }
   }
 }
