@@ -50,6 +50,7 @@ function exerciseName(ex: ExerciseItem): string {
 }
 
 import { enqueueAction } from "../lib/offlineQueue";
+import { registerActionHandler } from "../lib/actionRegistry";
 
 /**
  * Loads the active routine for a user and returns it in the app's templates format.
@@ -406,3 +407,8 @@ export function classifyRoutineUpdate(
   // Only notes changed
   return "notes_only";
 }
+
+// Register the offline-flush handler for routine saves. Called once on import.
+registerActionHandler("SAVE_ROUTINE", (userId, payload) =>
+  saveRoutine(userId, payload as any, true)
+);

@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase";
 
 import { enqueueAction } from "../lib/offlineQueue";
+import { registerActionHandler } from "../lib/actionRegistry";
 
 // ── Body Weight ──────────────────────────────────────────────────────────────
 
@@ -243,3 +244,13 @@ export async function deleteMeasurement(id: string): Promise<void> {
     throw new Error(`Failed to delete measurement: ${error.message}`);
   }
 }
+
+// Register offline-flush handlers for body writes. Called once on import.
+registerActionHandler("SAVE_WEIGHT", (userId, payload) => {
+  const p = payload as { weight: number; date: string };
+  return saveBodyWeight(userId, p.weight, p.date, true);
+});
+registerActionHandler("SAVE_MEASUREMENT", (userId, payload) => {
+  const p = payload as { data: any; date: string };
+  return saveMeasurement(userId, p.data, p.date, true);
+});
