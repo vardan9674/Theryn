@@ -4290,6 +4290,28 @@ function LoginScreen({ authError, onClearError }) {
     if (authError) setLoading(false);
   }, [authError]);
 
+  // Native sign-in opens an external browser. If the user dismisses it without
+  // completing OAuth (no appUrlOpen callback fires), the spinner would hang
+  // forever. When the app comes back to the foreground while we're still in
+  // "loading", give the callback a brief grace window to land — if no auth
+  // state change arrives, reset the spinner so the user can try again.
+  useEffect(() => {
+    if (!loading) return;
+    if (!Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+    let graceTimer = null;
+    const sub = CapApp.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive || cancelled) return;
+      clearTimeout(graceTimer);
+      graceTimer = setTimeout(() => { if (!cancelled) setLoading(false); }, 2000);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(graceTimer);
+      sub.then(h => h.remove());
+    };
+  }, [loading]);
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
