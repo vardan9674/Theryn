@@ -1386,6 +1386,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const [showHistory,        setShowHistory]        = useState(false);
   const [showEndConfirm,     setShowEndConfirm]     = useState(false);
   const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
+  const [workoutSummary,     setWorkoutSummary]     = useState(null);
   const [pendingUndo,        setPendingUndo]        = useState(null); // { msg, action }
   const [pendingUndoTimer,   setPendingUndoTimer]   = useState(null);
   const timerRef = useRef(null);
@@ -1564,9 +1565,6 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     setWorkoutElapsed(0);
     setWorkoutStartTime(new Date().toISOString());
   };
-
-  // Workout summary state — shown between End Workout and the template prompt
-  const [workoutSummary, setWorkoutSummary] = useState(null);
 
   const endWorkout = () => {
     setShowEndConfirm(false);
