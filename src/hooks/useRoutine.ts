@@ -1,5 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { getExerciseId } from "./useWorkouts";
+import { enqueueAction } from "../lib/offlineQueue";
+import { registerActionHandler } from "../lib/actionRegistry";
 
 // ── Day index mapping ────────────────────────────────────────────────────────
 const DAY_TO_INDEX: Record<string, number> = {
@@ -48,9 +50,6 @@ export interface PendingRoutineUpdate {
 function exerciseName(ex: ExerciseItem): string {
   return typeof ex === "string" ? ex : ex.name;
 }
-
-import { enqueueAction } from "../lib/offlineQueue";
-import { registerActionHandler } from "../lib/actionRegistry";
 
 /**
  * Loads the active routine for a user and returns it in the app's templates format.
