@@ -75,6 +75,22 @@ export async function processOfflineQueue(): Promise<void> {
   }
 }
 
+// Distinguish "the server rejected this payload and will keep rejecting it"
+// (drop it) from "transient/network problem" (retry with backoff). Without
+// this, a single malformed item retries forever and blocks the queue head.
+function isPermanentClientError(err: any): boolean {
+  if (!err) return false;
+  const status = typeof err.status === "number" ? err.status : null;
+  if (status !== null) return status >= 400 && status < 500 && status !== 429;
+  const code: string | undefined = err.code;
+  if (typeof code !== "string") return false;
+  if (code === "23505") return false; // duplicate — handled as success upstream
+  // PostgREST + Postgres constraint/check codes are deterministic rejections.
+  if (code.startsWith("PGRST")) return true;
+  if (/^(22|23|42)\d{3}$/.test(code)) return true;
+  return false;
+}
+
 async function drainMessageOutbox(db: IDBPDatabase): Promise<void> {
   const all: OutboxEntry[] = await db.getAllFromIndex("message-outbox", "by-created-at");
   const due = all.filter((e) => e.nextRetryAt <= Date.now());
@@ -91,6 +107,12 @@ async function drainMessageOutbox(db: IDBPDatabase): Promise<void> {
 
       if (!error || error.code === "23505") {
         // Success or already exists in DB — remove from outbox
+        await db.delete("message-outbox", entry.clientId);
+      } else if (isPermanentClientError(error)) {
+        // Server will never accept this payload — drop it so it doesn't block
+        // later messages forever.
+        // eslint-disable-next-line no-console
+        console.warn("[offlineQueue] dropping un-retryable message", entry.clientId, error);
         await db.delete("message-outbox", entry.clientId);
       } else {
         // Transient failure — exponential backoff, capped at 30 minutes
@@ -146,10 +168,15 @@ async function drainActionOutbox(db: IDBPDatabase): Promise<void> {
           break;
       }
       await db.delete("action-outbox", entry.id);
-    } catch {
-      // Network/server error — leave for next flush. Items stay in insertion
-      // order and the outer loop continues so a stuck head doesn't block
-      // independent later writes from being retried on subsequent passes.
+    } catch (err) {
+      if (isPermanentClientError(err)) {
+        // Bad payload / permission error — drop so it doesn't block the queue.
+        // eslint-disable-next-line no-console
+        console.warn("[offlineQueue] dropping un-retryable action", entry.type, err);
+        try { await db.delete("action-outbox", entry.id); } catch {}
+      }
+      // Otherwise: network/5xx — leave for next flush. The loop continues so
+      // independent later writes still get a retry on this pass.
     }
   }
 }
