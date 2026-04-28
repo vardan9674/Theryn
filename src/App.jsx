@@ -4334,9 +4334,9 @@ function LoginScreen({ authError, onClearError }) {
           <>
             <div style={{ fontSize: 11, color: A, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 14 }}>theryn</div>
             <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", color: TX, lineHeight: 1.2, textAlign: "center", margin: "0 0 10px" }}>
-              Your gym.<br /><span style={{ color: A }}>Your data.</span>
+              Train.<br /><span style={{ color: A }}>Without guessing.</span>
             </h1>
-            <p style={{ fontSize: 13, color: SB, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>Track workouts, body, and progress — all in one place.</p>
+            <p style={{ fontSize: 13, color: SB, textAlign: "center", lineHeight: 1.7, margin: "0 0 44px", maxWidth: 240 }}>See progress every session.</p>
           </>
         )}
 
