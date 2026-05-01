@@ -4561,15 +4561,22 @@ function SpotlightTour({ steps, tabCount, uid, onDone }) {
     return null;
   })();
 
+  // All positions use `position:"fixed"` (viewport-relative) so left/right
+  // stretch reliably on every Android WebView — no transform-centering tricks.
   const tooltipPos = (() => {
-    if (!spot) return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "calc(100% - 40px)", maxWidth: "340px" };
-    if (spot.type === "circle") {
-      return { bottom: H - spot.cy + spot.r + 20, left: "20px", right: "20px" };
+    if (!spot) {
+      // Welcome / full-screen step — anchor to lower-center of viewport
+      return { bottom: Math.round(H * 0.22), left: 20, right: 20 };
     }
+    if (spot.type === "circle") {
+      // Highlight is at the bottom tab bar — card floats above it
+      return { bottom: Math.round(H - spot.cy + spot.r + 16), left: 20, right: 20 };
+    }
+    // Content-mid rect — prefer below, fall back to above
     const botY = spot.y + spot.h;
     return (H - botY > 260)
-      ? { top: botY + 20, left: "20px", right: "20px" }
-      : { bottom: H - spot.y + 20, left: "20px", right: "20px" };
+      ? { top: Math.round(botY + 20), left: 20, right: 20 }
+      : { bottom: Math.round(H - spot.y + 20), left: 20, right: 20 };
   })();
 
   const finish = () => { setLeaving(true); setTimeout(onDone, 300); };
@@ -4610,8 +4617,8 @@ function SpotlightTour({ steps, tabCount, uid, onDone }) {
         {spot?.type === "rect" && <rect x={spot.x-3} y={spot.y-3} width={spot.w+6} height={spot.h+6} rx={spot.rx+2} fill="none" stroke={A} strokeWidth="2.5" style={{ animation:"_tring 0.35s ease both" }}/>}
       </svg>
 
-      {/* Tooltip card */}
-      <div key={`tt${contentKey}`} style={{ position:"absolute", ...tooltipPos, background:S1, border:`1px solid ${A}50`, borderRadius:"18px", padding:"20px 20px 16px", boxShadow:`0 14px 40px rgba(0,0,0,0.65), 0 0 0 1px ${A}18`, animation:"_ttip 0.32s cubic-bezier(0.22,1,0.36,1) both" }}>
+      {/* Tooltip card — position:fixed so left/right resolve against the viewport on all platforms */}
+      <div key={`tt${contentKey}`} style={{ position:"fixed", boxSizing:"border-box", ...tooltipPos, background:S1, border:`1px solid ${A}50`, borderRadius:"18px", padding:"20px 20px 16px", boxShadow:`0 14px 40px rgba(0,0,0,0.65), 0 0 0 1px ${A}18`, animation:"_ttip 0.32s cubic-bezier(0.22,1,0.36,1) both" }}>
         {/* Progress dots + counter */}
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px" }}>
           <div style={{ display:"flex", gap:"5px" }}>
