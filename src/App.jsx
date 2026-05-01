@@ -4,6 +4,7 @@ import { supabase } from "./lib/supabase";
 import { processOfflineQueue } from "./lib/offlineQueue";
 import { Capacitor } from "@capacitor/core";
 import { Haptics } from "@capacitor/haptics";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Share } from "@capacitor/share";
@@ -14,7 +15,7 @@ import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest
 import LandingPage from "./components/LandingPage";
 import ChatView from "./components/ChatView";
 import { loadConversationPreviews } from "./hooks/useChat";
-import { requestNotificationPermissions, getNotificationPermissionState, markCoachSeen, getCoachLastSeen, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
+import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachCatchUp, markCoachSeen, getCoachLastSeen, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { detectSignals, summarizeForRow, computeStats, computeBMI, bmiCategory, SEVERITY_COLORS } from "./lib/coachInsights";
 import {
@@ -879,6 +880,8 @@ export default function GymApp() {
         if (routine) {
           setTemplates(routine);
           setTodayType(routine[getToday()]?.type || 'Custom');
+          // Schedule daily workout reminders based on the loaded routine
+          scheduleDailyRoutine(routine).catch(() => {});
         }
       } catch (err) {
         console.error("fetchRoutine error:", err);
@@ -1501,15 +1504,23 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     }
   };
 
+  const REST_NOTIF_ID = 9001; // outside all other ID ranges
+
   const fireRestNotification = async (exName) => {
     playRestTimerBeep();
-    if ("Notification" in window && Notification.permission === "granted") {
+
+    if (Capacitor.isNativePlatform()) {
+      // Cancel the OS-scheduled notification so it doesn't duplicate while in-app
+      LocalNotifications.cancel({ notifications: [{ id: REST_NOTIF_ID }] }).catch(() => {});
+    } else if ("Notification" in window && Notification.permission === "granted") {
+      // Web fallback only (new Notification() doesn't work in WKWebView)
       new Notification("Rest complete — time to lift!", {
-        body: `Your rest after ${exName} is done. Get back to it!`,
+        body: `Your rest after ${exName ?? "that set"} is done. Get back to it!`,
         icon: "/favicon.ico",
         silent: false,
       });
     }
+
     // High-fidelity native haptics
     try {
       if (Capacitor.isNativePlatform()) {
@@ -1524,19 +1535,62 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const startRest = (exId, exName) => {
     const base = customRest[exId] ?? getDefaultRest();
     clearTimeout(notifTimeoutRef.current);
-    // Schedule notification for when background
+
+    // Register with the OS so the notification fires even if the app is backgrounded/suspended
+    if (Capacitor.isNativePlatform()) {
+      LocalNotifications.cancel({ notifications: [{ id: REST_NOTIF_ID }] })
+        .catch(() => {})
+        .then(() => LocalNotifications.schedule({
+          notifications: [{
+            id: REST_NOTIF_ID,
+            title: "Rest complete — time to lift!",
+            body: `Your rest after ${exName ?? "that set"} is done. Get back to it!`,
+            channelId: "theryn-reminders",
+            schedule: { at: new Date(Date.now() + base * 1000), allowWhileIdle: true },
+          }]
+        }).catch(() => {}));
+    }
+
+    // JS timeout for in-app audio + haptic (fires if app stays in foreground)
     notifTimeoutRef.current = setTimeout(() => fireRestNotification(exName), base * 1000);
     setRestTimer({ total: base, remaining: base, exName, active: true });
   };
 
-  const skipRest = () => { clearTimeout(notifTimeoutRef.current); setRestTimer(null); };
+  const skipRest = () => {
+    clearTimeout(notifTimeoutRef.current);
+    if (Capacitor.isNativePlatform()) {
+      LocalNotifications.cancel({ notifications: [{ id: REST_NOTIF_ID }] }).catch(() => {});
+    }
+    setRestTimer(null);
+  };
 
   const adjustRest = (delta) => {
+    clearTimeout(notifTimeoutRef.current);
+    const newRemaining = Math.max(1, (restTimer?.remaining ?? 0) + delta);
+
+    // Reschedule the OS notification at the updated time
+    if (Capacitor.isNativePlatform() && restTimer) {
+      LocalNotifications.cancel({ notifications: [{ id: REST_NOTIF_ID }] })
+        .catch(() => {})
+        .then(() => LocalNotifications.schedule({
+          notifications: [{
+            id: REST_NOTIF_ID,
+            title: "Rest complete — time to lift!",
+            body: `Your rest after ${restTimer.exName ?? "that set"} is done. Get back to it!`,
+            channelId: "theryn-reminders",
+            schedule: { at: new Date(Date.now() + newRemaining * 1000), allowWhileIdle: true },
+          }]
+        }).catch(() => {}));
+    }
+
+    notifTimeoutRef.current = setTimeout(
+      () => fireRestNotification(restTimer?.exName),
+      newRemaining * 1000
+    );
     setRestTimer(p => {
       if (!p) return null;
-      const newRemaining = Math.max(1, p.remaining + delta);
-      const newTotal = Math.max(p.total, newRemaining);
-      return { ...p, remaining: newRemaining, total: newTotal };
+      const nr = Math.max(1, p.remaining + delta);
+      return { ...p, remaining: nr, total: Math.max(p.total, nr) };
     });
   };
 
@@ -1601,6 +1655,11 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         totalVolume: totalVol,
       };
       setWorkoutHistory(p => [entry, ...p]);
+
+      // Schedule post-workout local notifications (8 PM reflection + 48h streak reminder)
+      scheduleReflection(completedExercises).catch(() => {});
+      const newStreak = calculateRoutineStreak([entry, ...workoutHistory], templates);
+      if (newStreak > 0) scheduleStreakReminder(newStreak).catch(() => {});
 
       // Save to Supabase in background (if user is logged in)
       if (authUser) {
@@ -5492,6 +5551,31 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
     if (!authUser?.id) return;
     const tourKey = `theryn_coach_tour_done_${authUser.id}`;
     if (!localStorage.getItem(tourKey)) setShowTour(true);
+  }, [authUser?.id]);
+
+  // ── Coach catch-up: fire a local notification summarising athlete sessions
+  // that were completed while the coach app was backgrounded ─────────────────
+  React.useEffect(() => {
+    if (!authUser?.id || !Capacitor.isNativePlatform()) return;
+    // Record when the coach first opens the app
+    markCoachSeen();
+    let cancelled = false;
+    const subPromise = CapApp.addListener("appStateChange", async ({ isActive }) => {
+      if (!isActive || cancelled) return;
+      // App came back to foreground — check for missed athlete sessions
+      const lastSeen = getCoachLastSeen();
+      if (lastSeen) {
+        try {
+          const sessions = await loadAthleteSessionsSince(authUser.id, lastSeen.toISOString());
+          if (sessions.length > 0) await triggerCoachCatchUp(sessions);
+        } catch { /* silent */ }
+      }
+      markCoachSeen();
+    });
+    return () => {
+      cancelled = true;
+      subPromise.then(h => h.remove()).catch(() => {});
+    };
   }, [authUser?.id]);
 
   // Ref-based cache: optimistic updates (e.g. coach-note save) must NOT retrigger
