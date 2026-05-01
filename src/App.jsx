@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import ReactDOM from "react-dom";
 import { BarChart, Bar, XAxis, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { supabase } from "./lib/supabase";
 import { processOfflineQueue } from "./lib/offlineQueue";
@@ -1201,6 +1202,7 @@ export default function GymApp() {
         initialSelected={pendingRole}
         onSelect={(r) => {
           setPendingRole(null);
+          localStorage.removeItem("theryn_pending_role_landing");
           setRole(r);
           localStorage.setItem(`theryn_role_${authUser.id}`, r);
           if (r === "athlete") {
@@ -1319,7 +1321,7 @@ export default function GymApp() {
       {showTour && <TourOverlay onDone={() => { setShowTour(false); setTab("routine"); }}/>}
 
       {/* ── TAB BAR ── */}
-      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.97)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"22px", zIndex:100 }}>
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, width:"100%", background:"rgba(8,8,8,0.97)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderTop:`1px solid ${BD}`, display:"flex", paddingTop:"10px", paddingBottom:"max(22px, env(safe-area-inset-bottom, 0px))", zIndex:100 }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => handleTabClick(t.id)} style={{ flex:1, background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:"4px", color:tab===t.id?A:SB, fontSize:"11px", fontWeight:tab===t.id?"700":"400", letterSpacing:"0.05em", textTransform:"uppercase", transition:"color 0.15s", WebkitTapHighlightColor:"transparent", padding:"2px 0" }}>
             <div style={{ transform: tab===t.id ? "scale(1.08)" : "scale(1)", transition:"transform 0.15s cubic-bezier(0.34,1.56,0.64,1)" }}>
@@ -1467,6 +1469,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     } else {
       clearInterval(restRef.current);
       if (restTimer?.active && restTimer.remaining === 0) {
+        clearTimeout(notifTimeoutRef.current);
         fireRestNotification(restTimer.exName);
         setTimeout(() => setRestTimer(null), 2000);
       }
@@ -2064,12 +2067,12 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         )}
       </div>
 
-      {/* ── Exercise Progress Bar — flush on top of tab bar ── */}
+      {/* ── Exercise Progress Bar — rendered via portal so position:fixed is always viewport-relative ── */}
       {workoutActive && session.length > 0 && (() => {
         const doneEx = session.filter(ex => ex.sets.length > 0 && ex.sets.every(s => s.done)).length;
         const pct = doneEx / session.length;
-        return (
-          <div style={{ position:"fixed", bottom:"79px", left:0, right:0, width:"100%", zIndex:105, height:"4px", background:MT }}>
+        return ReactDOM.createPortal(
+          <div style={{ position:"fixed", bottom:"calc(79px + env(safe-area-inset-bottom, 0px))", left:0, right:0, width:"100%", zIndex:105, height:"4px", background:MT }}>
             <div style={{
               height:"100%",
               width:`${pct * 100}%`,
@@ -2078,13 +2081,14 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
               transition:"width 0.6s cubic-bezier(0.4,0,0.2,1)",
               boxShadow: pct > 0 ? `0 0 12px ${A}99, 0 0 4px ${A}66` : "none",
             }}/>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
-      {/* ── Rest Timer — slides up above the tab bar ── */}
-      {restTimer && (
-        <div style={{ position:"fixed", bottom:"88px", left:0, right:0, width:"100%", zIndex:110, padding:"0 12px", boxSizing:"border-box" }}>
+      {/* ── Rest Timer — rendered via portal so position:fixed is always viewport-relative ── */}
+      {restTimer && ReactDOM.createPortal(
+        <div style={{ position:"fixed", bottom:"calc(88px + env(safe-area-inset-bottom, 0px))", left:0, right:0, width:"100%", zIndex:110, padding:"0 12px", boxSizing:"border-box" }}>
           <div style={{
             background:`rgba(16,16,16,0.97)`,
             backdropFilter:"blur(16px)",
@@ -2114,7 +2118,8 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
             <button onClick={() => adjustRest(+15)} style={{ background:`${A}15`, border:`1px solid ${A}44`, borderRadius:"8px", color:A, cursor:"pointer", padding:"7px 12px", fontSize:"14px", fontWeight:"600", flexShrink:0 }}>+15</button>
             <button onClick={skipRest} style={{ background:"none", border:`1px solid ${MT}`, borderRadius:"8px", color:SB, cursor:"pointer", padding:"7px 13px", fontSize:"13px", flexShrink:0 }}>Skip</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {showHistory ? renderHistory() : (
@@ -4529,169 +4534,176 @@ function LoginScreen({ authError, onClearError }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// ONBOARDING TOUR — full-screen slides shown once after first login
+// SPOTLIGHT TOUR — shared guided walkthrough used by athlete & coach
+// Shows the real app UI underneath with a spotlight cutout + tooltip.
 // ════════════════════════════════════════════════════════════════════════
-function TourOverlay({ onDone }) {
+function SpotlightTour({ steps, tabCount, uid, onDone }) {
   const [step, setStep] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [contentKey, setContentKey] = useState(0);
 
-  // Three crisp slides. Straightforward copy, short words, big reach.
-  const SLIDES = [
-    {
-      icon: (
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6.5 6.5h11M6.5 17.5h11M4 12h16M4 12a2 2 0 01-2-2V8a2 2 0 012-2h1M20 12a2 2 0 002-2V8a2 2 0 00-2-2h-1M4 12a2 2 0 00-2 2v2a2 2 0 002 2h1M20 12a2 2 0 012 2v2a2 2 0 01-2 2h-1"/>
-        </svg>
-      ),
-      tag: "Train",
-      title: "Every lift,\nlogged.",
-      body: "Start a session. Track sets. Done.",
-    },
-    {
-      icon: (
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="3 17 9 11 13 15 21 7"/>
-          <polyline points="14 7 21 7 21 14"/>
-        </svg>
-      ),
-      tag: "Track",
-      title: "See yourself\nchange.",
-      body: "Weight. BMI. PRs. One clean view.",
-    },
-    {
-      icon: (
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke={A} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-      ),
-      tag: "Team up",
-      title: "Link your\ncoach.",
-      body: "They plan. You lift. Everything syncs.",
-    },
-  ];
+  const s = steps[step];
+  const isLast = step === steps.length - 1;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
 
-  const isLast = step === SLIDES.length - 1;
-  const s = SLIDES[step];
+  const spot = (() => {
+    const t = s.target;
+    if (!t || t === "full") return null;
+    if (t.startsWith("tab:")) {
+      const idx = parseInt(t.split(":")[1], 10);
+      const tabW = W / tabCount;
+      return { type: "circle", cx: tabW * idx + tabW / 2, cy: H - 48, r: 36 };
+    }
+    if (t === "content-mid") {
+      return { type: "rect", x: 16, y: H * 0.28, w: W - 32, h: H * 0.22, rx: 14 };
+    }
+    return null;
+  })();
 
-  const finish = () => {
-    setLeaving(true);
-    // Mark tour as completed in localStorage so it doesn't show again
-    try {
-      // Get the user id from supabase session if available
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user?.id) {
-          localStorage.setItem(`theryn_tour_done_${session.user.id}`, "1");
-        }
-      });
-    } catch(e) {}
-    setTimeout(onDone, 350);
-  };
+  const tooltipPos = (() => {
+    if (!spot) return { top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: "calc(100% - 40px)", maxWidth: "340px" };
+    if (spot.type === "circle") {
+      return { bottom: H - spot.cy + spot.r + 20, left: "20px", right: "20px" };
+    }
+    const botY = spot.y + spot.h;
+    return (H - botY > 260)
+      ? { top: botY + 20, left: "20px", right: "20px" }
+      : { bottom: H - spot.y + 20, left: "20px", right: "20px" };
+  })();
 
+  const finish = () => { setLeaving(true); setTimeout(onDone, 300); };
   const next = () => {
     if (isLast) { finish(); return; }
     setStep(p => p + 1);
+    setContentKey(k => k + 1);
   };
 
+  const maskId = `tm-${uid}-${step}`;
+
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 400,
-      background: BG,
-      display: "flex", flexDirection: "column",
-      fontFamily: "-apple-system,'Helvetica Neue',Helvetica,sans-serif",
-      opacity: leaving ? 0 : 1,
-      transition: "opacity 0.35s ease",
-    }}>
-      {/* Skip button — top right */}
-      {!isLast && (
-        <div style={{ padding: "52px 24px 0", display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={finish} style={{
-            background: "none", border: "none", color: SB,
-            fontSize: "15px", fontWeight: "500", cursor: "pointer",
-            padding: "8px 4px",
-          }}>
-            Skip
+    <div style={{ position:"fixed", inset:0, zIndex:9999, opacity:leaving?0:1, transition:"opacity 0.3s ease", fontFamily:"-apple-system,'Helvetica Neue',Helvetica,sans-serif" }}>
+      <style>{`
+        @keyframes _tfade { from{opacity:0} to{opacity:1} }
+        @keyframes _tring { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
+        @keyframes _ttip  { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+      `}</style>
+
+      {/* Dimmed overlay with spotlight cutout */}
+      <svg key={`sv${step}`} style={{ position:"absolute", inset:0, width:"100%", height:"100%" }}>
+        <defs>
+          <mask id={maskId}>
+            <rect width="100%" height="100%" fill="white"/>
+            {spot?.type === "circle" && <circle cx={spot.cx} cy={spot.cy} r={spot.r} fill="black"/>}
+            {spot?.type === "rect"   && <rect x={spot.x} y={spot.y} width={spot.w} height={spot.h} rx={spot.rx} fill="black"/>}
+          </mask>
+        </defs>
+        <rect width="100%" height="100%"
+          fill={spot ? "rgba(0,0,0,0.84)" : "rgba(0,0,0,0.93)"}
+          mask={spot ? `url(#${maskId})` : undefined}
+          style={{ animation:"_tfade 0.28s ease both" }}
+        />
+        {spot?.type === "circle" && <>
+          <circle cx={spot.cx} cy={spot.cy} r={spot.r+5} fill="none" stroke={A} strokeWidth="2.5" style={{ animation:"_tring 0.35s ease both" }}/>
+          <line x1={Math.min(Math.max(spot.cx,60),W-60)} y1={spot.cy-spot.r-5} x2={Math.min(Math.max(spot.cx,60),W-60)} y2={spot.cy-spot.r-20} stroke={A} strokeWidth="2" strokeLinecap="round" style={{ animation:"_tring 0.4s ease both" }}/>
+        </>}
+        {spot?.type === "rect" && <rect x={spot.x-3} y={spot.y-3} width={spot.w+6} height={spot.h+6} rx={spot.rx+2} fill="none" stroke={A} strokeWidth="2.5" style={{ animation:"_tring 0.35s ease both" }}/>}
+      </svg>
+
+      {/* Tooltip card */}
+      <div key={`tt${contentKey}`} style={{ position:"absolute", ...tooltipPos, background:S1, border:`1px solid ${A}50`, borderRadius:"18px", padding:"20px 20px 16px", boxShadow:`0 14px 40px rgba(0,0,0,0.65), 0 0 0 1px ${A}18`, animation:"_ttip 0.32s cubic-bezier(0.22,1,0.36,1) both" }}>
+        {/* Progress dots + counter */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px" }}>
+          <div style={{ display:"flex", gap:"5px" }}>
+            {steps.map((_, i) => (
+              <div key={i} style={{ width:i===step?"20px":"5px", height:"5px", borderRadius:"2.5px", background:i===step?A:(i<step?`${A}55`:MT), transition:"all 0.25s" }}/>
+            ))}
+          </div>
+          <span style={{ fontSize:"12px", color:SB }}>{step+1}/{steps.length}</span>
+        </div>
+
+        {s.tag && (
+          <div style={{ display:"inline-block", fontSize:"10px", color:A, fontWeight:"700", letterSpacing:"0.1em", textTransform:"uppercase", background:`${A}14`, borderRadius:"5px", padding:"3px 8px", marginBottom:"8px" }}>
+            {s.tag}
+          </div>
+        )}
+        <div style={{ fontSize:"18px", fontWeight:"800", color:TX, letterSpacing:"-0.02em", lineHeight:1.2, marginBottom:"8px" }}>{s.title}</div>
+        <div style={{ fontSize:"14px", color:SB, lineHeight:"1.6", marginBottom:"18px" }}>{s.body}</div>
+
+        <div style={{ display:"flex", gap:"10px" }}>
+          {!isLast && (
+            <button onClick={finish} style={{ flex:"none", background:"none", border:`1px solid ${MT}`, borderRadius:"10px", color:SB, fontSize:"14px", fontWeight:"600", padding:"11px 18px", cursor:"pointer" }}>
+              Skip
+            </button>
+          )}
+          <button onClick={next} style={{ flex:1, background:A, border:"none", borderRadius:"10px", color:"#000", fontSize:"15px", fontWeight:"700", padding:"12px", cursor:"pointer" }}>
+            {isLast ? "Let's go! 💪" : "Next →"}
           </button>
         </div>
-      )}
-
-      {/* Content area — centered */}
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        padding: "40px 36px",
-        gap: "20px",
-      }}>
-        {/* Icon circle */}
-        <div style={{
-          width: "96px", height: "96px", borderRadius: "28px",
-          background: `${A}12`,
-          border: `1.5px solid ${A}30`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: "8px",
-        }}>
-          {s.icon}
-        </div>
-
-        {/* Tag */}
-        <div style={{
-          fontSize: "11px", color: A, fontWeight: "700",
-          letterSpacing: "0.1em", textTransform: "uppercase",
-        }}>
-          {s.tag}
-        </div>
-
-        {/* Title — multiline */}
-        <div style={{
-          fontSize: "34px", fontWeight: "800",
-          letterSpacing: "-0.04em", lineHeight: 1.1,
-          color: TX, textAlign: "center",
-          whiteSpace: "pre-line",
-        }}>
-          {s.title}
-        </div>
-
-        {/* Body text */}
-        <div style={{
-          fontSize: "15px", color: SB, lineHeight: "1.7",
-          textAlign: "center", maxWidth: "280px",
-        }}>
-          {s.body}
-        </div>
-      </div>
-
-      {/* Bottom controls */}
-      <div style={{ padding: "0 24px 52px" }}>
-        {/* Step dots */}
-        <div style={{ display: "flex", justifyContent: "center", gap: "6px", marginBottom: "24px" }}>
-          {SLIDES.map((_, i) => (
-            <div key={i} onClick={() => setStep(i)} style={{
-              height: "4px",
-              width: i === step ? "24px" : "6px",
-              borderRadius: "2px",
-              background: i === step ? A : MT,
-              cursor: "pointer",
-              transition: "all 0.25s ease",
-            }}/>
-          ))}
-        </div>
-
-        {/* CTA button */}
-        <button onClick={next} style={{
-          ...btnPrim,
-          width: "100%",
-          padding: "16px",
-          fontSize: "16px",
-          borderRadius: "14px",
-          letterSpacing: "0.02em",
-        }}>
-          {isLast ? "Let's Go 💪" : "Next"}
-        </button>
       </div>
     </div>
   );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// ATHLETE ONBOARDING TOUR — shown once after first login
+// ════════════════════════════════════════════════════════════════════════
+function TourOverlay({ onDone }) {
+  const STEPS = [
+    {
+      target: "full",
+      tag: "Welcome",
+      title: "You're in. Quick tour — 30 seconds.",
+      body: "We'll show you exactly where everything lives so you can get to training fast.",
+    },
+    {
+      target: "tab:0",
+      tag: "Log Tab",
+      title: "Start your workout here",
+      body: "Tap 'Start', then log each set — weight and reps. Tap ✓ to mark it done. A rest timer fires automatically after every set.",
+    },
+    {
+      target: "content-mid",
+      tag: "Exercise Cards",
+      title: "Each exercise is its own card",
+      body: "Tap the name to expand. Add sets with the + button. Swipe any row left to delete it. Drag the ≡ handle to reorder exercises.",
+    },
+    {
+      target: "tab:1",
+      tag: "Routine Tab",
+      title: "Your weekly plan lives here",
+      body: "See what's scheduled for each day. Edit exercises, sets, and reps. Changes carry forward into every future session automatically.",
+    },
+    {
+      target: "tab:2",
+      tag: "Body Tab",
+      title: "Log your body weight & measurements",
+      body: "Enter your weight daily and track BMI trends. Add measurements like chest, waist, and arms to see how your body changes.",
+    },
+    {
+      target: "tab:3",
+      tag: "Progress Tab",
+      title: "Watch your strength grow",
+      body: "Volume over time, sessions per week, and strength curves for every exercise — all generated automatically from your logs.",
+    },
+    {
+      target: "tab:4",
+      tag: "Records Tab",
+      title: "Your personal records",
+      body: "Every time you beat your best weight or reps on any exercise, it's saved here automatically. No manual entry needed.",
+    },
+  ];
+
+  const handleDone = () => {
+    try {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.id) localStorage.setItem(`theryn_tour_done_${session.user.id}`, "1");
+      });
+    } catch(e) {}
+    onDone();
+  };
+
+  return <SpotlightTour steps={STEPS} tabCount={5} uid="athlete" onDone={handleDone} />;
 }
 
 
@@ -5340,84 +5352,50 @@ function RolePickerScreen({ onSelect, initialSelected = null }) {
 
 // ─────────────────────────────────────────────
 // COACH TOUR OVERLAY
+// Spotlight-based — points at real tabs in the coach nav bar (7 tabs).
+// Tab order: athletes(0) templates(1) routines(2) body(3) progress(4) payments(5) messages(6)
 // ─────────────────────────────────────────────
-const COACH_TOUR_SLIDES = [
-  {
-    title: "Welcome, Coach",
-    body: "You're in coach mode. Switch between your athletes and manage everything from one place.",
-    icon: "🏋️",
-  },
-  {
-    title: "Athletes Tab",
-    body: "See all your athletes at a glance — today's workout, streak, and quick access to their full profile.",
-    icon: "👥",
-  },
-  {
-    title: "Routines & Progress",
-    body: "Edit athlete routines, add notes to exercises, and track body metrics and progress charts.",
-    icon: "📈",
-  },
-  {
-    title: "Records",
-    body: "See each athlete's personal bests across all exercises in one clean view.",
-    icon: "🏆",
-  },
-];
-
 function CoachTourOverlay({ onDone }) {
-  const [slide, setSlide] = React.useState(0);
-  const current = COACH_TOUR_SLIDES[slide];
-  const isLast = slide === COACH_TOUR_SLIDES.length - 1;
+  const STEPS = [
+    {
+      target: "full",
+      tag: "Welcome, Coach",
+      title: "Here's your coaching dashboard.",
+      body: "You have everything you need to run athletes, build programs, and track income. Tap Next → for a quick walkthrough of each section.",
+    },
+    {
+      target: "tab:0",
+      tag: "Athletes Tab",
+      title: "Your full roster lives here",
+      body: "See all athletes at a glance — today's workout, last session, and streaks. Tap any athlete to open their full profile: stats, progress charts, PRs, and session history.",
+    },
+    {
+      target: "tab:1",
+      tag: "Templates Tab",
+      title: "Build reusable workout programs",
+      body: "Create templates with days, exercises, sets, reps, and coaching notes. Assign a template to one or more athletes — they see it in their Routine tab instantly.",
+    },
+    {
+      target: "tab:2",
+      tag: "Routines Tab",
+      title: "Edit any athlete's current routine",
+      body: "See what your athletes are doing this week. Switch athletes with the picker at the top. Edit exercises and add notes that appear right on their log screen.",
+    },
+    {
+      target: "tab:6",
+      tag: "Messages Tab",
+      title: "Chat directly with athletes",
+      body: "Send messages to any athlete inside the app. They get a push notification. Great for form cues, program notes, and check-ins.",
+    },
+    {
+      target: "tab:5",
+      tag: "Payments Tab",
+      title: "Track your income",
+      body: "Set a monthly fee for each athlete, log payments when they come in, and see who's overdue at a glance.",
+    },
+  ];
 
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: BG,
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      padding: "40px 28px",
-    }}>
-      {/* Dots */}
-      <div style={{ display: "flex", gap: "6px", marginBottom: "48px" }}>
-        {COACH_TOUR_SLIDES.map((_, i) => (
-          <div key={i} style={{
-            width: i === slide ? "20px" : "6px",
-            height: "6px",
-            borderRadius: "3px",
-            background: i === slide ? A : MT,
-            transition: "width 0.3s, background 0.3s",
-          }}/>
-        ))}
-      </div>
-
-      <div style={{ fontSize: "56px", marginBottom: "28px" }}>{current.icon}</div>
-      <div style={{ fontSize: "26px", fontWeight: 800, color: TX, textAlign: "center", marginBottom: "14px" }}>
-        {current.title}
-      </div>
-      <div style={{ fontSize: "15px", color: SB, textAlign: "center", lineHeight: 1.6, maxWidth: "300px", marginBottom: "48px" }}>
-        {current.body}
-      </div>
-
-      <button
-        onClick={() => isLast ? onDone() : setSlide(s => s + 1)}
-        style={{
-          width: "100%", maxWidth: "320px",
-          background: A, color: BG,
-          border: "none", borderRadius: "14px",
-          padding: "16px", fontSize: "16px", fontWeight: 700,
-          cursor: "pointer", letterSpacing: "0.02em",
-        }}
-      >
-        {isLast ? "Open Coach Dashboard" : "Next"}
-      </button>
-
-      {!isLast && (
-        <button onClick={onDone} style={{ marginTop: "16px", background: "none", border: "none", color: SB, fontSize: "14px", cursor: "pointer" }}>
-          Skip
-        </button>
-      )}
-    </div>
-  );
+  return <SpotlightTour steps={STEPS} tabCount={7} uid="coach" onDone={onDone} />;
 }
 
 // ─────────────────────────────────────────────
