@@ -151,11 +151,12 @@ export async function acceptCoachRequest(linkId: string): Promise<void> {
 
 // ── Decline / remove a link ───────────────────────────────────────────────────
 export async function removeCoachLink(linkId: string): Promise<void> {
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("coach_athletes")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", linkId);
   if (error) throw new Error(error.message);
+  if (count === 0) throw new Error("Coach link not found or permission denied.");
 }
 
 // ── Load an athlete's full data for the coach view ────────────────────────────

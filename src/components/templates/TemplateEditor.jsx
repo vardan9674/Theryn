@@ -34,14 +34,23 @@ const DAY_LETTER = ["M","T","W","T","F","S","S"];
  *   onBack         — () => void
  *   onNameChange   — (name: string) => void
  */
-export default function TemplateEditor({ template, initialDays, myAthletes, onSaved, onBack, onNameChange, onAthletesCacheInvalidate }) {
+export default function TemplateEditor({ template, initialDays, myAthletes, onSaved, onBack, onNameChange, onAthletesCacheInvalidate, authUserId }) {
   const INDEX_TO_DAY = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
   // ── Build working days state ─────────────────────────────────────────────
+  // Each exercise gets a stable in-memory _key so React can track SwipeRow
+  // components individually. Using array index as key causes the swiped/delete
+  // state to leak onto the next exercise after a deletion.
+  const mkKey = () => `${Date.now()}_${Math.random()}`;
+
+  const stampKeys = (rawDays) =>
+    rawDays.map(d => ({
+      ...d,
+      exercises: d.exercises.map(ex => ex._key ? ex : { ...ex, _key: mkKey() }),
+    }));
+
   const buildInitialDays = () => {
-    if (initialDays && initialDays.length > 0) return initialDays;
-    // Default: PPL skeleton
-    return [
+    const raw = (initialDays && initialDays.length > 0) ? initialDays : [
       { day_index:0, workout_type:"Push", label:"Mon", exercises:[
         { exercise_name:"Bench Press", target_sets:3, target_reps:"8-12", sort_order:0 },
         { exercise_name:"Incline DB Press", target_sets:3, target_reps:"10-12", sort_order:1 },
@@ -54,6 +63,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
       ]},
       { day_index:6, workout_type:"Rest", label:"Sun", exercises:[] },
     ];
+    return stampKeys(raw);
   };
 
   const [days, setDays] = React.useState(buildInitialDays);
@@ -126,34 +136,40 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
 
   // ── Exercise mutations ───────────────────────────────────────────────────
   const addExercise = (day_index) => {
-    const d = days.find(d => d.day_index === day_index);
-    if (!d) return;
-    const newEx = {
-      exercise_name: "",
-      target_sets: 3,
-      target_reps: "8-12",
-      sort_order: d.exercises.length,
-      notes: "",
-    };
-    updateDay(day_index, { exercises: [...d.exercises, newEx] });
+    setDays(prev => prev.map(d => {
+      if (d.day_index !== day_index) return d;
+      const newEx = {
+        _key: mkKey(),
+        exercise_name: "",
+        target_sets: 3,
+        target_reps: "8-12",
+        sort_order: d.exercises.length,
+        notes: "",
+      };
+      return { ...d, exercises: [...d.exercises, newEx] };
+    }));
+    setIsDirty(true);
   };
 
   const updateExercise = (day_index, idx, patch) => {
-    const d = days.find(d => d.day_index === day_index);
-    if (!d) return;
-    const updated = d.exercises.map((e, i) => i === idx ? { ...e, ...patch } : e);
-    updateDay(day_index, { exercises: updated });
+    setDays(prev => prev.map(d => {
+      if (d.day_index !== day_index) return d;
+      return { ...d, exercises: d.exercises.map((e, i) => i === idx ? { ...e, ...patch } : e) };
+    }));
+    setIsDirty(true);
   };
 
   const removeExercise = (day_index, idx) => {
-    const d = days.find(d => d.day_index === day_index);
-    if (!d) return;
-    updateDay(day_index, { exercises: d.exercises.filter((_, i) => i !== idx) });
+    setDays(prev => prev.map(d => {
+      if (d.day_index !== day_index) return d;
+      return { ...d, exercises: d.exercises.filter((_, i) => i !== idx) };
+    }));
+    setIsDirty(true);
   };
 
   const applyTypeDefaults = (day_index, type) => {
     const defaults = (TYPE_DEFAULTS[type] || []).map((name, i) => ({
-      exercise_name: name, target_sets:3, target_reps:"8-12", sort_order:i, notes:"",
+      _key: mkKey(), exercise_name: name, target_sets:3, target_reps:"8-12", sort_order:i, notes:"",
     }));
     updateDay(day_index, { workout_type:type, exercises:defaults });
   };
@@ -415,10 +431,10 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 {currentDay.exercises.map((ex, idx) => (
                   <ExerciseRow
-                    key={idx}
+                    key={ex._key ?? idx}
                     ex={ex}
                     idx={idx}
-                    userId={template?.owner_coach_id}
+                    userId={template?.owner_coach_id ?? authUserId}
                     onChange={patch => updateExercise(currentDay.day_index, idx, patch)}
                     onRemove={() => removeExercise(currentDay.day_index, idx)}
                   />

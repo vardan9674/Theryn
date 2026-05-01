@@ -112,6 +112,7 @@ export default function CoachTemplatesTab({ authUser, myAthletes, burstAthleteCa
         template={editingTemplate.template}
         initialDays={editingTemplate.days}
         myAthletes={myAthletes}
+        authUserId={coachId}
         onAthletesCacheInvalidate={burstAthleteCache}
         onBack={async () => { setEditingTemplate(null); await loadTemplates(); }}
         onSaved={async (newVersion, days) => {
