@@ -160,8 +160,20 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
       for (const ex of sortedExercises) {
         const name = idToName[(ex as any).exercise_id];
         if (!name) continue;
-        if ((ex as any).notes) {
-          exercises.push({ name, coachNote: (ex as any).notes });
+        // Hydrate as an object only when something beyond the name is stored
+        // (a coach note, or sets/reps that differ from the column defaults),
+        // so untouched routines keep their legacy string shape.
+        const notes = (ex as any).notes as string | null;
+        const sets = (ex as any).target_sets as number | null;
+        const reps = (ex as any).target_reps as string | null;
+        const customSets = sets != null && sets !== 3;
+        const customReps = reps != null && reps !== "8-12";
+        if (notes || customSets || customReps) {
+          const obj: ExerciseObject = { name };
+          if (notes) obj.coachNote = notes;
+          if (customSets) obj.sets = sets as number;
+          if (customReps) obj.reps = reps as string;
+          exercises.push(obj);
         } else {
           exercises.push(name);
         }
@@ -303,6 +315,8 @@ export async function saveRoutine(
         exercise_id: string;
         sort_order: number;
         notes?: string | null;
+        target_sets?: number;
+        target_reps?: string;
       }> = [];
       for (let i = 0; i < dayData.exercises.length; i++) {
         const item = dayData.exercises[i];
@@ -314,12 +328,19 @@ export async function saveRoutine(
             : "";
         const exId = idByLowerName.get(name.toLowerCase());
         if (!exId) continue;
-        exerciseRows.push({
+        const row: (typeof exerciseRows)[number] = {
           routine_day_id: dayId,
           exercise_id: exId,
           sort_order: i,
           notes: coachNote ? coachNote : null,
-        });
+        };
+        if (typeof item === "object" && item) {
+          const s = Number(item.sets);
+          if (Number.isInteger(s) && s > 0 && s < 100) row.target_sets = s;
+          const r = item.reps != null ? String(item.reps).trim() : "";
+          if (r) row.target_reps = r.slice(0, 20);
+        }
+        exerciseRows.push(row);
       }
 
       if (exerciseRows.length > 0) {

@@ -27,6 +27,7 @@ import {
 } from "./hooks/usePayments";
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
+import CoachDashboard from "./coach/CoachApp.jsx";
 import PullToRefresh from "./components/PullToRefresh.jsx";
 import { consumeBackPress, useBackHandler } from "./lib/backStack";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
@@ -1231,7 +1232,7 @@ export default function GymApp() {
 
   // ── Coach experience ─────────────────────────────────────────────────────
   if (role === "coach") return (
-    <CoachApp
+    <CoachDashboard
       authUser={authUser}
       profile={profile}
       setProfile={setProfile}
