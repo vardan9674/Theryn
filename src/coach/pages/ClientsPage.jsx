@@ -26,6 +26,13 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
       const pays = payments.filter((p) => p.athlete_id === link.athlete_id);
       const payment = paymentFact(fee, pays, defaultCurrency, now);
       if (!data) return { link, name: link.athlete_name, loading: true, payment, bucket: "ok" };
+      if (link.manual) {
+        const hasPlan = data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length);
+        const todo = { text: hasPlan ? "Not on the app yet. Export their plan to Excel, or share your code so they can join." : "Not on the app yet. Build their plan, or share your code so they can join.", severity: null, tab: "plan", color: null };
+        const row = { link, name: link.athlete_name, loading: false, data, last: null, lastTone: "muted", week: null, todo, payment, manual: true };
+        row.bucket = payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
+        return row;
+      }
       const todo = whatToDo(data, now);
       const row = {
         link, name: link.athlete_name, loading: false, data,
@@ -134,7 +141,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
 }
 
 function WeekSquares({ week }) {
-  if (!week) return null;
+  if (!week) return <span className="cx-muted">—</span>;
   const planned = week.days.filter((d) => d.planned);
   return (
     <span className="cx-week" aria-label={`${week.done} of ${week.planned} planned workouts done this week`}>
@@ -150,8 +157,8 @@ function TableRow({ row, selected, onClick }) {
   const pay = row.payment;
   return (
     <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick}>
-      <div className="name"><Avatar name={row.name} size="sm" /><span>{row.name}</span></div>
-      <div>{row.loading ? <Skeleton w={70} /> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
+      <div className="name"><Avatar name={row.name} size="sm" /><div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><span>{row.name}</span>{row.manual && <span className="cx-tag" style={{ alignSelf: "flex-start" }} title="Added by name; they haven't joined the app">Not on app</span>}</div></div>
+      <div>{row.loading ? <Skeleton w={70} /> : row.manual ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
       <div className="cx-col-week">{row.loading ? <Skeleton w={90} /> : <WeekSquares week={row.week} />}</div>
       <div className="cx-col-pay"><Tone tone={pay.tone}>{pay.label}</Tone></div>
       <div className={`todo ${row.todo?.severity ? "" : "ok"}`}>{row.loading ? <Skeleton w={160} /> : row.todo.text}</div>
@@ -167,14 +174,15 @@ function CardRow({ row, onClick }) {
       <div className="row">
         <Avatar name={row.name} />
         <div className="name">{row.name}</div>
+        {row.manual && <span className="cx-tag">Not on app</span>}
         <Icon.Chevron />
       </div>
       <div className="facts">
-        <div><span className="k">Last workout</span>{row.loading ? <Skeleton w={60} /> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
+        <div><span className="k">Last workout</span>{row.loading ? <Skeleton w={60} /> : row.manual ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
         <div><span className="k">This week</span>{row.loading ? <Skeleton w={60} /> : <WeekSquares week={row.week} />}</div>
         <div><span className="k">Payment</span><Tone tone={pay.tone}>{pay.label}</Tone></div>
       </div>
-      {!row.loading && row.todo?.severity && <div className="todo">{row.todo.text}</div>}
+      {!row.loading && (row.todo?.severity || row.manual) && <div className={`todo ${row.manual ? "cx-muted" : ""}`}>{row.todo.text}</div>}
     </button>
   );
 }

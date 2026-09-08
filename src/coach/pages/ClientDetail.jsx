@@ -13,6 +13,8 @@ const TABS = [
   { id: "body", label: "Body" },
   { id: "payments", label: "Payments" },
 ];
+// Name-only clients have no app, so there is nothing to show for progress or body.
+const MANUAL_TABS = TABS.filter((t) => t.id === "plan" || t.id === "payments");
 
 /**
  * Everything about one client. Rendered in the laptop side panel, the tablet
@@ -25,11 +27,15 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
   // The tab is owned by the shell (so it survives the plan editor opening and
   // closing). Until the coach picks one, land on the tab the "what to do"
   // line points at — once that line is known.
-  const suggested = todo?.tab && TABS.some((t) => t.id === todo.tab) ? todo.tab : "plan";
-  const tab = controlledTab || (todo ? suggested : "plan");
+  const manual = Boolean(link.manual);
+  const tabs = manual ? MANUAL_TABS : TABS;
+  const suggested = todo?.tab && tabs.some((t) => t.id === todo.tab) ? todo.tab : "plan";
+  const tab = controlledTab && tabs.some((t) => t.id === controlledTab) ? controlledTab : (todo ? suggested : "plan");
   const setTab = (t) => onTab?.(t);
 
-  const statusLine = todo?.severity
+  const statusLine = manual
+    ? <span className="cx-muted">Not on the app yet</span>
+    : todo?.severity
     ? <Tone tone={todo.severity === "urgent" ? "bad" : todo.severity === "warn" ? "attention" : "ok"} bold>{todo.text}</Tone>
     : todo ? <span className="cx-muted">{todo.text}</span> : null;
 
@@ -45,11 +51,14 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       </div>
 
       <div className="cx-actions-2">
-        <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>
+        {manual
+          ? <Button icon={<Icon.Link size={16} />} onClick={() => actions.linkClient(athleteId)}>Connect to account</Button>
+          : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
         <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
       </div>
+      {manual && <div className="cx-small cx-muted">Added by name. Progress and messages start once they join the app with your code.</div>}
 
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
       {loading || !data ? (
         <div className="cx-col"><span className="cx-skel" style={{ height: 18, width: "60%" }} /><span className="cx-skel" style={{ height: 120 }} /><span className="cx-skel" style={{ height: 60 }} /></div>
@@ -78,7 +87,9 @@ function PlanTab({ data, row, actions }) {
   if (!routine || trainingDays.length === 0) {
     return (
       <Empty title="No plan yet" action={<Button variant="primary" icon={<Icon.Edit />} onClick={() => actions.editPlan(athleteId)}>Build a plan</Button>}>
-        Give {row.name.split(" ")[0]} a week of workouts, or assign one of your saved plans from the Plans page.
+        {row.link.manual
+          ? `Give ${row.name.split(" ")[0]} a week of workouts, then export it to Excel to hand over.`
+          : `Give ${row.name.split(" ")[0]} a week of workouts, or assign one of your saved plans from the Plans page.`}
       </Empty>
     );
   }

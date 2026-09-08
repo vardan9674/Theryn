@@ -4,6 +4,7 @@
 // PR, one with a late payment, and several on track.
 import React from "react";
 import { isoDate } from "../lib/format.js";
+import { manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -105,7 +106,15 @@ function makeState() {
     { id: "t3", owner_coach_id: COACH_ID, name: "Marathon Strength", version: 1, visibility: "private", created_at: daysAgo(2).toISOString(), updated_at: daysAgo(1).toISOString(), assignment_count: 0, days: [] },
   ];
   const assignments = { t1: ["a1", "a2", "a4"], t2: ["a3", "a5", "a6"], t3: [] };
-  return { links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, listeners: new Set() };
+  // One name-only client to start with: has a plan and a fee, no app account.
+  const manual = [{
+    id: "m1", coach_id: COACH_ID, first_name: "Ravi", last_name: "Patel", created_at: daysAgo(20).toISOString(), updated_at: daysAgo(2).toISOString(),
+    plan: JSON.parse(JSON.stringify(FULLBODY)),
+    fee: { amount: 100, currency: "USD", cadence: "monthly", start_date: isoDate(daysAgo(20)), active: true },
+    payments: [{ id: "mp1", amount: 100, currency: "USD", received_date: isoDate(daysAgo(20)), notes: "cash" }],
+    notes: null,
+  }];
+  return { links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, listeners: new Set() };
 }
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -155,13 +164,46 @@ export function createMockCoachData() {
     defaultCurrency: "USD",
     unitSystem: "imperial",
 
-    async loadClients() { await wait(150); return st.links.slice(); },
+    manualClientsAvailable: true,
+    async loadClients() { await wait(150); return [...st.links, ...st.manual.map(manualToClient)]; },
     async loadClientData(athleteId) {
       await wait(200 + Math.random() * 300);
+      const mid = manualIdOf(athleteId);
+      if (mid) { const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists."); return manualClientData(row); }
       return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" } };
     },
-    async saveClientRoutine(athleteId, templates) { await wait(300); st.routines[athleteId] = JSON.parse(JSON.stringify(templates)); return { routineId: "r-" + athleteId, forked: true }; },
-    async removeClient(linkId) { await wait(200); st.links = st.links.filter((l) => l.id !== linkId); },
+    async saveClientRoutine(athleteId, templates) {
+      await wait(300);
+      const mid = manualIdOf(athleteId);
+      if (mid) { const row = st.manual.find((m) => m.id === mid); row.plan = JSON.parse(JSON.stringify(templates)); return { routineId: "manual", forked: false }; }
+      st.routines[athleteId] = JSON.parse(JSON.stringify(templates)); return { routineId: "r-" + athleteId, forked: true };
+    },
+    async removeClient(linkId) {
+      await wait(200);
+      const mid = manualIdOf(linkId);
+      if (mid) { st.manual = st.manual.filter((m) => m.id !== mid); return; }
+      st.links = st.links.filter((l) => l.id !== linkId);
+    },
+    async createManualClient({ firstName, lastName }) {
+      await wait(250);
+      const name = cleanName(firstName, lastName);
+      if (!name.first_name) throw new Error("A first name is needed.");
+      const row = { id: "m" + randomId().slice(0, 6), coach_id: COACH_ID, ...name, plan: null, fee: null, payments: [], notes: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      st.manual.push(row);
+      return manualToClient(row);
+    },
+    async linkManualClient(clientId, athleteId) {
+      await wait(400);
+      const mid = manualIdOf(clientId);
+      const row = st.manual.find((m) => m.id === mid);
+      if (!row) throw new Error("This client no longer exists.");
+      if (row.plan) st.routines[athleteId] = JSON.parse(JSON.stringify(row.plan));
+      const fee = manualFeeRow(row);
+      if (fee) st.fees = [...st.fees.filter((f) => f.athlete_id !== athleteId), { ...fee, id: "fee-" + athleteId, athlete_id: athleteId }];
+      for (const p of manualPaymentRows(row)) st.payments.push({ ...p, id: uid(), athlete_id: athleteId });
+      st.manual = st.manual.filter((m) => m.id !== mid);
+      return { moved: { plan: Boolean(row.plan), fee: Boolean(fee), payments: manualPaymentRows(row).length } };
+    },
     async ensureInviteCode() { await wait(100); return "THRYN4K2P"; },
     async findProfileByCode(code) { await wait(200); return code.toUpperCase() === "NEWBIE" ? { id: "a7", display_name: "New Client" } : null; },
     async addClientByCode(code) {
@@ -179,23 +221,46 @@ export function createMockCoachData() {
       return list.slice(0, 12);
     },
 
-    async loadFees() { await wait(120); return st.fees.slice(); },
-    async loadPayments() { await wait(120); return st.payments.slice().sort((a, b) => (a.received_date < b.received_date ? 1 : -1)); },
+    async loadFees() { await wait(120); return [...st.fees, ...st.manual.map((r) => manualFeeRow(r)).filter(Boolean)]; },
+    async loadPayments() { await wait(120); return [...st.payments, ...st.manual.flatMap(manualPaymentRows)].sort((a, b) => (a.received_date < b.received_date ? 1 : -1)); },
     async upsertFee(athleteId, input) {
       await wait(200);
+      const mid = manualIdOf(athleteId);
+      if (mid) {
+        const row = st.manual.find((m) => m.id === mid);
+        row.fee = { amount: Number(input.amount), currency: input.currency || "USD", cadence: input.cadence || "monthly", start_date: input.start_date || isoDate(), active: input.active !== false, notes: input.notes ?? null };
+        return manualFeeRow(row);
+      }
       const existing = st.fees.find((f) => f.athlete_id === athleteId);
       const fee = { id: existing?.id || "fee-" + athleteId, coach_id: COACH_ID, athlete_id: athleteId, amount: Number(input.amount), currency: input.currency || "USD", cadence: input.cadence || "monthly", start_date: input.start_date || isoDate(), active: input.active !== false, notes: input.notes ?? null };
       st.fees = [...st.fees.filter((f) => f.athlete_id !== athleteId), fee];
       return fee;
     },
-    async deleteFee(id) { await wait(150); st.fees = st.fees.filter((f) => f.id !== id); },
+    async deleteFee(id) {
+      await wait(150);
+      const m = parseManualFeeId(id);
+      if (m) { const row = st.manual.find((x) => x.id === m.manualId); if (row) row.fee = null; return; }
+      st.fees = st.fees.filter((f) => f.id !== id);
+    },
     async savePayment(athleteId, input) {
       await wait(200);
+      const mid = manualIdOf(athleteId);
+      if (mid) {
+        const row = st.manual.find((m) => m.id === mid);
+        const entry = { id: randomId(), amount: Number(input.amount), currency: input.currency || "USD", received_date: input.received_date || isoDate(), notes: input.notes ?? null, created_at: new Date().toISOString() };
+        row.payments = [...row.payments, entry];
+        return manualPaymentRows(row).find((p) => p.id.endsWith(":" + entry.id));
+      }
       const p = { id: uid(), coach_id: COACH_ID, athlete_id: athleteId, amount: Number(input.amount), currency: input.currency || "USD", received_date: input.received_date || isoDate(), notes: input.notes ?? null };
       st.payments = [p, ...st.payments];
       return p;
     },
-    async deletePayment(id) { await wait(150); st.payments = st.payments.filter((p) => p.id !== id); },
+    async deletePayment(id) {
+      await wait(150);
+      const m = parseManualPaymentId(id);
+      if (m) { const row = st.manual.find((x) => x.id === m.manualId); if (row) row.payments = row.payments.filter((p) => p.id !== m.paymentId); return; }
+      st.payments = st.payments.filter((p) => p.id !== id);
+    },
 
     async loadPreviews() {
       await wait(120);
