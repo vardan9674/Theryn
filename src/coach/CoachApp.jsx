@@ -11,7 +11,7 @@ import PaymentsPage, { RecordPaymentSheet, FeeSheet } from "./pages/PaymentsPage
 import MessagesPage from "./pages/MessagesPage.jsx";
 import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
-import { AddClientSheet, ProfileSheet } from "./pages/Sheets.jsx";
+import { AddClientSheet, ProfileSheet, LinkClientSheet } from "./pages/Sheets.jsx";
 import { consumeBackPress } from "../lib/backStack.ts";
 import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
@@ -80,6 +80,8 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const refreshClients = React.useCallback(async () => {
     try { setClients(await data.loadClients()); onLinksChanged?.(); } catch (e) { toast(`Could not refresh clients: ${e.message}`, "error"); }
   }, [data, onLinksChanged, toast]);
+  // Clients who are on the app (name-only clients have no messages, workouts, or template assignments).
+  const realClients = React.useMemo(() => clients.filter((c) => !c.manual), [clients]);
 
   // Selected client persists per coach; drop it if they are no longer a client.
   const setSelectedId = React.useCallback((id) => {
@@ -100,15 +102,15 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
   // Message previews + unread badge
   const refreshPreviews = React.useCallback(() => {
-    if (clients.length === 0) return;
-    data.loadPreviews(clients).then(setPreviews).catch(() => {});
-  }, [data, clients]);
+    if (realClients.length === 0) return;
+    data.loadPreviews(realClients).then(setPreviews).catch(() => {});
+  }, [data, realClients]);
   React.useEffect(() => { refreshPreviews(); }, [refreshPreviews]);
-  React.useEffect(() => data.subscribeMessages(clients, () => refreshPreviews()), [data, clients, refreshPreviews]);
+  React.useEffect(() => data.subscribeMessages(realClients, () => refreshPreviews()), [data, realClients, refreshPreviews]);
   const unread = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
 
   // Live data: an athlete logs a workout or body data → refresh their facts
-  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) cache.load(athleteId, { force: true }).catch(() => {}); }), [data, clients, cache]);
+  React.useEffect(() => data.subscribeLiveData(realClients, (athleteId) => { if (athleteId) cache.load(athleteId, { force: true }).catch(() => {}); }), [data, realClients, cache]);
 
   // Native: catch-up notification on resume, Android back, deep links, foreground toasts
   React.useEffect(() => {
@@ -161,6 +163,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     editFee: (id) => setSheet({ kind: "fee", athleteId: id }),
     deletePayment: (p) => setSheet({ kind: "deletePayment", payment: p }),
     addClient: () => setSheet({ kind: "addClient" }),
+    linkClient: (id) => setSheet({ kind: "linkClient", athleteId: id }),
     profile: () => setSheet({ kind: "profile" }),
     editPlan: (id) => setEditor({ athleteId: id }),
     exportPlan: (id) => {
@@ -235,11 +238,11 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         ) : tab === "clients" ? (
           <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} detailTab={detailTab} onDetailTab={setDetailTab} />
         ) : tab === "plans" ? (
-          <PlansPage clients={clients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
+          <PlansPage clients={realClients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
         ) : tab === "payments" ? (
           <PaymentsPage clients={clients} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} actions={actions} />
         ) : (
-          <MessagesPage clients={clients} previews={previews} refreshPreviews={refreshPreviews} openAthleteId={msgOpen} onOpen={setMsgOpen} />
+          <MessagesPage clients={realClients} previews={previews} refreshPreviews={refreshPreviews} openAthleteId={msgOpen} onOpen={setMsgOpen} />
         )}
       </main>
 
@@ -261,8 +264,10 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onDelete={sheetFee ? async () => { await data.deleteFee(sheetFee.id); setFees((f) => f.filter((x) => x.id !== sheetFee.id)); toast("Fee removed"); } : null} />
       <Confirm open={sheet?.kind === "deletePayment"} title="Delete this payment?" body="This only removes the record. It doesn't move any money." confirmLabel="Delete" danger onClose={() => setSheet(null)}
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
-      <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={refreshClients} />
-      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={refreshClients} />
+      <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
+      <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
+        onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
+      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} />
       <ExportExcelDialog open={Boolean(exportReq)} onClose={() => setExportReq(null)} {...(exportReq || {})} />
     </div>
   );
