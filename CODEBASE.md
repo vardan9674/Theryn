@@ -1,5 +1,7 @@
 # Theryn — Codebase Reference
 
+> **STALE as of 2026-09-08.** This file describes the codebase on 2026-04-19. App.jsx is now 7,695 lines, `src/components/` and eleven hooks exist, and messaging, payments, templates, and server push were added. The current map is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the log of what changed is [docs/WORKLOG.md](docs/WORKLOG.md). Kept for the sections that are still accurate: design tokens, platform detection, Android build matrix, gotchas.
+
 > **Purpose of this file**: Give any AI assistant or new developer a complete mental model of this project in a single read. Start here. No other file needs to be read first.
 
 ---
