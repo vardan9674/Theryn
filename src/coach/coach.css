@@ -32,7 +32,7 @@
   -webkit-font-smoothing: antialiased;
 }
 .cx-app *, .cx-app *::before, .cx-app *::after { box-sizing: border-box; }
-.cx-app button { font-family: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cx-app button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .cx-app button:disabled { cursor: not-allowed; opacity: 0.55; }
 .cx-app input, .cx-app textarea, .cx-app select { font-family: inherit; color: var(--cx-tx); }
 .cx-app a { color: var(--cx-a); }
@@ -117,11 +117,11 @@
 }
 .cx-btn:hover { background: var(--cx-s2); }
 .cx-btn:active { transform: scale(0.98); }
-.cx-btn-primary { background: var(--cx-a); color: var(--cx-bg); border-color: var(--cx-a); font-weight: 700; }
+.cx-app .cx-btn-primary { background: var(--cx-a); color: var(--cx-bg); border-color: var(--cx-a); font-weight: 700; }
 .cx-btn-primary:hover { background: #D9FF4D; }
 .cx-btn-soft { background: var(--cx-s2); border-color: var(--cx-s2); }
 .cx-btn-soft:hover { background: var(--cx-s3); }
-.cx-btn-danger { color: var(--cx-red); border-color: rgba(255, 92, 92, 0.35); }
+.cx-app .cx-btn-danger { color: var(--cx-red); border-color: rgba(255, 92, 92, 0.35); }
 .cx-btn-sm { height: 36px; padding: 0 12px; font-size: 13px; border-radius: 8px; }
 .cx-btn-block { width: 100%; }
 .cx-btn-icon { width: 44px; padding: 0; }
