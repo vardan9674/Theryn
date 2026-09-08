@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `docs/` folder: ARCHITECTURE, ROADMAP, WORKLOG, OBSERVABILITY, and numbered decision records. See `docs/README.md` for the tracking rule.
+- `supabase/migrations/_recovered_push_notifications/`: the five push-notification migrations (device_tokens, notify_outbox, enqueue and claim RPCs, triggers, cron) that previously existed only in an untracked agent worktree. Service-role token redacted. Not applied automatically.
+
+### Changed
+- `CODEBASE.md` marked stale with a pointer to `docs/ARCHITECTURE.md`.
+
 ## [1.5.0] - 2026-04-17
 
 ### Added
