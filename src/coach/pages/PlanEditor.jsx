@@ -103,6 +103,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
       const res = await data.saveClientRoutine(client.athlete_id, templates);
       setDirty(false);
       if (res?.routineId === "offline_saved") toast(`Saved on this device. It will reach ${firstName} when you're back online.`);
+      else if (client.manual) toast("Plan saved.");
       else toast(`Saved and sent to ${firstName}.`);
       onSaved(templates);
     } catch (e) {
@@ -120,11 +121,11 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
         <Button size="sm" icon={<Icon.Back />} onClick={requestClose} aria-label="Cancel editing">{vp === "phone" ? null : "Back"}</Button>
         <div className="title">{firstName}'s plan{dirty && <span className="cx-muted" style={{ fontWeight: 400 }}> · unsaved</span>}</div>
         {vp !== "phone" && <Button size="sm" onClick={() => onSaved(null, { export: true, templates: toTemplates(days) })} icon={<Icon.Sheet />}>Export to Excel</Button>}
-        <Button variant="primary" size={vp === "phone" ? "sm" : undefined} onClick={save} disabled={saving || !dirty}>{saving ? "Saving…" : vp === "phone" ? "Save" : `Save and send to ${firstName}`}</Button>
+        <Button variant="primary" size={vp === "phone" ? "sm" : undefined} onClick={save} disabled={saving || !dirty}>{saving ? "Saving…" : vp === "phone" || client.manual ? "Save plan" : `Save and send to ${firstName}`}</Button>
       </div>
 
       {vp !== "phone" && (
-        <div className="cx-small cx-muted" style={{ padding: "12px 24px 0" }}>Changes here only affect {firstName}. Drag the handle to reorder. Pick "Rest" to clear a day.</div>
+        <div className="cx-small cx-muted" style={{ padding: "12px 24px 0" }}>{client.manual ? `${firstName} isn't on the app, so export this plan to Excel when you're done. ` : `Changes here only affect ${firstName}. `}Drag the handle to reorder. Pick "Rest" to clear a day.</div>
       )}
 
       {vp === "phone" && (

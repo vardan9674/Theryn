@@ -135,6 +135,7 @@
   font-size: 14px; color: var(--cx-tx2); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; flex: none;
 }
 .cx-chip[aria-pressed="true"] { background: var(--cx-s2); border-color: var(--cx-s2); color: var(--cx-tx); font-weight: 600; }
+.cx-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--cx-mu); border: 1px solid var(--cx-bd2); white-space: nowrap; flex: none; }
 .cx-pill {
   display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px;
   font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;

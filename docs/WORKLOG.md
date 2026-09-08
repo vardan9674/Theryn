@@ -28,6 +28,11 @@ Newest first. One entry per working session. Record what was done, what was foun
 - Minor: client detail forgot its tab after the plan editor closed (tab state lifted to the shell); push modal showed "Template saved ✓ … v." (copy props added); Plans export spoke of the plan as a person; 7 editor columns clipped names at 1440 (now 4 columns until 1560px); phone tap targets under 44px; paused fee read "No fee set"; autocomplete opened on empty input; BMI hint shown when BMI existed; plan cards missing version; toast covered the chat input on wide screens; grip handle too faint; old template editor back button had no label.
 - Also: primary/danger button text was inheriting near-white (reported by the owner from the live page).
 
+**Added: name-only clients (owner request)**
+- Coach can add a client by first and last name for people who don't have the app. New table `coach_manual_clients` (migration `20260909120000_coach_manual_clients.sql`) holds the plan, fee and payments as JSON. They appear in the Clients table with a "Not on app" tag; Plan (editor + Excel export) and Payments work; Progress, Body and Messages are hidden. "Connect to account" moves plan, fee and payments onto a real account once the person joins with the coach's code, then removes the name-only row.
+- The data layer degrades if the table is missing: the list loads without name-only clients and adding one shows the exact migration file to run. Apply it in the SQL editor (see OBSERVABILITY.md) until migration history is reconciled (Roadmap 0.3).
+- Verified in the preview: add by name, table tag, detail tabs, editor labels, connect flow (plan + fee + 1 payment moved). Unit tests for the id/shape helpers. Typecheck, tests, build pass.
+
 **Open**
 - Owner to try the branch preview with a real account (Vercel preview URL on PR #38).
 - Delete the old coach code from App.jsx (follow-up PR).

@@ -73,6 +73,15 @@ where n.nspname = 'public' and p.prosecdef
   and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%');
 ```
 
+Name-only clients (added by the coach without an app account):
+
+```sql
+select id, first_name, last_name, jsonb_array_length(payments) as payments, fee is not null as has_fee, plan is not null as has_plan, updated_at
+from coach_manual_clients order by updated_at desc;
+```
+
+If that query says the table does not exist, run `supabase/migrations/20260909120000_coach_manual_clients.sql` here in the SQL editor.
+
 ## 3. From the terminal
 
 ```bash
