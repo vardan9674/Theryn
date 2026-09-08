@@ -10,7 +10,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Update the status in place and
 | 0.2 | Rotate the Supabase service-role key; re-create the cron job reading the key from Vault; re-set `FCM_SERVICE_ACCOUNT_JSON` | todo | Do in the dashboard. See OBSERVABILITY.md for the cron query |
 | 0.3 | Reconcile migration history: `supabase db pull`, compare, `supabase migration repair`, renumber to timestamps | todo | Do not run `db push` before this is clean |
 | 0.4 | Remove the 18 agent worktrees and 31 merged `claude/*` branches | todo | Only after 0.1 is merged |
-| 0.5 | Add `typecheck` script, GitHub Actions workflow (typecheck + build on PR), and an error boundary around `<App />` | todo | First CI |
+| 0.5 | Add `typecheck` script, GitHub Actions workflow (typecheck + build on PR), and an error boundary around `<App />` | doing | `typecheck`/`test` scripts and ErrorBoundary landed with 1.9; workflow still todo |
 | 0.6 | Database hardening migration: `SET search_path` on all DEFINER functions; `auth.uid()` checks in `search_exercises` and `get_last_set_values`; `routines_archive` insert policy to `WITH CHECK (false)`; FCM dead-token detection narrowed; `workout_sessions.routine_day_id ON DELETE SET NULL` | todo | One migration, reviewed |
 | 0.7 | Delete dead code: `useAuth.ts`, `useActiveSession.ts` (or wire it), `components/LoginScreen.jsx`, `CoachRecordsTab`, duplicate `SwipeRow`, root prototypes | todo | |
 
@@ -26,7 +26,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Update the status in place and
 | 1.6 | Sign in with Apple on iOS | todo | Required by App Store guideline 4.8 |
 | 1.7 | Email/password signup | todo | Supported by the existing auth server |
 | 1.8 | Mobile build workflow (Fastlane or EAS-style script) | todo | |
-| 1.9 | Coach dashboard rebuild per decision 0005 (Direction B): four areas, client table home, client page with tabs, plan editor, Export to Excel | todo | Design canvas "Theryn Coach Dashboard"; do after 1.3 so the split lands in the new structure |
+| 1.9 | Coach dashboard rebuild per decision 0005 (Direction B): four areas, client table home, client page with tabs, plan editor, Export to Excel | doing | Branch `feat/coach-dashboard-b`, new code under `src/coach/`; dev preview at `/?coachPreview=1`; old coach code in App.jsx removed in a follow-up PR |
 
 ## Phase 2 — Analytics lakehouse (learning project, runs in parallel after 0.3)
 
