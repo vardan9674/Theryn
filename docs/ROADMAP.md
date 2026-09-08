@@ -26,6 +26,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Update the status in place and
 | 1.6 | Sign in with Apple on iOS | todo | Required by App Store guideline 4.8 |
 | 1.7 | Email/password signup | todo | Supported by the existing auth server |
 | 1.8 | Mobile build workflow (Fastlane or EAS-style script) | todo | |
+| 1.9 | Coach dashboard rebuild per decision 0005 (Direction B): four areas, client table home, client page with tabs, plan editor, Export to Excel | todo | Design canvas "Theryn Coach Dashboard"; do after 1.3 so the split lands in the new structure |
 
 ## Phase 2 — Analytics lakehouse (learning project, runs in parallel after 0.3)
 

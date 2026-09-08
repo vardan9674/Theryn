@@ -34,6 +34,10 @@ Newest first. One entry per working session. Record what was done, what was foun
 - 0003 Stay on Supabase cloud free tier; self-host only with a concrete reason.
 - 0004 Google sign-in stays; Apple sign-in is required before iOS App Store submission.
 
+**Design**
+- Audited the coach web UI: 7 tabs, no home, picker disappears after selection, edit hidden behind a chip, jargon, no export.
+- Mocked three directions (A Today-first, B table + side panel, C six verbs) on the Claude Design canvas "Theryn Coach Dashboard". Owner chose B. Built B out to 6 laptop + 6 phone screens including Export to Excel. Decision 0005.
+
 **Open**
 - Rotate the service-role key and move the cron job secret to Vault (Roadmap 0.2).
 - Reconcile migration history (Roadmap 0.3).
