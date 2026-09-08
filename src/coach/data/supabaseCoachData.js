@@ -115,7 +115,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     duplicateTemplate: (id, name) => duplicateTemplate(id, name, coachId),
     softDeleteTemplate,
     assignTemplate,
-    pushTemplateUpdate,
+    pushTemplateUpdate: (id, athleteIds, force, skipMidWeek) => pushTemplateUpdate(id, athleteIds, { force: Boolean(force), skipMidWeek: skipMidWeek !== false }),
     unassignTemplate,
     getTemplateAssignments,
     getActiveAssignmentsForAthletes,

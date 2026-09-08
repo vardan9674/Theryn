@@ -132,10 +132,11 @@ export function useViewport() {
   };
   const [vp, setVp] = React.useState(get);
   React.useEffect(() => {
-    let raf = 0;
-    const onResize = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setVp(get())); };
+    let t = 0;
+    const onResize = () => { clearTimeout(t); t = setTimeout(() => setVp(get()), 80); };
     window.addEventListener("resize", onResize);
-    return () => { window.removeEventListener("resize", onResize); cancelAnimationFrame(raf); };
+    window.addEventListener("orientationchange", onResize);
+    return () => { window.removeEventListener("resize", onResize); window.removeEventListener("orientationchange", onResize); clearTimeout(t); };
   }, []);
   return vp;
 }
