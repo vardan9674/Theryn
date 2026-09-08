@@ -71,10 +71,19 @@ describe("payment fact", () => {
     const p = paymentFact(fee, [{ id: "p", coach_id: "c", athlete_id: "a", amount: 120, currency: "USD", received_date: "2026-09-02", notes: null }], "USD", NOW);
     expect(p.status).toBe("paid");
   });
-  it("due with a day word inside the cycle", () => {
+  it("late by N days when the cycle started and nothing was paid", () => {
+    // Monthly anchored on the 1st; NOW is the 9th → 8 days into the cycle.
     const p = paymentFact(fee, [], "USD", NOW);
+    expect(p.status).toBe("overdue");
+    expect(p.label).toBe("Late by 8 days");
+  });
+  it("due today on the first day of a cycle", () => {
+    const p = paymentFact({ ...fee, start_date: "2026-09-09" }, [], "USD", NOW);
     expect(p.status).toBe("due");
-    expect(p.label.startsWith("Due")).toBe(true);
+    expect(p.label).toBe("Due today");
+  });
+  it("paused when the fee is switched off", () => {
+    expect(paymentFact({ ...fee, active: false }, [], "USD", NOW).label).toBe("Paused");
   });
   it("no fee set when there is no fee", () => {
     expect(paymentFact(null, [], "USD", NOW).label).toBe("No fee set");

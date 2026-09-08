@@ -9,7 +9,7 @@ import ClientDetail from "./ClientDetail.jsx";
  * client open beside the table on laptop, in a drawer on tablet, or as a full
  * page on phone.
  */
-export default function ClientsPage({ clients, cache, selectedId, onSelect, fees, payments, defaultCurrency, search, actions }) {
+export default function ClientsPage({ clients, cache, selectedId, onSelect, fees, payments, defaultCurrency, search, actions, detailTab, onDetailTab }) {
   const vp = useViewport();
   const [filter, setFilter] = React.useState("all");
 
@@ -60,7 +60,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
     return (
       <div className="cx-page" style={{ paddingTop: 8 }}>
         <button type="button" className="cx-back" onClick={() => onSelect(null)}><Icon.Back /> Clients</button>
-        <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} />
+        <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} tab={detailTab} onTab={onDetailTab} />
       </div>
     );
   }
@@ -110,7 +110,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         <div className="cx-split-main">{list}</div>
         <aside className="cx-panel" aria-label="Selected client">
           {selected
-            ? <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} onClose={() => onSelect(null)} />
+            ? <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} tab={detailTab} onTab={onDetailTab} onClose={() => onSelect(null)} />
             : <Empty title="Pick a client">Click a row to see their plan, progress, body data, and payments here.</Empty>}
         </aside>
       </div>
@@ -125,7 +125,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         <>
           <div className="cx-drawer-backdrop" onClick={() => onSelect(null)} />
           <div className="cx-drawer" role="dialog" aria-label={selected.name}>
-            <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} onClose={() => onSelect(null)} />
+            <ClientDetail row={selected} actions={actions} defaultCurrency={defaultCurrency} fees={fees} payments={payments} tab={detailTab} onTab={onDetailTab} onClose={() => onSelect(null)} />
           </div>
         </>
       )}

@@ -311,7 +311,7 @@ export default function TemplateEditor({ template, initialDays, myAthletes, onSa
         display:"flex", alignItems:"center", gap:10,
         position:"sticky", top:0, background:BG, zIndex:10,
       }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", color:SB, fontSize:22, cursor:"pointer", padding:0, lineHeight:1, flexShrink:0 }}>←</button>
+        <button onClick={onBack} aria-label="Back" style={{ background:"none", border:"none", color:SB, fontSize:22, cursor:"pointer", padding:0, lineHeight:1, flexShrink:0 }}>←</button>
 
         {/* Editable template name */}
         <div style={{ flex:1, minWidth:0 }}>

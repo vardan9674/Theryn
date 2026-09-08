@@ -226,6 +226,7 @@ function ExerciseSearch({ value, onChange, autoFocus }) {
   React.useEffect(() => {
     if (!open) return;
     const id = ++reqRef.current;
+    if ((value || "").trim().length < 2) { setResults([]); return; }
     const t = setTimeout(() => {
       data.searchExercises(value).then((r) => { if (reqRef.current === id) { setResults(r.slice(0, 10)); setHi(0); } }).catch(() => setResults([]));
     }, 180);
@@ -248,7 +249,7 @@ function ExerciseSearch({ value, onChange, autoFocus }) {
   };
   return (
     <div className="cx-ac" ref={wrapRef}>
-      <input ref={inputRef} value={value} placeholder="Exercise name" aria-label="Exercise name" aria-autocomplete="list" aria-expanded={open}
+      <input ref={inputRef} value={value} title={value || undefined} placeholder="Exercise name" aria-label="Exercise name" aria-autocomplete="list" aria-expanded={open}
         onChange={(e) => { onChange(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
         style={{ width: "100%", background: "none", border: "none", outline: "none", fontSize: "inherit", fontWeight: 600, color: "var(--cx-tx)", padding: "6px 0", minHeight: 32 }} />
       {open && results.length > 0 && (

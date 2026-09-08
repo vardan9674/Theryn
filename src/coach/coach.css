@@ -152,6 +152,14 @@
   font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; letter-spacing: -0.02em;
 }
 .cx-avatar-lg { width: 52px; height: 52px; font-size: 18px; }
+.cx-avatar-btn { width: 44px; height: 44px; background: none; border: none; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+
+/* Phone: every control is at least 44px tall */
+@media (max-width: 767px) {
+  .cx-btn-sm { height: 44px; padding: 0 14px; font-size: 14px; }
+  .cx-btn-icon.cx-btn-sm { width: 44px; }
+  .cx-chip { height: 44px; }
+}
 .cx-avatar-sm { width: 32px; height: 32px; font-size: 12px; }
 .cx-empty { text-align: center; padding: 48px 20px; color: var(--cx-mu); font-size: 14px; line-height: 1.5; }
 .cx-empty b { color: var(--cx-tx); display: block; font-size: 17px; margin-bottom: 6px; }
@@ -280,7 +288,7 @@
 .cx-excard.dragging { opacity: 0.5; }
 .cx-excard .hd { display: flex; align-items: center; gap: 8px; }
 .cx-excard .hd .nm { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cx-grip { color: #585858; display: flex; align-items: center; touch-action: none; cursor: grab; width: 24px; height: 32px; justify-content: center; flex: none; }
+.cx-grip { color: var(--cx-mu); display: flex; align-items: center; touch-action: none; cursor: grab; width: 24px; height: 32px; justify-content: center; flex: none; }
 .cx-numgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .cx-numgrid label { font-size: 11px; color: var(--cx-mu); display: block; margin-bottom: 3px; }
 .cx-num { height: 40px; width: 100%; border-radius: 7px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); text-align: center; font-size: 15px; font-weight: 600; padding: 0 6px; }
@@ -380,7 +388,7 @@
   .cx-overlay { align-items: center; padding: 24px; }
   .cx-sheet { max-width: 640px; border-radius: 16px; border-bottom: 1px solid var(--cx-bd2); padding: 20px 24px 24px; }
   .cx-sheet-grip { display: none; }
-  .cx-toast { bottom: 24px; }
+  .cx-toast { bottom: auto; top: calc(var(--cx-nav-h) + 12px); }
   .cx-daycols { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px 24px 32px; }
   .cx-daystrip { display: none; }
   .cx-daycol { min-height: 200px; }
@@ -410,7 +418,7 @@
   .cx-col-week { display: block; }
   .cx-trow, .cx-thead { grid-template-columns: minmax(180px, 1.2fr) 130px 150px 120px minmax(160px, 2fr) 32px; }
   .cx-drawer, .cx-drawer-backdrop { display: none; }
-  .cx-daycols { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cx-daycols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cx-daycol { min-height: 320px; }
   .cx-numgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .cx-num { height: 32px; font-size: 13px; padding: 0 4px; }
@@ -419,8 +427,9 @@
   .cx-convlist { width: 380px; }
 }
 
-@media (min-width: 1100px) and (max-width: 1299px) {
-  .cx-daycols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Seven columns only when each gets ~210px or more, so exercise names stay readable */
+@media (min-width: 1560px) {
+  .cx-daycols { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

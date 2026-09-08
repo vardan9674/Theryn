@@ -18,13 +18,16 @@ const TABS = [
  * Everything about one client. Rendered in the laptop side panel, the tablet
  * drawer, and as a full page on phone. `row` comes from ClientsPage.
  */
-export default function ClientDetail({ row, actions, defaultCurrency, fees, payments, onClose }) {
-  const [tab, setTab] = React.useState("plan");
+export default function ClientDetail({ row, actions, defaultCurrency, fees, payments, onClose, tab: controlledTab, onTab }) {
   const { link, data, loading, todo, payment } = row;
   const athleteId = link.athlete_id;
 
-  // Jump to the tab the "what to do" line points at when the client changes.
-  React.useEffect(() => { setTab(todo?.tab && TABS.some((t) => t.id === todo.tab) ? todo.tab : "plan"); }, [athleteId]);
+  // The tab is owned by the shell (so it survives the plan editor opening and
+  // closing). Until the coach picks one, land on the tab the "what to do"
+  // line points at — once that line is known.
+  const suggested = todo?.tab && TABS.some((t) => t.id === todo.tab) ? todo.tab : "plan";
+  const tab = controlledTab || (todo ? suggested : "plan");
+  const setTab = (t) => onTab?.(t);
 
   const statusLine = todo?.severity
     ? <Tone tone={todo.severity === "urgent" ? "bad" : todo.severity === "warn" ? "attention" : "ok"} bold>{todo.text}</Tone>
@@ -160,7 +163,8 @@ function BodyTab({ data }) {
         <div className="cx-card cx-stat"><span className="k">Change (2 wk)</span><span className="v" style={{ color: delta == null ? undefined : delta < 0 ? "var(--cx-a)" : "var(--cx-tx)" }}>{delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}`}</span></div>
         <div className="cx-card cx-stat"><span className="k">BMI</span><span className="v" style={{ color: cat?.color }}>{bmi ?? "—"}</span></div>
       </div>
-      {cat && <div className="cx-small cx-muted">BMI {bmi} is in the "{cat.label}" range. Needs height set in the client's profile.</div>}
+      {cat ? <div className="cx-small cx-muted">BMI {bmi} is in the "{cat.label}" range.</div>
+        : current ? <div className="cx-small cx-muted">BMI needs the client's height, which they set in their app.</div> : null}
       {weights && weights.length > 0 && (
         <div className="cx-card">
           <div className="cx-card-pad" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600 }}>Recent weigh-ins</div>

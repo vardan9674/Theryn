@@ -214,7 +214,7 @@ export function cycleEndForStart(cadence: Cadence, start: Date): Date {
   return end;
 }
 
-export type AthleteStatus = "paid" | "due" | "overdue" | "no_fee";
+export type AthleteStatus = "paid" | "due" | "overdue" | "paused" | "no_fee";
 
 export interface AthleteStatusInfo {
   status: AthleteStatus;
@@ -223,12 +223,18 @@ export interface AthleteStatusInfo {
   cycleStart: Date | null;
   cycleEnd: Date | null;
   fee: ClientFee | null;
+  /** Whole days since the current cycle began (0 = the cycle started today). */
+  daysIntoCycle: number | null;
 }
 
 /**
- * For a given athlete: paid if any payment lands in the current cycle,
- * overdue if the cycle has ended with no payment, due if the cycle is still
- * open. no_fee if no fee is configured (yet).
+ * A fee is expected on the day each billing cycle starts (the anchor date,
+ * repeated by cadence). For a given athlete:
+ *   paid    — a payment landed inside the current cycle
+ *   due     — the cycle started today and nothing has been paid yet
+ *   overdue — the cycle started 1+ days ago with no payment
+ *   paused  — a fee exists but is switched off
+ *   no_fee  — no fee configured
  */
 export function athletePaymentStatus(
   fee: ClientFee | null,
@@ -236,8 +242,11 @@ export function athletePaymentStatus(
   refDate: Date = new Date()
 ): AthleteStatusInfo {
   const lastPayment = athletePayments[0] || null;
-  if (!fee || !fee.active) {
-    return { status: "no_fee", label: "No fee set", lastPayment, cycleStart: null, cycleEnd: null, fee };
+  if (!fee) {
+    return { status: "no_fee", label: "No fee set", lastPayment, cycleStart: null, cycleEnd: null, fee, daysIntoCycle: null };
+  }
+  if (!fee.active) {
+    return { status: "paused", label: "Paused", lastPayment, cycleStart: null, cycleEnd: null, fee, daysIntoCycle: null };
   }
   const cycleStart = cycleStartForDate(fee.cadence, fee.start_date, refDate);
   const cycleEnd = cycleEndForStart(fee.cadence, cycleStart);
@@ -245,13 +254,16 @@ export function athletePaymentStatus(
     const d = atMidday(p.received_date);
     return d >= cycleStart && d <= cycleEnd;
   });
+  const ref = new Date(refDate);
+  ref.setHours(12, 0, 0, 0);
+  const daysIntoCycle = Math.max(0, Math.round((ref.getTime() - cycleStart.getTime()) / 86400000));
   if (matching) {
-    return { status: "paid", label: "Paid", lastPayment: matching, cycleStart, cycleEnd, fee };
+    return { status: "paid", label: "Paid", lastPayment: matching, cycleStart, cycleEnd, fee, daysIntoCycle };
   }
-  if (refDate > cycleEnd) {
-    return { status: "overdue", label: "Overdue", lastPayment, cycleStart, cycleEnd, fee };
+  if (daysIntoCycle >= 1) {
+    return { status: "overdue", label: `Late by ${daysIntoCycle} day${daysIntoCycle === 1 ? "" : "s"}`, lastPayment, cycleStart, cycleEnd, fee, daysIntoCycle };
   }
-  return { status: "due", label: "Due", lastPayment, cycleStart, cycleEnd, fee };
+  return { status: "due", label: "Due today", lastPayment, cycleStart, cycleEnd, fee, daysIntoCycle };
 }
 
 export interface MonthlySummary {

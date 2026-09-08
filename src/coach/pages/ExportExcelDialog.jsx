@@ -7,9 +7,10 @@ import { useCoachData } from "../data/CoachDataContext.jsx";
  * Shows the sheet before it is downloaded, with two plain options. Web
  * downloads the file; iOS/Android open the share sheet.
  */
-export default function ExportExcelDialog({ open, onClose, name, templates, history, unit = "lb" }) {
+export default function ExportExcelDialog({ open, onClose, name, templates, history, unit = "lb", subject = "client" }) {
   const data = useCoachData();
   const toast = useToast();
+  const isPlan = subject === "plan";
   const [includeLastWeights, setIncludeLastWeights] = React.useState(true);
   const [blankColumns, setBlankColumns] = React.useState(false);
   const [active, setActive] = React.useState(0);
@@ -17,17 +18,19 @@ export default function ExportExcelDialog({ open, onClose, name, templates, hist
 
   React.useEffect(() => { if (open) { setActive(0); setBusy(false); } }, [open]);
 
+  const useWeights = includeLastWeights && !isPlan && Boolean(history);
   const sheets = React.useMemo(
-    () => (open && templates ? buildPlanSheets(templates, { includeLastWeights, blankColumns, history, unit }) : []),
-    [open, templates, includeLastWeights, blankColumns, history, unit],
+    () => (open && templates ? buildPlanSheets(templates, { includeLastWeights: useWeights, blankColumns, history, unit }) : []),
+    [open, templates, useWeights, blankColumns, history, unit],
   );
   const filename = planFileName(name);
-  const firstName = (name || "them").split(" ")[0];
+  const firstName = isPlan ? "the client" : (name || "them").split(" ")[0];
+  const title = isPlan ? `Export "${name}" to Excel` : `Export ${firstName}'s plan to Excel`;
 
   async function go() {
     setBusy(true);
     try {
-      const bytes = await buildPlanWorkbook(templates, { includeLastWeights, blankColumns, history, unit });
+      const bytes = await buildPlanWorkbook(templates, { includeLastWeights: useWeights, blankColumns, history, unit });
       const result = await deliverWorkbook(bytes, filename, data.isNative);
       if (result === "downloaded") toast(`Downloaded ${filename}`);
       else if (result === "shared") toast("Shared");
@@ -41,7 +44,7 @@ export default function ExportExcelDialog({ open, onClose, name, templates, hist
 
   const sheet = sheets[active];
   return (
-    <Sheet open={open} onClose={onClose} title={`Export ${firstName}'s plan to Excel`} subtitle="One sheet per training day. Opens in Excel, Numbers, or Google Sheets." wide>
+    <Sheet open={open} onClose={onClose} title={title} subtitle="One sheet per training day. Opens in Excel, Numbers, or Google Sheets." wide>
       {sheets.length === 0 ? (
         <div className="cx-empty">This plan has no training days with exercises yet.</div>
       ) : (
@@ -63,7 +66,7 @@ export default function ExportExcelDialog({ open, onClose, name, templates, hist
       )}
 
       <div className="cx-col" style={{ marginTop: 14 }}>
-        <Checkbox checked={includeLastWeights} onChange={setIncludeLastWeights}>Include the weights {firstName} last lifted</Checkbox>
+        {!isPlan && <Checkbox checked={includeLastWeights} onChange={setIncludeLastWeights}>Include the weights {firstName} last lifted</Checkbox>}
         <Checkbox checked={blankColumns} onChange={setBlankColumns}>Add empty columns for {firstName} to write in what they did</Checkbox>
       </div>
 

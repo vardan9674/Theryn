@@ -20,6 +20,12 @@ export default function PushUpdateModal({
   onConfirm,
   onSkip,
   loading,
+  // Optional copy overrides. Defaults fit the "just saved a template" flow in
+  // the editor; the Plans page passes its own for the "Send update" button.
+  heading = "Template saved ✓",
+  subtitle,
+  skipLabel = "Save only (no push)",
+  skipHint = "New assignments will get the latest version",
 }) {
   const [pushMode, setPushMode] = React.useState("none"); // "none" | "all" | "choose"
   const [chosen, setChosen] = React.useState(new Set());
@@ -52,7 +58,7 @@ export default function PushUpdateModal({
   }
 
   const modeLabel = {
-    none:   "Save only (no push)",
+    none:   skipLabel,
     all:    `All assigned (${totalCount})`,
     choose: "Choose athletes…",
   };
@@ -75,10 +81,10 @@ export default function PushUpdateModal({
 
         <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:18, fontWeight:800, color:TX, letterSpacing:"-0.01em" }}>
-            Template saved ✓
+            {heading}
           </div>
           <div style={{ fontSize:12, color:SB, marginTop:3 }}>
-            "{templateName}" — v{/* version shown by parent */}. Push changes to assigned athletes?
+            {subtitle || `"${templateName}" — push the latest version to assigned athletes?`}
           </div>
         </div>
 
@@ -109,8 +115,8 @@ export default function PushUpdateModal({
                 <div style={{ fontSize:14, fontWeight:700, color: pushMode === mode ? TX : SB }}>
                   {modeLabel[mode]}
                 </div>
-                {mode === "none" && (
-                  <div style={{ fontSize:11, color:SB, marginTop:1 }}>New assignments will get the latest version</div>
+                {mode === "none" && skipHint && (
+                  <div style={{ fontSize:11, color:SB, marginTop:1 }}>{skipHint}</div>
                 )}
                 {mode === "all" && overridden.length > 0 && (
                   <div style={{ fontSize:11, color:SB, marginTop:1 }}>

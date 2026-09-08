@@ -60,6 +60,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const SELECTED_KEY = `theryn_coach_selected_${data.coachId}`;
   const [selectedId, setSelectedIdRaw] = React.useState(() => { try { return localStorage.getItem(SELECTED_KEY) || null; } catch { return null; } });
   const [search, setSearch] = React.useState("");
+  const [detailTab, setDetailTab] = React.useState(null); // null = let the client's "what to do" pick
   const [editor, setEditor] = React.useState(null); // { athleteId }
   const [exportReq, setExportReq] = React.useState(null); // { name, templates, history, unit }
   const [sheet, setSheet] = React.useState(null); // { kind, athleteId?, payment? }
@@ -83,6 +84,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   // Selected client persists per coach; drop it if they are no longer a client.
   const setSelectedId = React.useCallback((id) => {
     setSelectedIdRaw(id);
+    setDetailTab(null);
     try { if (id) localStorage.setItem(SELECTED_KEY, id); else localStorage.removeItem(SELECTED_KEY); } catch {}
   }, [SELECTED_KEY]);
   React.useEffect(() => {
@@ -181,10 +183,11 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
             initialTemplates={d?.routine || null}
             history={d?.history || []}
             unit={d?.profile?.unit_system === "metric" ? "kg" : "lb"}
-            onCancel={() => setEditor(null)}
+            onCancel={() => { setDetailTab("plan"); setEditor(null); }}
             onSaved={(templates, extra) => {
               if (extra?.export) { setExportReq({ name: c.athlete_name, templates: extra.templates, history: d?.history || [], unit: d?.profile?.unit_system === "metric" ? "kg" : "lb" }); return; }
               if (templates) { cache.set(editor.athleteId, { ...(d || {}), routine: templates }); }
+              setDetailTab("plan");
               setEditor(null);
             }}
           />
@@ -212,7 +215,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         <div className="cx-spacer" />
         {tab === "clients" && <div className="cx-search"><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>}
         <Button variant="primary" size="sm" icon={<Icon.Plus />} onClick={actions.addClient} aria-label="Add client"><span>Add client</span></Button>
-        <button type="button" onClick={actions.profile} aria-label="Your profile and settings" style={{ background: "none", border: "none", padding: 0 }}><Avatar name={data.coachName} size="sm" /></button>
+        <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} size="sm" /></button>
       </header>
 
       {vp === "tablet" && tab === "clients" && (
@@ -220,7 +223,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       )}
       {vp === "phone" && tab === "clients" && !selectedClient && (
         <div className="cx-row" style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 4px", gap: 8 }}>
-          <button type="button" onClick={actions.profile} aria-label="Your profile and settings" style={{ background: "none", border: "none", padding: 0 }}><Avatar name={data.coachName} /></button>
+          <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} /></button>
           <div className="cx-search" style={{ flex: 1, maxWidth: "none", width: "auto", height: 44 }}><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>
           <Button variant="primary" icon={<Icon.Plus />} aria-label="Add client" onClick={actions.addClient} />
         </div>
@@ -230,7 +233,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         {!loadedClients ? (
           <div className="cx-page"><div className="cx-spinner" style={{ marginTop: 48 }} /></div>
         ) : tab === "clients" ? (
-          <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} />
+          <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} detailTab={detailTab} onDetailTab={setDetailTab} />
         ) : tab === "plans" ? (
           <PlansPage clients={clients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
         ) : tab === "payments" ? (

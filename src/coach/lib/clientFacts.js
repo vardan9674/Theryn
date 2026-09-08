@@ -109,17 +109,9 @@ export function paymentFact(fee, athletePayments, defaultCurrency = "USD", now =
   const currency = fee?.currency || defaultCurrency;
   switch (info.status) {
     case "paid": return { status: "paid", label: "Paid", tone: "ok", info, currency };
-    case "due": {
-      const end = info.cycleEnd;
-      const daysLeft = end ? Math.max(0, daysBetween(isoDate(now), isoDate(end))) : null;
-      const when = daysLeft == null ? "" : daysLeft === 0 ? " today" : daysLeft <= 6 ? ` ${end.toLocaleDateString("en-US", { weekday: "long" })}` : ` in ${plural(daysLeft, "day")}`;
-      return { status: "due", label: `Due${when}`, tone: "warn", info, currency };
-    }
-    case "overdue": {
-      const end = info.cycleEnd;
-      const late = end ? Math.max(1, daysBetween(isoDate(end), isoDate(now))) : null;
-      return { status: "overdue", label: late == null ? "Late" : `Late by ${plural(late, "day")}`, tone: "bad", info, currency };
-    }
+    case "due": return { status: "due", label: "Due today", tone: "warn", info, currency };
+    case "overdue": return { status: "overdue", label: `Late by ${plural(info.daysIntoCycle ?? 1, "day")}`, tone: "bad", info, currency };
+    case "paused": return { status: "paused", label: "Paused", tone: "muted", info, currency };
     default: return { status: "no_fee", label: "No fee set", tone: "muted", info, currency };
   }
 }

@@ -22,8 +22,14 @@ Newest first. One entry per working session. Record what was done, what was foun
 **Verified**
 - Laptop 1440, tablet 790–900, phone 375: table/cards, drawer/panel/page, plan tab, export dialog, editor (2 columns tablet, day strip phone), plans, payments, messages with a sent message. No console errors. Typecheck, tests, production build pass.
 
+**QA pass (agent, 13-point checklist at 375/790/1440)** — 15 findings, all fixed:
+- Major: "Late" payment state was unreachable — `athletePaymentStatus` only looked at the cycle containing today. Now a fee is expected on each cycle's start date: Paid / Due today / Late by N days / Paused / No fee set.
+- Major: sample data flagged every client; sessions now land on scheduled days so the preview has one urgent client, one PR, one late payment, and four on track.
+- Minor: client detail forgot its tab after the plan editor closed (tab state lifted to the shell); push modal showed "Template saved ✓ … v." (copy props added); Plans export spoke of the plan as a person; 7 editor columns clipped names at 1440 (now 4 columns until 1560px); phone tap targets under 44px; paused fee read "No fee set"; autocomplete opened on empty input; BMI hint shown when BMI existed; plan cards missing version; toast covered the chat input on wide screens; grip handle too faint; old template editor back button had no label.
+- Also: primary/danger button text was inheriting near-white (reported by the owner from the live page).
+
 **Open**
-- QA agent pass over every feature at all three sizes before the PR.
+- Owner to try the branch preview with a real account (Vercel preview URL on PR #38).
 - Delete the old coach code from App.jsx (follow-up PR).
 - "Send in chat" from the export dialog needs a storage bucket; not built. File goes via Download (web) or Share sheet (native).
 

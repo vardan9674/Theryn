@@ -42,13 +42,42 @@ const FULLBODY = {
 };
 
 const COACH_ID = "coach-1";
+const DAY_KEYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const LIFTS = {
+  Push: [["Bench Press", [[135, 8], [145, 6]]], ["Overhead Press", [[75, 10]]]],
+  Pull: [["Deadlift", [[225, 5]]], ["Barbell Row", [[115, 10]]]],
+  Legs: [["Back Squat", [[185, 6]]], ["Leg Press", [[270, 12]]]],
+  Upper: [["Dumbbell Bench", [[50, 10]]], ["Lat Pulldown", [[110, 12]]]],
+  "Full Body": [["Squat", [[155, 8]]], ["Bench Press", [[115, 8]]], ["Barbell Row", [[95, 10]]]],
+};
+/**
+ * Sessions on every scheduled day of the routine within the last `days`
+ * days, except the offsets listed in `skip`. `scale` multiplies weights so
+ * clients differ. Newest first, like the real loader.
+ */
+function scheduledHistory(routine, { days = 28, skip = [], scale = 1, includeToday = true } = {}) {
+  const out = [];
+  for (let back = includeToday ? 0 : 1; back < days; back++) {
+    if (skip.includes(back)) continue;
+    const d = daysAgo(back);
+    const type = routine[DAY_KEYS[d.getDay()]]?.type;
+    if (!type || type === "Rest") continue;
+    const lifts = (LIFTS[type] || LIFTS.Push).map(([name, sets]) => [name, sets.map(([w, r]) => [Math.round(w * scale / 5) * 5, r])]);
+    out.push(session(back, type, lifts));
+  }
+  return out;
+}
 const CLIENTS = [
-  { id: "a1", name: "Priya Sharma", routine: PPL, history: [session(5, "Legs", [["Back Squat", [[135, 6], [135, 6]]]]), session(8, "Pull", [["Deadlift", [[185, 5]]]]), session(9, "Push", [["Bench Press", [[95, 8], [100, 8]]]])], weights: [[0, 142], [14, 144]], fee: [150, "monthly", 30], payments: [[6, 150]] },
-  { id: "a2", name: "Marcus Lee", routine: PPL, history: [session(0, "Push", [["Bench Press", [[205, 6], [225, 5]]], ["Overhead Press", [[115, 8]]]]), session(1, "Pull", [["Deadlift", [[315, 5]]]]), session(3, "Legs", [["Back Squat", [[245, 6]]]]), session(6, "Push", [["Bench Press", [[205, 5], [215, 5]]]]), session(8, "Pull", [["Deadlift", [[305, 5]]]])], weights: [[0, 181], [14, 179]], fee: [150, "monthly", 40], payments: [[7, 150], [37, 150]] },
-  { id: "a3", name: "Dana Kim", routine: FULLBODY, history: [session(1, "Full Body", [["Squat", [[95, 8]]]]), session(3, "Full Body", [["Deadlift", [[135, 5]]]]), session(6, "Full Body", [["Leg Press", [[180, 12]]]])], weights: [[0, 128], [14, 130]], fee: [120, "monthly", 32], payments: [[33, 120]] },
-  { id: "a4", name: "Aisha Rahman", routine: PPL, history: [session(0, "Push", [["Bench Press", [[75, 10]]]]), session(2, "Legs", [["Back Squat", [[115, 8]]]]), session(4, "Pull", [["Pull-Up", [[0, 6]]]])], weights: [[0, 135]], fee: [180, "monthly", 3], payments: [[5, 180]] },
-  { id: "a5", name: "Jonas Tran", routine: FULLBODY, history: [session(1, "Full Body", [["Squat", [[155, 8]]]]), session(3, "Full Body", [["Deadlift", [[205, 5]]]])], weights: [[0, 172]], fee: [40, "weekly", 2], payments: [[9, 40]] },
-  { id: "a6", name: "Sam Okafor", routine: FULLBODY, history: [session(2, "Full Body", [["Squat", [[185, 8]]]]), session(4, "Full Body", [["Deadlift", [[245, 5]]]]), session(7, "Full Body", [["Leg Press", [[300, 10]]]])], weights: [[0, 190], [14, 190]], fee: [150, "monthly", 12], payments: [[2, 150]] },
+  // Priya: went quiet 5 days ago → urgent "no activity" signal.
+  { id: "a1", name: "Priya Sharma", routine: PPL, history: scheduledHistory(PPL, { days: 24, skip: [0, 1, 2, 3, 4], scale: 0.7 }), weights: [[0, 142], [14, 144]], fee: [150, "monthly", "1mo"], payments: [[31, 150]] },
+  // Marcus: perfect month and a fresh bench PR today (225 beats 215).
+  { id: "a2", name: "Marcus Lee", routine: PPL, history: [session(0, "Push", [["Bench Press", [[205, 6], [225, 5]]], ["Overhead Press", [[115, 8]]]]), ...scheduledHistory(PPL, { days: 28, includeToday: false, scale: 1.5 }).map((s) => (s.type === "Push" ? { ...s, exercises: [{ name: "Bench Press", sets: [{ w: "205", r: "5" }, { w: "215", r: "5" }] }, ...s.exercises.slice(1)] } : s))], weights: [[0, 181], [14, 179]], fee: [150, "monthly", 40], payments: [[9, 150], [40, 150]] },
+  // Dana: missed two of the last six sessions, and her monthly fee is 2 days late.
+  { id: "a3", name: "Dana Kim", routine: FULLBODY, history: scheduledHistory(FULLBODY, { days: 28, skip: [2, 7], scale: 0.8 }), weights: [[0, 128], [14, 130]], fee: [120, "monthly", 32], payments: [[33, 120]] },
+  // Aisha, Jonas, Sam: on track and paid.
+  { id: "a4", name: "Aisha Rahman", routine: PPL, history: scheduledHistory(PPL, { days: 28, scale: 0.6 }), weights: [[0, 135]], fee: [180, "monthly", 3], payments: [[3, 180]] },
+  { id: "a5", name: "Jonas Tran", routine: FULLBODY, history: scheduledHistory(FULLBODY, { days: 28, scale: 1.1 }), weights: [[0, 172]], fee: [40, "weekly", 2], payments: [[1, 40]] },
+  { id: "a6", name: "Sam Okafor", routine: FULLBODY, history: scheduledHistory(FULLBODY, { days: 28, scale: 1.3 }), weights: [[0, 190], [14, 190]], fee: [150, "monthly", 12], payments: [[11, 150]] },
 ];
 
 function makeState() {
@@ -57,7 +86,8 @@ function makeState() {
   const histories = Object.fromEntries(CLIENTS.map((c) => [c.id, c.history]));
   const weights = Object.fromEntries(CLIENTS.map((c) => [c.id, c.weights.map(([d, w]) => ({ id: uid(), date: isoDate(daysAgo(d)), weight: w }))]));
   const measurements = Object.fromEntries(CLIENTS.map((c) => [c.id, c.id === "a1" ? [{ id: uid(), date: isoDate(daysAgo(3)), chest: 34, waist: 27, hips: 36, lArm: 11, rArm: 11.2, lThigh: 21, rThigh: 21 }] : []]));
-  const fees = CLIENTS.map((c) => ({ id: "fee-" + c.id, coach_id: COACH_ID, athlete_id: c.id, amount: c.fee[0], currency: "USD", cadence: c.fee[1], start_date: isoDate(daysAgo(c.fee[2])), active: true, notes: null }));
+  const monthAgo = () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; };
+  const fees = CLIENTS.map((c) => ({ id: "fee-" + c.id, coach_id: COACH_ID, athlete_id: c.id, amount: c.fee[0], currency: "USD", cadence: c.fee[1], start_date: isoDate(c.fee[2] === "1mo" ? monthAgo() : daysAgo(c.fee[2])), active: true, notes: null }));
   const payments = CLIENTS.flatMap((c) => c.payments.map(([d, amt]) => ({ id: uid(), coach_id: COACH_ID, athlete_id: c.id, amount: amt, currency: "USD", received_date: isoDate(daysAgo(d)), notes: d % 2 ? "cash" : "bank transfer" })));
   const messages = {
     a2: [

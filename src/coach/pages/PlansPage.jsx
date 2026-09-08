@@ -70,7 +70,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   async function exportTemplate(t) {
     try {
       const { days } = await data.getTemplateWithTree(t.id);
-      onExport({ name: t.name, templates: templateDaysToPlan(days), history: null });
+      onExport({ name: t.name, templates: templateDaysToPlan(days), history: null, subject: "plan" });
     } catch (e) { toast("Could not load this plan", "error"); }
   }
 
@@ -178,7 +178,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
               <div className="cx-row" style={{ justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{t.name}</div>
-                  <div className="cx-small cx-muted">{t.assignment_count > 0 ? `${plural(t.assignment_count, "client")} · ` : "Nobody yet · "}changed {shortDate(t.updated_at?.slice(0, 10))}</div>
+                  <div className="cx-small cx-muted">v{t.version} · {t.assignment_count > 0 ? `${plural(t.assignment_count, "client")} · ` : "Nobody yet · "}changed {shortDate(t.updated_at?.slice(0, 10))}</div>
                 </div>
                 <RowMenu open={menuFor === t.id} onToggle={() => setMenuFor(menuFor === t.id ? null : t.id)} onDuplicate={() => duplicate(t)} onDelete={() => { setMenuFor(null); setDeleting(t); }} />
               </div>
@@ -223,7 +223,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
         <AssignAthletesSheet athletes={clients} assignedAthleteIds={giving.assignedIds} lockedByTemplate={giving.lockedByTemplate} templateName={giving.template.name} loading={busy} onConfirm={confirmGive} onClose={() => setGiving(null)} />
       )}
       {pushing && (
-        <PushUpdateModal templateName={pushing.template.name} assignments={pushing.assignments.filter((a) => !a.is_overridden)} allAssignments={pushing.assignments} loading={busy} onConfirm={confirmPush} onSkip={() => setPushing(null)} />
+        <PushUpdateModal templateName={pushing.template.name} assignments={pushing.assignments.filter((a) => !a.is_overridden)} allAssignments={pushing.assignments} loading={busy} onConfirm={confirmPush} onSkip={() => setPushing(null)}
+          heading="Send update" subtitle={`Send the latest version of "${pushing.template.name}" (v${pushing.template.version}) to the clients who have it.`} skipLabel="Not now" skipHint="" />
       )}
       <Confirm open={Boolean(deleting)} title={`Delete "${deleting?.name}"?`} body="Clients who have it keep their current plan but won't get future updates." confirmLabel="Delete" danger busy={busy} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />
     </div>
