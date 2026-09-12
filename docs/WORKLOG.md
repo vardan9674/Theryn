@@ -2,6 +2,13 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-12 — Shareable client links: approval-stage mockup
+
+- Added a separate interactive Vite entry at `mockups/share-links/` for coach sharing, browser measurements with a selectable body diagram, and dated workout completion. Imports the existing font, palette, CSS components, and icons without changing them.
+- All sample data stays in memory. Sharing buttons simulate their outcomes; no account, real link, backend request, production route, or migration is added. The normal production build excludes this entry.
+- Verified measurement entry, unit conversion, submission receipt, coach result display, sharing configuration, workout completion/skipping, partial submission, and coach workout results in the browser. Inspected 320px/390px phone widths and the desktop layout; the inspected phone pages have no horizontal overflow. The standalone mockup bundle builds successfully.
+- Owner explicitly requested a mockup first. Feature implementation is pending their green light.
+
 ## 2026-09-09 — Coach dashboard rebuild (Direction B), branch `feat/coach-dashboard-b`
 
 **Done**
