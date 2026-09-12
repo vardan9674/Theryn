@@ -50,7 +50,8 @@ button, a, input, textarea, select {
 }
 
 /* On desktop the coach app gets full width — remove the mobile cap */
-body[data-app="coach"] #root {
+body[data-app="coach"] #root,
+body[data-app="link"] #root {
   max-width: none;
 }
 
