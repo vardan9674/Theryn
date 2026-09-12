@@ -5,6 +5,7 @@
 import React from "react";
 import { isoDate } from "../lib/format.js";
 import { manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
+import { generateToken, submissionToMeasurement, submissionToHistory } from "../lib/clientLinks.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -114,7 +115,13 @@ function makeState() {
     payments: [{ id: "mp1", amount: 100, currency: "USD", received_date: isoDate(daysAgo(20)), notes: "cash" }],
     notes: null,
   }];
-  return { links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, listeners: new Set() };
+  // Client links: Ravi (name-only) already has one and has sent a workout and measurements through it.
+  const clientLinks = { "manual:m1": { id: "lnk-m1", token: "previewRaviToken_abcdefghijklmnopqrstu", requested: ["chest", "waist", "hips", "arm", "thigh"], opens: 6, submissions: 2, created_at: daysAgo(10).toISOString() } };
+  const submissions = [
+    { id: "sub-1", kind: "workout", submitted_at: daysAgo(1, 18).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(1)), day: "Mon", type: "Full Body", exercises: [{ name: "Squat", sets_planned: 3, sets_done: 3, reps: "8-12", weight_used: 60 }, { name: "Bench Press", sets_planned: 3, sets_done: 2, reps: "8-12", weight_used: 45 }, { name: "Barbell Row", sets_planned: 3, sets_done: 0, reps: "8-12", weight_used: null }], note: "Shoulder felt tight, skipped the last one." } },
+    { id: "sub-2", kind: "measurements", submitted_at: daysAgo(3, 9).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(3)), unit: "metric", weight: 74, chest: 96, waist: 82, hips: 97, arm: 33, thigh: 56 } },
+  ];
+  return { links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, clientLinks, submissions, listeners: new Set() };
 }
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -169,8 +176,15 @@ export function createMockCoachData() {
     async loadClientData(athleteId) {
       await wait(200 + Math.random() * 300);
       const mid = manualIdOf(athleteId);
-      if (mid) { const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists."); return manualClientData(row); }
-      return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" } };
+      const subs = st.submissions.filter((x) => x.clientId === athleteId);
+      if (mid) {
+        const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists.");
+        const base = manualClientData(row);
+        const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement);
+        const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
+        return { ...base, history: subs.filter((x) => x.kind === "workout").map(submissionToHistory), measurements, weights, profile: { ...base.profile, unit_system: measurements[0]?.unit === "cm" ? "metric" : "imperial" }, submissions: subs };
+      }
+      return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs };
     },
     async saveClientRoutine(athleteId, templates) {
       await wait(300);
@@ -290,6 +304,11 @@ export function createMockCoachData() {
     async getTemplateAssignments(id) { await wait(100); return (st.assignments[id] || []).map((a) => ({ id: "as-" + a, template_id: id, athlete_id: a, coach_id: COACH_ID, athlete_name: st.links.find((l) => l.athlete_id === a)?.athlete_name, assigned_at: daysAgo(10).toISOString(), last_pushed_version: 1, is_overridden: false })); },
     async getActiveAssignmentsForAthletes(ids) { await wait(100); const out = {}; for (const [tid, list] of Object.entries(st.assignments)) for (const a of list) if (ids.includes(a)) out[a] = { template_id: tid, template_name: st.templates.find((t) => t.id === tid)?.name }; return out; },
 
+    async getClientLink(clientId) { await wait(150); const l = st.clientLinks[clientId]; return l ? { link: l, token: l.token } : { link: null, token: null }; },
+    async createClientLink(clientId, { requested } = {}) { await wait(300); const l = { id: "lnk-" + uid(), token: generateToken(), requested: requested || ["chest", "waist", "hips", "arm", "thigh"], opens: 0, submissions: 0, created_at: new Date().toISOString() }; st.clientLinks[clientId] = l; return { link: l, token: l.token }; },
+    async revokeClientLink(clientId) { await wait(150); delete st.clientLinks[clientId]; },
+    async updateClientLinkRequested(clientId, requested) { await wait(100); if (st.clientLinks[clientId]) st.clientLinks[clientId].requested = requested; },
+    async loadRecentSubmissions() { await wait(100); return st.submissions.slice(); },
     async updateDisplayName() { await wait(100); },
     async updateCurrency() { await wait(100); },
     signOut() { alert("Preview mode: sign out does nothing."); },

@@ -12,6 +12,7 @@ import MessagesPage from "./pages/MessagesPage.jsx";
 import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
 import { AddClientSheet, ProfileSheet, LinkClientSheet } from "./pages/Sheets.jsx";
+import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
 import { consumeBackPress } from "../lib/backStack.ts";
 import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
@@ -164,6 +165,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     deletePayment: (p) => setSheet({ kind: "deletePayment", payment: p }),
     addClient: () => setSheet({ kind: "addClient" }),
     linkClient: (id) => setSheet({ kind: "linkClient", athleteId: id }),
+    shareLink: (id) => setSheet({ kind: "shareLink", athleteId: id }),
     profile: () => setSheet({ kind: "profile" }),
     editPlan: (id) => setEditor({ athleteId: id }),
     exportPlan: (id) => {
@@ -265,6 +267,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       <Confirm open={sheet?.kind === "deletePayment"} title="Delete this payment?" body="This only removes the record. It doesn't move any money." confirmLabel="Delete" danger onClose={() => setSheet(null)}
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
+      <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
       <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} />

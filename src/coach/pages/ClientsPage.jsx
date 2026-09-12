@@ -1,8 +1,10 @@
 import React from "react";
 import { Avatar, Chip, Icon, Tone, Empty, Button, useViewport } from "../ui/primitives.jsx";
-import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients } from "../lib/clientFacts.js";
-import { plural } from "../lib/format.js";
+import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients, daysSinceLastWorkout as daysSinceLast } from "../lib/clientFacts.js";
+import { plural, isoDate, daysBetween } from "../lib/format.js";
 import ClientDetail from "./ClientDetail.jsx";
+
+const daysBetweenIso = (iso, now) => daysBetween(iso, isoDate(now));
 
 /**
  * Home: every client as a row (table) or card (phone), with the selected
@@ -28,9 +30,20 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
       if (!data) return { link, name: link.athlete_name, loading: true, payment, bucket: "ok" };
       if (link.manual) {
         const hasPlan = data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length);
-        const todo = { text: hasPlan ? "Not on the app yet. Export their plan to Excel, or share your code so they can join." : "Not on the app yet. Build their plan, or share your code so they can join.", severity: null, tab: "plan", color: null };
-        const row = { link, name: link.athlete_name, loading: false, data, last: null, lastTone: "muted", week: null, todo, payment, manual: true };
-        row.bucket = payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
+        const hasHistory = (data.history || []).length > 0;
+        const latestM = data.measurements?.[0];
+        const days = hasHistory ? daysSinceLast(data.history, now) : null;
+        const todo = hasHistory && days != null && days >= 5
+          ? { text: `No check-in for ${days} days. Send them a nudge.`, severity: "warn", tab: "plan", color: null }
+          : latestM && daysBetweenIso(latestM.date, now) <= 2
+          ? { text: `Sent measurements ${daysBetweenIso(latestM.date, now) === 0 ? "today" : "recently"}. Have a look.`, severity: "celebrate", tab: "body", color: null }
+          : hasHistory
+          ? { text: "Checking in through their link. Nothing needed.", severity: null, tab: "plan", color: null }
+          : { text: hasPlan ? "Not on the app yet. Share their link so they can tick off workouts." : "Not on the app yet. Build their plan, then share their link.", severity: null, tab: "plan", color: null };
+        const row = { link, name: link.athlete_name, loading: false, data,
+          last: hasHistory ? lastWorkoutLabel(data.history, now) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, now) : "muted",
+          week: hasHistory ? weekProgress(data.history, data.routine, now) : null, todo, payment, manual: true };
+        row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
         return row;
       }
       const todo = whatToDo(data, now);
@@ -158,7 +171,7 @@ function TableRow({ row, selected, onClick }) {
   return (
     <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick}>
       <div className="name"><Avatar name={row.name} size="sm" /><div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><span>{row.name}</span>{row.manual && <span className="cx-tag" style={{ alignSelf: "flex-start" }} title="Added by name; they haven't joined the app">Not on app</span>}</div></div>
-      <div>{row.loading ? <Skeleton w={70} /> : row.manual ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
+      <div>{row.loading ? <Skeleton w={70} /> : row.last == null ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
       <div className="cx-col-week">{row.loading ? <Skeleton w={90} /> : <WeekSquares week={row.week} />}</div>
       <div className="cx-col-pay"><Tone tone={pay.tone}>{pay.label}</Tone></div>
       <div className={`todo ${row.todo?.severity ? "" : "ok"}`}>{row.loading ? <Skeleton w={160} /> : row.todo.text}</div>
@@ -178,7 +191,7 @@ function CardRow({ row, onClick }) {
         <Icon.Chevron />
       </div>
       <div className="facts">
-        <div><span className="k">Last workout</span>{row.loading ? <Skeleton w={60} /> : row.manual ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
+        <div><span className="k">Last workout</span>{row.loading ? <Skeleton w={60} /> : row.last == null ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
         <div><span className="k">This week</span>{row.loading ? <Skeleton w={60} /> : <WeekSquares week={row.week} />}</div>
         <div><span className="k">Payment</span><Tone tone={pay.tone}>{pay.label}</Tone></div>
       </div>

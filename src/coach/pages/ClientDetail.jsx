@@ -1,6 +1,6 @@
 import React from "react";
 import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill } from "../ui/primitives.jsx";
-import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural } from "../lib/format.js";
+import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey } from "../lib/format.js";
 import { routineStreak } from "../lib/clientFacts.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
@@ -13,8 +13,6 @@ const TABS = [
   { id: "body", label: "Body" },
   { id: "payments", label: "Payments" },
 ];
-// Name-only clients have no app, so there is nothing to show for progress or body.
-const MANUAL_TABS = TABS.filter((t) => t.id === "plan" || t.id === "payments");
 
 /**
  * Everything about one client. Rendered in the laptop side panel, the tablet
@@ -28,7 +26,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
   // closing). Until the coach picks one, land on the tab the "what to do"
   // line points at — once that line is known.
   const manual = Boolean(link.manual);
-  const tabs = manual ? MANUAL_TABS : TABS;
+  const tabs = TABS;
   const suggested = todo?.tab && tabs.some((t) => t.id === todo.tab) ? todo.tab : "plan";
   const tab = controlledTab && tabs.some((t) => t.id === controlledTab) ? controlledTab : (todo ? suggested : "plan");
   const setTab = (t) => onTab?.(t);
@@ -51,12 +49,17 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       </div>
 
       <div className="cx-actions-2">
+        <Button variant="primary" icon={<Icon.Link size={16} />} onClick={() => actions.shareLink(athleteId)}>Share link</Button>
         {manual
-          ? <Button icon={<Icon.Link size={16} />} onClick={() => actions.linkClient(athleteId)}>Connect to account</Button>
+          ? <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
-        <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
       </div>
-      {manual && <div className="cx-small cx-muted">Added by name. Progress and messages start once they join the app with your code.</div>}
+      {manual && (
+        <div className="cx-row" style={{ justifyContent: "space-between" }}>
+          <span className="cx-small cx-muted">Added by name. They send workouts and measurements through their link.</span>
+          <Button size="sm" onClick={() => actions.linkClient(athleteId)}>Connect to account</Button>
+        </div>
+      )}
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
@@ -84,11 +87,15 @@ function PlanTab({ data, row, actions }) {
   const [open, setOpen] = React.useState(null);
   React.useEffect(() => { setOpen(trainingDays[0] || null); }, [athleteId]);
 
+  // Workouts sent through the link, newest first, keyed by day for the "Completed via link" tag.
+  const linkWorkouts = React.useMemo(() => (data.history || []).filter((h) => h.source === "link"), [data.history]);
+  const latestByDay = React.useMemo(() => { const o = {}; for (const h of linkWorkouts) { const k = dayKey(new Date(h.date + "T12:00:00")); if (!o[k] || o[k].date < h.date) o[k] = h; } return o; }, [linkWorkouts]);
+
   if (!routine || trainingDays.length === 0) {
     return (
       <Empty title="No plan yet" action={<Button variant="primary" icon={<Icon.Edit />} onClick={() => actions.editPlan(athleteId)}>Build a plan</Button>}>
         {row.link.manual
-          ? `Give ${row.name.split(" ")[0]} a week of workouts, then export it to Excel to hand over.`
+          ? `Give ${row.name.split(" ")[0]} a week of workouts. They tick it off through their link, or you can export it to Excel.`
           : `Give ${row.name.split(" ")[0]} a week of workouts, or assign one of your saved plans from the Plans page.`}
       </Empty>
     );
@@ -109,8 +116,15 @@ function PlanTab({ data, row, actions }) {
             <div key={d} className="cx-daycard">
               <button type="button" className="hd" style={{ background: "none", border: "none", padding: 0, width: "100%", minHeight: 32 }} onClick={() => setOpen(isOpen ? null : d)} aria-expanded={isOpen}>
                 <b>{DAY_LONG[d]}</b>
-                <span className="cx-row"><Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
+                <span className="cx-row">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>Done via link</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
               </button>
+              {isOpen && latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && (
+                <div className="cx-small" style={{ color: "var(--cx-tx2)" }}>
+                  {shortDate(latestByDay[d].date)}: {latestByDay[d].totalSets} of {latestByDay[d].plannedSets || latestByDay[d].totalSets} sets done
+                  {latestByDay[d].exercises.some((e) => e.sets.some((x) => x.w)) && ` · weights: ${latestByDay[d].exercises.filter((e) => e.sets[0]?.w).map((e) => `${e.name} ${e.sets[0].w}`).join(", ")}`}
+                  {latestByDay[d].note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)" }}>{row.name.split(" ")[0]}: "{latestByDay[d].note}"</div>}
+                </div>
+              )}
               {isOpen && day.exercises.map((ex, i) => {
                 const o = normalizeExercise(ex);
                 return (
@@ -166,7 +180,7 @@ function BodyTab({ data }) {
   const m = measurements?.[0];
   const sites = m ? [["Chest", m.chest], ["Waist", m.waist], ["Hips", m.hips], ["Left arm", m.lArm], ["Right arm", m.rArm], ["Left thigh", m.lThigh], ["Right thigh", m.rThigh]].filter(([, v]) => v != null) : [];
 
-  if (!current && !m) return <Empty title="No body data yet">Weight and measurements show up once the client logs them in their app.</Empty>;
+  if (!current && !m) return <Empty title="No body data yet">Weight and measurements show up once the client logs them in their app or sends them through their link.</Empty>;
   return (
     <>
       <div className="cx-stats" style={{ marginBottom: 0 }}>
@@ -180,13 +194,13 @@ function BodyTab({ data }) {
         <div className="cx-card">
           <div className="cx-card-pad" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600 }}>Recent weigh-ins</div>
           {weights.slice(0, 8).map((w) => (
-            <div key={w.id} className="cx-exrow cx-card-pad" style={{ paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--cx-bd)" }}><span>{shortDate(w.date)}</span><span>{w.weight} {unit}</span></div>
+            <div key={w.id} className="cx-exrow cx-card-pad" style={{ paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--cx-bd)" }}><span>{shortDate(w.date)}{w.source === "link" && <span className="cx-tag" style={{ marginLeft: 8 }}>via link</span>}</span><span>{w.weight} {unit}</span></div>
           ))}
         </div>
       )}
       {m && (
         <div className="cx-card">
-          <div className="cx-card-pad" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600 }}>Measurements · {shortDate(m.date)}</div>
+          <div className="cx-card-pad cx-row" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600, justifyContent: "space-between" }}><span>Measurements · {shortDate(m.date)}</span>{m.source === "link" && <span className="cx-tag">via link</span>}</div>
           {sites.map(([label, v]) => (
             <div key={label} className="cx-exrow cx-card-pad" style={{ paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--cx-bd)" }}><span>{label}</span><span>{v} {mUnit}</span></div>
           ))}
@@ -196,6 +210,7 @@ function BodyTab({ data }) {
   );
 }
 function daysDiff(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000); }
+function daysAgoOf(iso) { return daysDiff(iso, new Date().toISOString().slice(0, 10)); }
 
 // ── Payments ──────────────────────────────────────────────────────────────
 function PaymentsTab({ row, fees, payments, defaultCurrency, actions, payment }) {

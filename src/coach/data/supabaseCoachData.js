@@ -15,6 +15,7 @@ import {
   isManualId, manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
+import { generateToken, hashToken, submissionToMeasurement, submissionToHistory } from "../lib/clientLinks.js";
 
 const MANUAL_COLS = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
 const SETUP_MSG = "Name-only clients need a one-time database update. Run supabase/migrations/20260909120000_coach_manual_clients.sql in the Supabase SQL editor.";
@@ -53,6 +54,25 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     return data;
   }
 
+  // ── Client links (decision 0006) ───────────────────────────────────────
+  const LINK_SETUP_MSG = "Run supabase/migrations/20260912120000_client_links.sql in the Supabase SQL editor.";
+  function isMissingLinks(error) {
+    const msg = String(error?.message || "");
+    return error?.code === "42P01" || error?.code === "PGRST205" || error?.code === "PGRST202" || (/client_links|client_link_upsert|client_submissions/.test(msg) && /not exist|not find|schema cache/i.test(msg));
+  }
+  function linkTarget(clientId) {
+    const mid = manualIdOf(clientId);
+    return mid ? { manual_client_id: mid, athlete_id: null } : { athlete_id: clientId, manual_client_id: null };
+  }
+  const tokenKey = (linkId) => `theryn_link_token_${linkId}`;
+  async function loadSubmissions(where) {
+    let q = supabase.from("client_submissions").select("id, kind, payload, submitted_at").eq("coach_id", coachId).order("submitted_at", { ascending: false }).limit(200);
+    q = where.athlete_id ? q.eq("athlete_id", where.athlete_id) : q.eq("manual_client_id", where.manual_client_id);
+    const { data, error } = await q;
+    if (error) { if (isMissingLinks(error)) return []; throw new Error(error.message); }
+    return data || [];
+  }
+
   return {
     mode: "supabase",
     isNative: Capacitor.isNativePlatform(),
@@ -70,8 +90,19 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     },
     async loadClientData(clientId) {
       const mid = manualIdOf(clientId);
-      if (mid) return manualClientData(await getManualRow(mid));
-      return loadAthleteData(clientId);
+      if (mid) {
+        // Name-only clients have no app data; link submissions are their only history.
+        const [row, subs] = await Promise.all([getManualRow(mid), loadSubmissions({ manual_client_id: mid })]);
+        const base = manualClientData(row);
+        const history = subs.filter((x) => x.kind === "workout").map(submissionToHistory);
+        const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement);
+        const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
+        const unit = measurements[0]?.unit === "cm" ? "metric" : "imperial";
+        return { ...base, history, measurements, weights, profile: { ...base.profile, unit_system: unit }, submissions: subs };
+      }
+      const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
+      // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.
+      return { ...d, submissions: subs };
     },
     async saveClientRoutine(clientId, templates) {
       const mid = manualIdOf(clientId);
@@ -232,6 +263,50 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     unassignTemplate,
     getTemplateAssignments,
     getActiveAssignmentsForAthletes,
+
+    // Client links. The raw token is kept in localStorage on the coach's
+    // device (the database only has its hash), so "Copy" works again later.
+    async getClientLink(clientId) {
+      const t = linkTarget(clientId);
+      let q = supabase.from("client_links").select("id, requested, opens, last_opened_at, submissions, created_at").eq("coach_id", coachId).is("revoked_at", null);
+      q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
+      const { data, error } = await q.maybeSingle();
+      if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
+      if (!data) return { link: null, token: null };
+      let token = null;
+      try { token = localStorage.getItem(tokenKey(data.id)); } catch {}
+      // A link exists but this device doesn't know its token: treat as "make a new link".
+      return { link: data, token };
+    },
+    async createClientLink(clientId, { requested, label } = {}) {
+      const t = linkTarget(clientId);
+      const token = generateToken();
+      const token_hash = await hashToken(token);
+      const { data, error } = await supabase.rpc("client_link_upsert", { p_athlete_id: t.athlete_id, p_manual_client_id: t.manual_client_id, p_token_hash: token_hash, p_label: label || null, p_requested: requested || null });
+      if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
+      try { localStorage.setItem(tokenKey(data.id), token); } catch {}
+      return { link: data, token };
+    },
+    async revokeClientLink(clientId) {
+      const t = linkTarget(clientId);
+      let q = supabase.from("client_links").update({ revoked_at: new Date().toISOString() }).eq("coach_id", coachId).is("revoked_at", null);
+      q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+    },
+    async updateClientLinkRequested(clientId, requested) {
+      const t = linkTarget(clientId);
+      let q = supabase.from("client_links").update({ requested }).eq("coach_id", coachId).is("revoked_at", null);
+      q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+    },
+    /** Latest link submissions across all clients, for the "what to do" line and a future inbox. */
+    async loadRecentSubmissions(limit = 50) {
+      const { data, error } = await supabase.from("client_submissions").select("id, kind, payload, submitted_at, athlete_id, manual_client_id").eq("coach_id", coachId).order("submitted_at", { ascending: false }).limit(limit);
+      if (error) { if (isMissingLinks(error)) return []; throw new Error(error.message); }
+      return data || [];
+    },
 
     // Profile & account
     async updateDisplayName(name) {

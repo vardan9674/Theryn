@@ -146,7 +146,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
             </div>
 
             <div>
-              <div className="lk-row" style={{ marginBottom: 8 }}><span style={{ fontSize: 16, fontWeight: 700 }}>{doneCount} of {total} complete</span><span className="lk-small">Tap the number to tick it off</span></div>
+              <div className="lk-row" style={{ marginBottom: 8 }}><span style={{ fontSize: 16, fontWeight: 700 }}>{doneCount} of {total} complete</span><span className="lk-small">Tap the box to tick it off</span></div>
               <div className="lk-progress"><i style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} /></div>
             </div>
 
@@ -170,7 +170,6 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
                       </div>
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                       {skipped[i] && !done && <div className="lk-small">Skipped</div>}
-                      {isCurrent && !skipped[i] && <div className="lk-hint">Tap the box when you're done</div>}
                     </div>
                   </div>
                   {e.sets > 1 && !done && (
@@ -184,7 +183,9 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
                     <button type="button" className="lk-linkbtn" onClick={() => setOpenWeight((o) => ({ ...o, [i]: !o[i] }))} aria-expanded={Boolean(openWeight[i])}>
                       Used a different weight? <Icon.Down size={14} />
                     </button>
-                    {!done && <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
+                    {done
+                      ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo</button>
+                      : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
                   </div>
                   {openWeight[i] && (
                     <div className="lk-row" style={{ justifyContent: "flex-start" }}>
@@ -196,10 +197,11 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
               );
             })}
 
-            <div className="lk-card">
-              <span className="lk-eyebrow">Anything for your coach? (optional)</span>
-              <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="How did it feel?" aria-label="Note for your coach" />
+            <div>
+              <div className="lk-row" style={{ marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 700 }}>How did it feel?</span><span className="lk-small">Optional</span></div>
+              <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
             </div>
+            <div className="lk-small">Your checkmarks tell your coach what you completed. Actual weights are optional.</div>
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}
@@ -213,7 +215,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
       </main>
       {!today.isRest && (
         <div className="lk-footer"><div className="lk-footer-inner">
-          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : "Send progress"}</button>
+          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : "Finish workout"}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>
       )}
