@@ -32,7 +32,8 @@ export default function LinkPage({ token, api }) {
   React.useEffect(() => {
     let cancelled = false;
     fetchLink(token).then((d) => { if (!cancelled) setState({ loading: false, data: d, error: d?.ok ? null : d?.reason || "invalid" }); })
-      .catch((e) => { if (!cancelled) setState({ loading: false, data: null, error: e.message || "network" }); });
+      // A thrown error is the server or the network, never the link itself.
+      .catch((e) => { if (!cancelled) setState({ loading: false, data: null, error: /fetch|network|offline/i.test(e.message || "") ? "network" : "server" }); });
     return () => { cancelled = true; };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -342,8 +343,11 @@ function Unavailable({ reason }) {
     <div className="lk-page cx-app">
       <div className="lk-center">
         <div className="lk-mark muted"><Icon.Lock size={30} /></div>
-        <h1>{revoked ? "This link has been turned off." : "This link doesn't work."}</h1>
-        <p>{revoked ? "Your coach may have sent you a new one. Check your messages." : reason === "network" ? "Couldn't reach Theryn. Check your connection and try again." : "Check the link your coach sent you, or ask them to send it again."}</p>
+        <h1>{revoked ? "This link has been turned off." : reason === "server" || reason === "network" ? "Couldn't load this right now." : "This link doesn't work."}</h1>
+        <p>{revoked ? "Your coach may have sent you a new one. Check your messages."
+          : reason === "network" ? "Couldn't reach Theryn. Check your connection and try again."
+          : reason === "server" ? "Theryn had a problem on our side. Your link is fine. Try again in a minute."
+          : "Check the link your coach sent you, or ask them to send it again."}</p>
         <div className="lk-nudge"><a href={APP_URL}>About Theryn</a></div>
       </div>
     </div>

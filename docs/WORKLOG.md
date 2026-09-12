@@ -29,7 +29,12 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 **Shipped**
 - PR #40 merged to main and deployed to production by Vercel. Cold load of `https://theryn.fit/f/<anything>` serves the link page (not a 404), so links opened from WhatsApp work.
-- Migration `20260912120000_client_links.sql` applied in the SQL editor. Checked from outside with the anon key: `link_view` and `link_submit` return `{ok:false, reason:"invalid"}` for a made-up token (HTTP 200), and a direct select on `client_links` is refused (401, permission denied). That is the intended shape: anon can only go through the two RPCs.
+- Migration `20260912120000_client_links.sql` applied in the SQL editor. A direct select on `client_links` with the anon key is refused (401), as intended.
+
+**Broken on the first real link, and the fix**
+- Every real token came back "This link doesn't work." Cause: `digest()` from pgcrypto lives in the `extensions` schema on Supabase, and both RPCs pin `search_path = public, pg_temp`, so Postgres raised `function digest(text, unknown) does not exist`. My probe after the migration used a short token, which is rejected by the length check *before* `digest()` runs, so it looked fine. Lesson recorded: probe with a full-length token.
+- Fix migration `20260912180000_client_links_digest_fix.sql`: `ALTER FUNCTION ... SET search_path = public, extensions, pg_temp` for both RPCs (search_path stays pinned; nothing else changes). Needs to be run in the SQL editor.
+- The page also blamed the link for a server error. It now says "Couldn't load this right now… Your link is fine. Try again in a minute." for server/network failures, and keeps "This link doesn't work" for genuinely bad tokens.
 
 **Open**
 - Push notification on submission (trigger into `notify_outbox`) not built yet (roadmap 1.12).
