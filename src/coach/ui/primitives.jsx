@@ -87,6 +87,7 @@ export function Sheet({ open, onClose, title, subtitle, children, wide }) {
     <div className="cx-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} role="presentation">
       <div className="cx-sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 760 } : undefined}>
         <div className="cx-sheet-grip" />
+        <button type="button" className="cx-sheet-close" aria-label="Close" onClick={() => onClose?.()}><Icon.Close size={18} /></button>
         {title && <h2>{title}</h2>}
         {subtitle && <div className="cx-sub">{subtitle}</div>}
         {children}

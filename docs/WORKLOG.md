@@ -16,6 +16,17 @@ Newest first. One entry per working session. Record what was done, what was foun
 **Verified**
 - Public page at 375 wide: workout tick/undo/skip/weight/note/send, measurements tap-label → guide + focus, validation (missing, out of range), send → receipt → back. Coach preview: Ravi (name-only) shows link data on table, Plan and Body; Share link sheet opens with URL, buttons, requested checkboxes, counters. Typecheck, tests, build pass.
 
+**QA round (background agent, 375 / 790 / 1440) — 14 findings, 13 fixed**
+- Share link sheet carried one client's "measurements to ask for" over to the next client's new link. Now resets to all five whenever the sheet opens for a client or a link is turned off.
+- Progress tab said "lbs" for metric link data (hard-coded in `AthleteDepth.jsx`). Volume chart, PR timeline and session drawer now take a `unit` prop from the client's unit system.
+- PR timeline showed the day before the workout in negative-offset time zones (`new Date("YYYY-MM-DD")` is UTC). Dates are parsed as local midday.
+- Body figure: tapping inside a dashed band now selects that site (bands had no fill so they were not hit-tested); labels 13px and hit areas ≥44px; figure a little larger.
+- Tapping a figure label only changes the guide now. It used to focus the field, which scrolled the figure off screen and opened the keyboard.
+- Eyebrow captions and the "Today" chip are 12px (were 11/10). Date picker uses the dark colour scheme. Skip/Undo are ≥44px wide and a skipped exercise gets an "Undo skip" control. "Get the app" no longer wraps mid-link. Page tabs are capped at 280px each on wide screens. Dead ternary removed; mock submission day matches its date.
+- Every sheet has a visible Close button (44px, top right) in addition to Escape / backdrop / Android back.
+- Not fixed: at 790 wide the preview opens with a drawer already open; pre-existing and not link-related, tracked for the old-code cleanup.
+- Could not be tested in the pane: clipboard success path, Web Share / native share, real RPC paths (needs the migration), real-device keyboard behaviour with the sticky footer.
+
 **Open**
 - Run `supabase/migrations/20260912120000_client_links.sql` in the SQL editor (needs the manual-clients migration first). Until then the Share link sheet explains what to run.
 - Push notification on submission (trigger into `notify_outbox`) not built yet.

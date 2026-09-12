@@ -148,7 +148,8 @@ function PlanTab({ data, row, actions }) {
 
 // ── Progress ──────────────────────────────────────────────────────────────
 function ProgressTab({ data }) {
-  const { history, routine } = data;
+  const { history, routine, profile } = data;
+  const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const stats = React.useMemo(() => computeStats(data), [data]);
   const streak = routineStreak(history, routine);
   if (!history || history.length === 0) return <Empty title="No workouts logged yet">Progress charts appear after the first workout.</Empty>;
@@ -161,8 +162,8 @@ function ProgressTab({ data }) {
       </div>
       <div className="cx-small cx-muted">"Last 28 days" is the share of planned workouts that were done.</div>
       <AthleteAttendanceCalendar history={history} />
-      <AthleteVolumeChart history={history} />
-      <AthletePRTimeline history={history} />
+      <AthleteVolumeChart history={history} unit={unit} />
+      <AthletePRTimeline history={history} unit={unit} />
     </>
   );
 }

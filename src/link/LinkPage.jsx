@@ -166,7 +166,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
                       <div className="lk-ex-meta">
                         {e.sets != null && <><b>{e.sets}</b> sets &nbsp; </>}
                         {e.reps && <><b>{e.reps}</b> reps &nbsp; </>}
-                        {e.weight != null && <><b>{e.weight}</b> {unit} {weights[i] ? "target" : "target"}</>}
+                        {e.weight != null && <><b>{e.weight}</b> {unit} target</>}
                       </div>
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                       {skipped[i] && !done && <div className="lk-small">Skipped</div>}
@@ -185,6 +185,8 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
                     </button>
                     {done
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo</button>
+                      : skipped[i]
+                      ? <button type="button" className="lk-linkbtn danger" onClick={() => setSkipped((s) => ({ ...s, [i]: false }))}>Undo skip</button>
                       : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
                   </div>
                   {openWeight[i] && (
@@ -240,7 +242,10 @@ function MeasurementsTab({ d, onSubmit, onSent }) {
   const guide = MEASUREMENT_FIELDS.find((f) => f.id === selected) || fields[0];
   const added = fields.filter((f) => values[f.id] != null && String(values[f.id]).trim() !== "").length;
 
+  // Tapping a label on the figure only changes the guide; it must not focus the
+  // field, which would scroll the figure away and open the keyboard on a phone.
   const pick = (id) => { setSelected(id); inputs.current[id]?.focus(); };
+  const show = (id) => setSelected(id);
   const setVal = (id, v) => { setValues((x) => ({ ...x, [id]: v.replace(/[^0-9.]/g, "").slice(0, 6) })); setError(null); };
 
   async function send() {
@@ -275,7 +280,7 @@ function MeasurementsTab({ d, onSubmit, onSent }) {
 
         <div className="lk-card">
           <div className="lk-row"><span className="lk-eyebrow">Where to measure</span><span className="lk-small">Measuring guide</span></div>
-          <BodyFigure requested={requested} selected={selected} onSelect={pick} />
+          <BodyFigure requested={requested} selected={selected} onSelect={show} />
           <div className="lk-small" style={{ textAlign: "center" }}>Tap a label to see how to measure.</div>
           {guide && (
             <div className="lk-guide">
@@ -325,7 +330,7 @@ function Receipt({ sent, coach, today, onBack }) {
         <div className="lk-card lk-keep"><Icon.Link size={20} /><span style={{ fontSize: 15, color: "var(--cx-tx2)", lineHeight: 1.45 }}>Keep this link. Open it on training days to tick off your workout, and come back when your coach asks for measurements.</span></div>
         <div style={{ flex: 1 }} />
         <button type="button" className="lk-send secondary" onClick={onBack}>{sent.kind === "measurements" && !today.isRest ? "Go to today's workout" : "Back"}</button>
-        <div className="lk-nudge">Want your whole plan on your phone? <a href={APP_URL}>Get the app</a></div>
+        <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <a href={APP_URL}>Get the app</a></div>
       </div>
     </div>
   );

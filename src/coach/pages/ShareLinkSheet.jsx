@@ -21,8 +21,9 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     if (!open || !client) return;
     let cancelled = false;
     setState({ loading: true, link: null, token: null, error: null });
+    setRequested(ALL_FIELD_IDS); // each client starts from "ask for everything"; never carry another client's choice over
     data.getClientLink(client.athlete_id)
-      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); if (r?.link?.requested?.length) setRequested(r.link.requested); })
+      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link?.requested?.length ? r.link.requested : ALL_FIELD_IDS); })
       .catch((e) => { if (!cancelled) setState({ loading: false, link: null, token: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [open, client?.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -41,7 +42,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   }
   async function turnOff() {
     setBusy(true);
-    try { await data.revokeClientLink(client.athlete_id); setState({ loading: false, link: null, token: null, error: null }); toast("Link turned off"); }
+    try { await data.revokeClientLink(client.athlete_id); setState({ loading: false, link: null, token: null, error: null }); setRequested(ALL_FIELD_IDS); toast("Link turned off"); }
     catch (e) { toast(e.message || "Could not turn off", "error"); }
     finally { setBusy(false); setConfirm(null); }
   }

@@ -40,8 +40,8 @@ export default function BodyFigure({ requested, selected, onSelect }) {
             onClick={() => onSelect(f.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(f.id); } }}>
             <ellipse className="lk-band" cx={r.x} cy={r.y} rx={r.rx} ry={r.ry} />
             <path className="lk-callout" d={`M${sx} ${r.y} H${left ? 86 : 240} L${left ? 75 : 246} ${labelY} H${left ? 10 : 310}`} />
-            <rect x={left ? 2 : 240} y={labelY - 26} width="78" height="48" fill="transparent" />
-            <text x={left ? 9 : 311} y={labelY - 7} textAnchor={left ? "start" : "end"}>{f.label}</text>
+            <rect x={left ? 0 : 236} y={labelY - 30} width="84" height="54" fill="transparent" />
+            <text x={left ? 6 : 314} y={labelY - 8} textAnchor={left ? "start" : "end"}>{f.label}</text>
             <circle cx={sx} cy={r.y} r="3.5" />
           </g>
         );

@@ -1,19 +1,19 @@
 /* Public client link page (/f/<token>). Prefix lk-. Uses the coach tokens. */
 /* html/body are overflow:hidden globally; the page owns its own scroll. */
-.lk-page { height: 100dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--cx-bg); color: var(--cx-tx); display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+.lk-page { color-scheme: dark; height: 100dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; background: var(--cx-bg); color: var(--cx-tx); display: flex; flex-direction: column; font-family: -apple-system, 'Helvetica Neue', Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
 .lk-page * { box-sizing: border-box; }
 .lk-page button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .lk-page input { font-family: inherit; }
 .lk-page :focus-visible { outline: 2px solid var(--cx-a); outline-offset: 2px; }
 
-.lk-tabs { display: flex; border-bottom: 1px solid var(--cx-bd); padding-top: env(safe-area-inset-top, 0px); background: var(--cx-bg); position: sticky; top: 0; z-index: 5; }
-.lk-tab { flex: 1; height: 52px; border: none; background: none; font-size: 16px; color: var(--cx-mu); border-bottom: 2px solid transparent; }
+.lk-tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--cx-bd); padding-top: env(safe-area-inset-top, 0px); background: var(--cx-bg); position: sticky; top: 0; z-index: 5; }
+.lk-tab { flex: 1 1 0; max-width: 280px; height: 52px; border: none; background: none; font-size: 16px; color: var(--cx-mu); border-bottom: 2px solid transparent; }
 .lk-tab[aria-selected="true"] { color: var(--cx-tx); font-weight: 700; border-bottom-color: var(--cx-a); }
 
 .lk-main { flex: 1; width: 100%; max-width: 560px; margin: 0 auto; padding: 20px 20px 120px; display: flex; flex-direction: column; gap: 18px; }
 .lk-byline { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--cx-tx2); }
 .lk-byline b { color: var(--cx-tx); }
-.lk-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--cx-mu); text-transform: uppercase; }
+.lk-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: var(--cx-mu); text-transform: uppercase; }
 .lk-h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.6px; line-height: 1.05; margin: 0; }
 .lk-lede { font-size: 16px; color: var(--cx-tx2); line-height: 1.45; margin: 0; }
 .lk-intro { display: flex; flex-direction: column; gap: 8px; }
@@ -27,7 +27,7 @@
 .lk-day i { width: 18px; height: 5px; border-radius: 3px; background: var(--day, var(--cx-bd2)); display: block; }
 .lk-day b { color: var(--day, var(--cx-mu)); font-size: 12px; }
 .lk-day.rest b { color: #585858; font-weight: 400; }
-.lk-day small { font-size: 10px; color: var(--cx-mu); }
+.lk-day small { font-size: 12px; color: var(--cx-mu); }
 .lk-day.today { border: 1.5px solid var(--day, var(--cx-a)); }
 
 /* Exercises */
@@ -49,7 +49,7 @@
 .lk-hint { font-size: 13px; color: var(--cx-a); font-weight: 600; }
 .lk-ex-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .lk-linkbtn { background: none; border: none; padding: 0; min-height: 44px; font-size: 15px; color: var(--cx-tx2); display: inline-flex; align-items: center; gap: 6px; }
-.lk-linkbtn.danger { color: var(--cx-mu); }
+.lk-linkbtn.danger { color: var(--cx-mu); min-width: 44px; justify-content: center; padding: 0 6px; }
 .lk-sets { display: flex; gap: 8px; flex-wrap: wrap; }
 .lk-set { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-mu); font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .lk-set.on { background: var(--cx-a); border-color: var(--cx-a); color: var(--cx-bg); }
@@ -63,14 +63,14 @@
 .lk-segment { height: 52px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); display: flex; padding: 3px; }
 .lk-segment button { flex: 1; border: none; background: none; border-radius: 8px; font-size: 14px; color: var(--cx-mu); }
 .lk-segment button[aria-pressed="true"] { background: var(--cx-bd2); color: var(--cx-tx); font-weight: 700; }
-.lk-body { width: 100%; max-height: 390px; height: auto; display: block; margin: 4px auto 0; overflow: visible; }
+.lk-body { width: 100%; max-height: 420px; height: auto; display: block; margin: 4px auto 0; overflow: visible; }
 .lk-grid { fill: none; stroke: var(--cx-bd2); stroke-width: 0.6; stroke-dasharray: 2 6; }
 .lk-human { stroke: var(--cx-mu); stroke-width: 1.05; stroke-linecap: round; stroke-linejoin: round; }
 .lk-muscles { fill: none; stroke: var(--cx-mu); stroke-width: 0.75; opacity: 0.65; stroke-linecap: round; }
 .lk-region { cursor: pointer; outline-offset: 2px; }
-.lk-band { fill: none; stroke: var(--cx-mu); stroke-width: 1; stroke-dasharray: 3 3; }
+.lk-band { fill: transparent; pointer-events: all; stroke: var(--cx-mu); stroke-width: 1; stroke-dasharray: 3 3; }
 .lk-callout { fill: none; stroke: var(--cx-mu); stroke-width: 0.8; }
-.lk-region text { fill: var(--cx-tx2); font-size: 11px; font-weight: 500; font-family: inherit; }
+.lk-region text { fill: var(--cx-tx2); font-size: 13px; font-weight: 500; font-family: inherit; }
 .lk-region circle { fill: var(--cx-tx2); }
 .lk-region.on .lk-band { stroke: var(--cx-a); stroke-width: 2; fill: var(--cx-a); fill-opacity: 0.09; stroke-dasharray: none; }
 .lk-region.on .lk-callout { stroke: var(--cx-a); }
@@ -107,8 +107,8 @@
 .lk-center h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
 .lk-center p { font-size: 16px; color: var(--cx-tx2); line-height: 1.45; margin: 0; max-width: 320px; }
 .lk-keep { width: 100%; text-align: left; display: flex; gap: 12px; }
-.lk-nudge { font-size: 15px; color: var(--cx-mu); min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-.lk-nudge a { color: var(--cx-a); font-weight: 600; text-decoration: none; }
+.lk-nudge { font-size: 15px; color: var(--cx-mu); min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.lk-nudge a { color: var(--cx-a); font-weight: 600; text-decoration: none; white-space: nowrap; }
 
 @media (min-width: 768px) {
   .lk-main { padding-top: 32px; }
