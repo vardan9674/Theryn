@@ -2,6 +2,25 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-12 — Shareable client links (decision 0006), branch `feat/client-links`
+
+**Done**
+- Public page at `/f/<token>`: a small auth-free bundle (19 KB) that mounts before the main app. Two tabs, Today's workout (week strip, today's plan, tap the numbered box to tick an exercise, per-set squares, "Used a different weight?", Skip/Undo, note, Finish workout) and Measurements (date, units, the front body figure from `mockups/share-links/` with callout labels and a per-site guide, starred required fields, optional body weight, Send). Receipt screen with a keep-this-link reminder and a get-the-app nudge. Revoked/invalid/offline states. Dev preview at `/f/preview`.
+- Migration `20260912120000_client_links.sql`: `client_links` (hashed token, requested measurements, opens/submissions counters, revoke), `client_submissions` (append-only), `source` column on body_weights/body_measurements/workout_sessions. Two anon-callable SECURITY DEFINER RPCs with pinned search_path: `link_view` (returns first name, coach name, unit, today's plan; never ids or history) and `link_submit` (validates ranges, per-link daily caps 5/3, records, and promotes into the real tables for app clients). `client_link_upsert` for coaches.
+- Coach side: **Share link** on every client page → sheet with the URL, Copy, WhatsApp, system Share, the message, which measurements to ask for, opens/sent counters, New link, Turn off. The raw token lives only in the coach's localStorage (DB has the hash). Name-only clients now have all four tabs; link submissions feed Last workout / This week on the table, "Done via link" with sets, weights and the client's note on the Plan tab, and "via link" tags on the Body tab.
+- Helpers with 10 tests in `src/coach/lib/clientLinks.js` (token, url, message, today-from-plan with rest-day next-up, validation, payload shapes, submission → dashboard shapes). 41 tests total.
+
+**Decided**
+- One durable link per client that always opens today (not a link per day). Front-view figure only. Coach picks requested measurements per link. Rest days show the next training day and offer the Measurements tab.
+
+**Verified**
+- Public page at 375 wide: workout tick/undo/skip/weight/note/send, measurements tap-label → guide + focus, validation (missing, out of range), send → receipt → back. Coach preview: Ravi (name-only) shows link data on table, Plan and Body; Share link sheet opens with URL, buttons, requested checkboxes, counters. Typecheck, tests, build pass.
+
+**Open**
+- Run `supabase/migrations/20260912120000_client_links.sql` in the SQL editor (needs the manual-clients migration first). Until then the Share link sheet explains what to run.
+- Push notification on submission (trigger into `notify_outbox`) not built yet.
+- The Vercel rewrite already sends `/f/*` to index.html; confirm on the preview deploy that a fresh load of `/f/<token>` works.
+
 ## 2026-09-09 — Coach dashboard rebuild (Direction B), branch `feat/coach-dashboard-b`
 
 **Done**

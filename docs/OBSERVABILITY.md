@@ -82,6 +82,18 @@ from coach_manual_clients order by updated_at desc;
 
 If that query says the table does not exist, run `supabase/migrations/20260909120000_coach_manual_clients.sql` here in the SQL editor.
 
+Client links and what came through them:
+
+```sql
+select l.label, l.opens, l.submissions, l.last_opened_at, l.revoked_at is not null as off
+from client_links l order by l.created_at desc;
+
+select kind, payload->>'date' as day, payload->>'type' as type, submitted_at
+from client_submissions order by submitted_at desc limit 30;
+```
+
+If those say the tables do not exist, run `supabase/migrations/20260912120000_client_links.sql` in the SQL editor.
+
 ## 3. From the terminal
 
 ```bash
