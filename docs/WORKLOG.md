@@ -27,10 +27,13 @@ Newest first. One entry per working session. Record what was done, what was foun
 - Not fixed: at 790 wide the preview opens with a drawer already open; pre-existing and not link-related, tracked for the old-code cleanup.
 - Could not be tested in the pane: clipboard success path, Web Share / native share, real RPC paths (needs the migration), real-device keyboard behaviour with the sticky footer.
 
+**Shipped**
+- PR #40 merged to main and deployed to production by Vercel. Cold load of `https://theryn.fit/f/<anything>` serves the link page (not a 404), so links opened from WhatsApp work.
+- Migration `20260912120000_client_links.sql` applied in the SQL editor. Checked from outside with the anon key: `link_view` and `link_submit` return `{ok:false, reason:"invalid"}` for a made-up token (HTTP 200), and a direct select on `client_links` is refused (401, permission denied). That is the intended shape: anon can only go through the two RPCs.
+
 **Open**
-- Run `supabase/migrations/20260912120000_client_links.sql` in the SQL editor (needs the manual-clients migration first). Until then the Share link sheet explains what to run.
-- Push notification on submission (trigger into `notify_outbox`) not built yet.
-- The Vercel rewrite already sends `/f/*` to index.html; confirm on the preview deploy that a fresh load of `/f/<token>` works.
+- Push notification on submission (trigger into `notify_outbox`) not built yet (roadmap 1.12).
+- First real link: open a client, Share link, send it to your own phone, tick a workout and send measurements, then check the client page shows them.
 
 ## 2026-09-09 — Coach dashboard rebuild (Direction B), branch `feat/coach-dashboard-b`
 
