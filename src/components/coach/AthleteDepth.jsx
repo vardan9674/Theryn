@@ -6,6 +6,9 @@
 
 import React from "react";
 
+// "YYYY-MM-DD" parsed as local midday so the day never shifts in negative-offset zones.
+const localDate = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : new Date(v));
+
 // Tokens mirrored from App.jsx
 const A   = "#C8FF00";
 const BG  = "#080808";
@@ -452,7 +455,7 @@ function fmtVol(v) {
   return Math.round(v).toString();
 }
 
-export function AthleteVolumeChart({ history }) {
+export function AthleteVolumeChart({ history, unit = "lbs" }) {
   const [hoverIdx, setHoverIdx] = React.useState(null);
 
   const { rows, weekLabels } = React.useMemo(() => {
@@ -524,7 +527,7 @@ export function AthleteVolumeChart({ history }) {
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ fontSize: "18px", fontWeight: 800, color: TX, letterSpacing: "-0.01em", lineHeight: 1 }}>
-              {fmtVol(grandTotal)}<span style={{ fontSize: "10px", color: SB, fontWeight: 500, marginLeft: "2px" }}>lbs</span>
+              {fmtVol(grandTotal)}<span style={{ fontSize: "10px", color: SB, fontWeight: 500, marginLeft: "2px" }}>{unit}</span>
             </div>
             <div style={{ fontSize: "9px", color: SB, marginTop: "3px", letterSpacing: "0.06em", fontWeight: 600, textTransform: "uppercase" }}>
               8-week total
@@ -593,7 +596,7 @@ export function AthleteVolumeChart({ history }) {
                   </div>
                 </div>
                 <div style={{ fontSize: "10px", color: SB, marginTop: "3px", marginLeft: "14px" }}>
-                  total {fmtVol(r.total)} lbs
+                  total {fmtVol(r.total)} {unit}
                 </div>
               </div>
 
@@ -612,7 +615,7 @@ export function AthleteVolumeChart({ history }) {
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: "13px", fontWeight: 800, color: TX, letterSpacing: "-0.01em", lineHeight: 1 }}>
                   {fmtVol(shownVal)}
-                  <span style={{ fontSize: "9px", color: SB, fontWeight: 500, marginLeft: "2px" }}>lbs</span>
+                  <span style={{ fontSize: "9px", color: SB, fontWeight: 500, marginLeft: "2px" }}>{unit}</span>
                 </div>
                 <div style={{
                   fontSize: "10px", fontWeight: 700, marginTop: "3px",
@@ -644,7 +647,7 @@ export function AthleteVolumeChart({ history }) {
 // ────────────────────────────────────────────────────────────────────────
 // 3. PR TIMELINE — chronological list of personal records
 // ────────────────────────────────────────────────────────────────────────
-export function AthletePRTimeline({ history }) {
+export function AthletePRTimeline({ history, unit = "lbs" }) {
   const prs = React.useMemo(() => {
     if (!history || history.length === 0) return [];
     const chronological = [...history].reverse();
@@ -724,7 +727,7 @@ export function AthletePRTimeline({ history }) {
                 {pr.exercise}
               </div>
               <div style={{ fontSize: "10px", color: SB, marginTop: "2px", letterSpacing: "0.02em" }}>
-                {new Date(pr.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                {localDate(pr.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 {pr.reps > 0 && ` · ${pr.reps} reps`}
               </div>
             </div>
@@ -732,10 +735,10 @@ export function AthletePRTimeline({ history }) {
             <div style={{ textAlign: "right", flexShrink: 0 }}>
               <div style={{ fontSize: "15px", fontWeight: 800, color: TX, lineHeight: 1, letterSpacing: "-0.01em" }}>
                 {pr.weight}
-                <span style={{ fontSize: "9px", color: SB, fontWeight: 500, marginLeft: "3px" }}>lbs</span>
+                <span style={{ fontSize: "9px", color: SB, fontWeight: 500, marginLeft: "3px" }}>{unit}</span>
               </div>
               {pr.delta !== null && (
-                <div style={{ fontSize: "9px", color: A, marginTop: "3px", fontWeight: 700 }}>+{pr.delta} lbs</div>
+                <div style={{ fontSize: "9px", color: A, marginTop: "3px", fontWeight: 700 }}>+{pr.delta} {unit}</div>
               )}
             </div>
           </div>
@@ -748,7 +751,7 @@ export function AthletePRTimeline({ history }) {
 // ────────────────────────────────────────────────────────────────────────
 // 4. SESSION DRAWER — bottom sheet with full sets table
 // ────────────────────────────────────────────────────────────────────────
-export function AthleteSessionDrawer({ session, onClose }) {
+export function AthleteSessionDrawer({ session, onClose, unit = "lbs" }) {
   const [expanded, setExpanded] = React.useState(false);
   const scrollRef = React.useRef(null);
 
@@ -833,12 +836,12 @@ export function AthleteSessionDrawer({ session, onClose }) {
               {session.type || "Workout"}
             </div>
             <div style={{ fontSize: "17px", fontWeight: 800, color: TX }}>
-              {new Date(session.date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              {localDate(session.date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
             </div>
             <div style={{ fontSize: "12px", color: SB, marginTop: "2px" }}>
               {session.totalSets || 0} sets
               {mins > 0 && ` · ${mins} min`}
-              {session.totalVolume > 0 && ` · ${session.totalVolume.toLocaleString()} lbs volume`}
+              {session.totalVolume > 0 && ` · ${session.totalVolume.toLocaleString()} ${unit} volume`}
             </div>
           </div>
           <button onClick={onClose} style={{ background: MT, border: "none", borderRadius: "8px", padding: "6px 12px", color: TX, fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>

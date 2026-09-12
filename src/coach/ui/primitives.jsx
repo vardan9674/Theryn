@@ -24,6 +24,7 @@ export const Icon = {
   Down: (p) => <svg width={p.size || 12} height={p.size || 12} {...svgProps} strokeWidth={2.5}><path d="M6 9l6 6 6-6" /></svg>,
   Share: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13" /></svg>,
   Copy: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>,
+  Lock: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><rect x="5" y="10" width="14" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>,
   Link: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>,
   Person: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" /></svg>,
   User: (p) => <svg width={p.size || 18} height={p.size || 18} {...svgProps}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-7 8-7s8 3 8 7" /></svg>,
@@ -86,6 +87,7 @@ export function Sheet({ open, onClose, title, subtitle, children, wide }) {
     <div className="cx-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} role="presentation">
       <div className="cx-sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 760 } : undefined}>
         <div className="cx-sheet-grip" />
+        <button type="button" className="cx-sheet-close" aria-label="Close" onClick={() => onClose?.()}><Icon.Close size={18} /></button>
         {title && <h2>{title}</h2>}
         {subtitle && <div className="cx-sub">{subtitle}</div>}
         {children}
