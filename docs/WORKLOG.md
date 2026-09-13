@@ -16,7 +16,11 @@ Newest first. One entry per working session. Record what was done, what was foun
 - From outside with the anon key: a well-formed unknown token now returns `{ok:false, reason:"revoked"}` from both RPCs (was 42883). A throwaway link for the name-only client "Test Subject1" returned `ok:true` with first name, coach name, unit and requested fields, and `opens` went to 1; the row was deleted afterwards. `client_link_upsert` as anon is now `permission denied`.
 - Coach preview: add by name → client appears in the table, is selected, and opens on the Plan tab. Typecheck and build pass.
 
+**Also done: target weight in the plan editor**
+- "Coach is not able to edit the lbs?" — the editor's "Last (lb)" box was read-only by design (heaviest weight from the client's last session) and there was no field to prescribe a weight, although the template type, the Excel export and the link page already carried `weight`. Added a **Weight** input (decimal, last-lifted as the placeholder hint) next to Sets / Reps / Last; `toTemplates` stores it as a number via `parseWeight` (0 < w ≤ 2000, 2 dp); the Plan tab shows "4 × 8 · 50 kg"; the export keeps the coach's target and only fills blanks from history. Persists for name-only clients (plan JSON). App clients need a `target_weight` column on `routine_exercises` before it survives a save (roadmap).
+
 **Open**
+- Target weight for app clients: `routine_exercises.target_weight` + `saveRoutineAsCoach` + `link_view` + athlete app.
 - Not exercised: the signed-in add path against production (needs a coach session). Reload the coach dashboard after the deploy and check "senha g" and "Test Subject1" are in the table, then open "Vardan's link" from the share message.
 
 ## 2026-09-12 — Shareable client links (decision 0006), branch `feat/client-links`

@@ -294,7 +294,7 @@
 .cx-excard .hd { display: flex; align-items: center; gap: 8px; }
 .cx-excard .hd .nm { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cx-grip { color: var(--cx-mu); display: flex; align-items: center; touch-action: none; cursor: grab; width: 24px; height: 32px; justify-content: center; flex: none; }
-.cx-numgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cx-numgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .cx-numgrid label { font-size: 11px; color: var(--cx-mu); display: block; margin-bottom: 3px; }
 .cx-num { height: 40px; width: 100%; border-radius: 7px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); text-align: center; font-size: 15px; font-weight: 600; padding: 0 6px; }
 .cx-num.ro { color: var(--cx-mu); font-weight: 500; display: flex; align-items: center; justify-content: center; }
@@ -425,7 +425,7 @@
   .cx-drawer, .cx-drawer-backdrop { display: none; }
   .cx-daycols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cx-daycol { min-height: 320px; }
-  .cx-numgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .cx-numgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
   .cx-num { height: 32px; font-size: 13px; padding: 0 4px; }
   .cx-noteinput { height: 34px; font-size: 12px; }
   .cx-excard .hd .nm { font-size: 13px; }
