@@ -5,7 +5,7 @@ import type { Templates, ExerciseItem } from "../../hooks/useRoutine";
 import type { WorkoutHistoryEntry } from "../../hooks/useWorkouts";
 
 export interface ExportOptions {
-  /** Fill the Weight column with the heaviest weight lifted in the most recent session containing that exercise. */
+  /** Fill blank Weight cells with the heaviest weight lifted in the most recent session containing that exercise. */
   includeLastWeights?: boolean;
   /** Add empty "Done · Sets / Reps / Weight" columns for the client to fill in by hand. */
   blankColumns?: boolean;
@@ -75,8 +75,9 @@ export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}):
     const rows: (string | number)[][] = [header];
     exercises.forEach((ex, i) => {
       const name = exName(ex);
+      // The coach's target wins; last lifted only fills exercises without one.
       let weight: string | number = exField(ex, "weight");
-      if (opts.includeLastWeights) {
+      if (opts.includeLastWeights && weight === "") {
         const last = lastLiftedWeight(opts.history, name);
         if (last != null) weight = last;
       }

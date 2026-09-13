@@ -118,8 +118,18 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   React.useEffect(() => data.subscribeMessages(realClients, () => refreshPreviews()), [data, realClients, refreshPreviews]);
   const unread = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
 
-  // Live data: an athlete logs a workout or body data → refresh their facts
-  React.useEffect(() => data.subscribeLiveData(realClients, (athleteId) => { if (athleteId) cache.load(athleteId, { force: true }).catch(() => {}); }), [data, realClients, cache]);
+  // Live data: a client logs a workout, body data or a link submission → refresh their facts.
+  // Depend on the stable callbacks, not `cache` (its identity changes on every version bump).
+  const { load: loadClient, reloadAll: reloadLoadedClients } = cache;
+  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) loadClient(athleteId, { force: true }).catch(() => {}); }), [data, clients, loadClient]);
+  // Safety net when realtime was disconnected (phone in the background): refresh on return, at most every 20s.
+  React.useEffect(() => {
+    let last = Date.now();
+    const onBack = () => { if (document.visibilityState !== "visible" || Date.now() - last < 20000) return; last = Date.now(); reloadLoadedClients(); };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    return () => { document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); };
+  }, [reloadLoadedClients]);
 
   // Native: catch-up notification on resume, Android back, deep links, foreground toasts
   React.useEffect(() => {
