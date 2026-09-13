@@ -43,6 +43,8 @@ export function useClientDataCache(data) {
 
   const set = React.useCallback((athleteId, d) => { cacheRef.current[athleteId] = d; bump(); }, []);
   const invalidate = React.useCallback((athleteId) => { delete cacheRef.current[athleteId]; bump(); }, []);
+  /** Re-fetch every client already loaded (used when the coach comes back to the app). */
+  const reloadAll = React.useCallback(() => Promise.all(Object.keys(cacheRef.current).map((id) => load(id, { force: true }).catch(() => {}))), [load]);
 
-  return React.useMemo(() => ({ get, load, set, invalidate, version }), [get, load, set, invalidate, version]);
+  return React.useMemo(() => ({ get, load, set, invalidate, reloadAll, version }), [get, load, set, invalidate, reloadAll, version]);
 }

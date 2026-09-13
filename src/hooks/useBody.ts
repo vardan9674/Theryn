@@ -11,11 +11,11 @@ export interface BodyWeightEntry {
   weight: number;
 }
 
-/** Fetches up to 90 body weight entries, newest first. */
-export async function loadBodyWeights(userId: string): Promise<BodyWeightEntry[]> {
+/** Fetches up to 90 body weight entries, newest first. `fresh` skips the local cache (coach reads). */
+export async function loadBodyWeights(userId: string, opts: { fresh?: boolean } = {}): Promise<BodyWeightEntry[]> {
   const cacheKey = `theryn_weights_${userId}`;
   let cachedData = null;
-  try {
+  if (!opts.fresh) try {
     const t = localStorage.getItem(cacheKey);
     if (t) cachedData = JSON.parse(t);
   } catch {}
@@ -126,11 +126,11 @@ export interface MeasurementInput {
   calves?: number | string;
 }
 
-/** Fetches up to 20 measurement entries, newest first. */
-export async function loadMeasurements(userId: string): Promise<MeasurementEntry[]> {
+/** Fetches up to 20 measurement entries, newest first. `fresh` skips the local cache (coach reads). */
+export async function loadMeasurements(userId: string, opts: { fresh?: boolean } = {}): Promise<MeasurementEntry[]> {
   const cacheKey = `theryn_measurements_${userId}`;
   let cachedData = null;
-  try {
+  if (!opts.fresh) try {
     const t = localStorage.getItem(cacheKey);
     if (t) cachedData = JSON.parse(t);
   } catch {}

@@ -162,10 +162,12 @@ export async function removeCoachLink(linkId: string): Promise<void> {
 // ── Load an athlete's full data for the coach view ────────────────────────────
 export async function loadAthleteData(athleteId: string) {
   const [routine, history, weights, measurements, profileRes] = await Promise.all([
-    loadRoutine(athleteId),
-    loadWorkoutHistory(athleteId),
-    loadBodyWeights(athleteId),
-    loadMeasurements(athleteId),
+    loadRoutine(athleteId, true),
+    // Always hit the network: the loaders' localStorage cache would hand the
+    // coach the previous snapshot and only refresh it for the next load.
+    loadWorkoutHistory(athleteId, undefined, { fresh: true }),
+    loadBodyWeights(athleteId, { fresh: true }),
+    loadMeasurements(athleteId, { fresh: true }),
     // Fetch the athlete's height + unit so the coach can compute BMI.
     // RLS: the existing "coaches can read profile" policy must allow this for
     // accepted coach_athletes links. Falls back to null silently on error.
