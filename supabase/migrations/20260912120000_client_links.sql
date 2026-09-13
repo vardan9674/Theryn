@@ -81,7 +81,7 @@ CREATE OR REPLACE FUNCTION link_view(p_token TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp   -- extensions: pgcrypto's digest()
 AS $$
 DECLARE
   v_link      client_links%ROWTYPE;
@@ -147,7 +147,7 @@ CREATE OR REPLACE FUNCTION link_submit(p_token TEXT, p_kind TEXT, p_payload JSON
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp   -- extensions: pgcrypto's digest()
 AS $$
 DECLARE
   v_link   client_links%ROWTYPE;
@@ -317,5 +317,5 @@ BEGIN
   RETURN v_row;
 END;
 $$;
-REVOKE ALL ON FUNCTION client_link_upsert(UUID, UUID, TEXT, TEXT, TEXT[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION client_link_upsert(UUID, UUID, TEXT, TEXT, TEXT[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION client_link_upsert(UUID, UUID, TEXT, TEXT, TEXT[]) TO authenticated;

@@ -2,6 +2,23 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync`
+
+**Found**
+- Every real link failed: `link_view` / `link_submit` raised `function digest(text, unknown) does not exist` (42883). On Supabase, pgcrypto lives in the `extensions` schema, and both functions pinned `search_path = public, pg_temp`. The earlier smoke test used a made-up token shorter than 20 characters, which returns `{ok:false, reason:"invalid"}` before `digest()` is reached, so it looked fine. Live evidence: two links created today with `opens = 0`.
+- "Add client" by name wrote the row (`senha g`, 23:11 UTC) but the client never appeared. `CoachShell` seeded its list from the root's `coachLinks` (coach_athletes only) and only called `data.loadClients()`, the one that merges `coach_manual_clients`, when that seed was null, which never happens when signed in. After an add, `refreshClients()` → `onLinksChanged()` → root `setCoachLinks` → the seed effect overwrote the merged list without the new client, and the selection guard then cleared the selection. Same cause hid name-only clients on cold load. Those lines predate the name-only feature (Direction B rebuild, `dc99d48`).
+
+**Done**
+- `20260912180000_client_links_search_path.sql`: `ALTER FUNCTION ... SET search_path = public, extensions, pg_temp` for both public RPCs, and `REVOKE EXECUTE ... FROM anon` on `client_link_upsert` (Supabase's default privileges had granted it; the function already raised `forbidden`). Applied to production with `supabase db query --linked -f`. `20260912120000_client_links.sql` updated to match for fresh installs.
+- `CoachShell` now always loads from `data.loadClients()`; the root's links only seed the first paint and trigger a refetch when they change.
+
+**Verified**
+- From outside with the anon key: a well-formed unknown token now returns `{ok:false, reason:"revoked"}` from both RPCs (was 42883). A throwaway link for the name-only client "Test Subject1" returned `ok:true` with first name, coach name, unit and requested fields, and `opens` went to 1; the row was deleted afterwards. `client_link_upsert` as anon is now `permission denied`.
+- Coach preview: add by name → client appears in the table, is selected, and opens on the Plan tab. Typecheck and build pass.
+
+**Open**
+- Not exercised: the signed-in add path against production (needs a coach session). Reload the coach dashboard after the deploy and check "senha g" and "Test Subject1" are in the table, then open "Vardan's link" from the share message.
+
 ## 2026-09-12 — Shareable client links (decision 0006), branch `feat/client-links`
 
 **Done**
