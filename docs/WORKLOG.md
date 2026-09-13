@@ -2,14 +2,14 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
-## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync`
+## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync` (PR #43); target weight and coach data freshness, branch `fix/coach-submissions-target-weight`
 
 **Found**
 - Every real link failed: `link_view` / `link_submit` raised `function digest(text, unknown) does not exist` (42883). On Supabase, pgcrypto lives in the `extensions` schema, and both functions pinned `search_path = public, pg_temp`. The earlier smoke test used a made-up token shorter than 20 characters, which returns `{ok:false, reason:"invalid"}` before `digest()` is reached, so it looked fine. Live evidence: two links created today with `opens = 0`.
 - "Add client" by name wrote the row (`senha g`, 23:11 UTC) but the client never appeared. `CoachShell` seeded its list from the root's `coachLinks` (coach_athletes only) and only called `data.loadClients()`, the one that merges `coach_manual_clients`, when that seed was null, which never happens when signed in. After an add, `refreshClients()` → `onLinksChanged()` → root `setCoachLinks` → the seed effect overwrote the merged list without the new client, and the selection guard then cleared the selection. Same cause hid name-only clients on cold load. Those lines predate the name-only feature (Direction B rebuild, `dc99d48`).
 
 **Done**
-- `20260912180000_client_links_search_path.sql`: `ALTER FUNCTION ... SET search_path = public, extensions, pg_temp` for both public RPCs, and `REVOKE EXECUTE ... FROM anon` on `client_link_upsert` (Supabase's default privileges had granted it; the function already raised `forbidden`). Applied to production with `supabase db query --linked -f`. `20260912120000_client_links.sql` updated to match for fresh installs.
+- Search path fix: the same `ALTER FUNCTION ... SET search_path = public, extensions, pg_temp` was found and merged in parallel as PR #42 (`20260912180000_client_links_digest_fix.sql`), so that file is the one that stays; a duplicate from this session was dropped. It is applied to production (via `supabase db query --linked -f`). `20260912120000_client_links.sql` updated to match for fresh installs. `20260913110000_client_link_upsert_anon.sql` revokes anon EXECUTE on `client_link_upsert` (Supabase's default privileges had granted it; the function already raised `forbidden`), also applied.
 - `CoachShell` now always loads from `data.loadClients()`; the root's links only seed the first paint and trigger a refetch when they change.
 
 **Verified**

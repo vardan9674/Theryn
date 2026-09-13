@@ -27,7 +27,7 @@ Status: `todo` · `doing` · `done` · `dropped`. Update the status in place and
 | 1.7 | Email/password signup | todo | Supported by the existing auth server |
 | 1.8 | Mobile build workflow (Fastlane or EAS-style script) | todo | |
 | 1.9 | Coach dashboard rebuild per decision 0005 (Direction B): four areas, client table home, client page with tabs, plan editor, Export to Excel | done | Merged PR #38, #39. Old coach code in App.jsx still to be deleted (1.11) |
-| 1.10 | Shareable client links per decision 0006: public `/f/<token>` page for workout check-ins and measurements, Share link sheet, link data on the client page | doing | Merged PR #40 on 2026-09-12. First real link failed (pgcrypto `digest` not on the pinned search_path); fix migration `20260912180000_client_links_digest_fix.sql` must be run, then a real link verified end to end |
+| 1.10 | Shareable client links per decision 0006: public `/f/<token>` page for workout check-ins and measurements, Share link sheet, link data on the client page | doing | Merged PR #40 on 2026-09-12. First real link failed (pgcrypto `digest` not on the pinned search_path); fix migration `20260912180000_client_links_digest_fix.sql` applied 2026-09-12; real links verified end to end (submissions land, measurements and sessions promoted). Coach dashboard now sees them live (realtime publication + fresh reads, 2026-09-13) |
 | 1.11 | Delete the old coach components from App.jsx | todo | ~2,200 lines no longer rendered |
 | 1.12 | Push notification to the coach when a link submission arrives (trigger → notify_outbox) | todo | Reuses the outbox pipeline |
 
