@@ -57,7 +57,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
   const [tab, setTab] = React.useState("clients");
   const [clients, setClients] = React.useState(initialClients || []);
-  const [loadedClients, setLoadedClients] = React.useState(Boolean(initialClients) && clientsLoaded);
+  const [loadedClients, setLoadedClients] = React.useState(false);
   const SELECTED_KEY = `theryn_coach_selected_${data.coachId}`;
   const [selectedId, setSelectedIdRaw] = React.useState(() => { try { return localStorage.getItem(SELECTED_KEY) || null; } catch { return null; } });
   const [search, setSearch] = React.useState("");
@@ -74,9 +74,17 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   React.useEffect(() => { document.body.dataset.app = "coach"; return () => { delete document.body.dataset.app; }; }, []);
   React.useEffect(() => { registerNotificationTapHandlers(); }, []);
 
-  // Sync incoming links from the root (accepted requests, etc.)
-  React.useEffect(() => { if (initialClients) { setClients(initialClients); if (clientsLoaded) setLoadedClients(true); } }, [initialClients, clientsLoaded]);
-  React.useEffect(() => { if (!initialClients) data.loadClients().then((c) => { setClients(c); setLoadedClients(true); }).catch((e) => toast(`Could not load clients: ${e.message}`, "error")); }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // data.loadClients() is the source of truth: it merges app clients (coach_athletes)
+  // with name-only clients (coach_manual_clients). The root's coachLinks only seed
+  // the first paint and trigger a refetch when they change (accepted requests, etc.).
+  React.useEffect(() => {
+    if (initialClients && !clientsLoaded) return; // root is still fetching links
+    let stale = false;
+    data.loadClients()
+      .then((c) => { if (!stale) { setClients(c); setLoadedClients(true); } })
+      .catch((e) => { if (!stale) { setLoadedClients(true); toast(`Could not load clients: ${e.message}`, "error"); } });
+    return () => { stale = true; };
+  }, [data, initialClients, clientsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshClients = React.useCallback(async () => {
     try { setClients(await data.loadClients()); onLinksChanged?.(); } catch (e) { toast(`Could not refresh clients: ${e.message}`, "error"); }
