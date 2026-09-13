@@ -229,12 +229,15 @@ export interface WorkoutHistoryEntry {
  */
 export async function loadWorkoutHistory(
   userId: string,
-  onFreshData?: (data: WorkoutHistoryEntry[]) => void
+  onFreshData?: (data: WorkoutHistoryEntry[]) => void,
+  opts: { fresh?: boolean } = {}
 ): Promise<WorkoutHistoryEntry[]> {
   const cacheKey = `theryn_history_${userId}`;
   
+  // `fresh` skips the local cache: the coach must see the latest rows, not
+  // the previous snapshot (the cache is for the athlete's own offline use).
   let cachedData = null;
-  try {
+  if (!opts.fresh) try {
     const cachedText = localStorage.getItem(cacheKey);
     if (cachedText) cachedData = JSON.parse(cachedText);
   } catch {}

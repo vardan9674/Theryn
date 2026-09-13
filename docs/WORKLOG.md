@@ -19,7 +19,14 @@ Newest first. One entry per working session. Record what was done, what was foun
 **Also done: target weight in the plan editor**
 - "Coach is not able to edit the lbs?" — the editor's "Last (lb)" box was read-only by design (heaviest weight from the client's last session) and there was no field to prescribe a weight, although the template type, the Excel export and the link page already carried `weight`. Added a **Weight** input (decimal, last-lifted as the placeholder hint) next to Sets / Reps / Last; `toTemplates` stores it as a number via `parseWeight` (0 < w ≤ 2000, 2 dp); the Plan tab shows "4 × 8 · 50 kg"; the export keeps the coach's target and only fills blanks from history. Persists for name-only clients (plan JSON). App clients need a `target_weight` column on `routine_exercises` before it survives a save (roadmap).
 
+**Also done: link submissions now reach the coach**
+- Submissions were landing (4 rows in `client_submissions`, measurements promoted into `body_weights`/`body_measurements`, sessions into `workout_sessions`) but the dashboard never showed them. Two causes:
+  1. `subscribeLiveData` listened on `workout_sessions`, `body_weights`, `body_measurements`, but only `messages`, `conversation_reads`, `routines` were in the `supabase_realtime` publication, so no event ever arrived. `20260913120000_realtime_client_data.sql` adds those three plus `client_submissions` (applied to production; a subscription probe returns SUBSCRIBED). The coach now also subscribes to `client_submissions` (`coach_id=eq.<me>`), which is the only data name-only clients have.
+  2. `loadAthleteData` read through the athlete app's stale-while-revalidate loaders (`loadWorkoutHistory`, `loadBodyWeights`, `loadMeasurements`, `loadRoutine`), which return the localStorage snapshot and only refresh it for the *next* load, so the coach was always one reload behind. Loaders take `{ fresh: true }` (routine: `forceNetwork`) and the coach path uses it; the athlete app keeps its offline cache.
+- Safety net: on `visibilitychange`/`focus` the shell re-fetches every client already loaded (throttled to 20s) for when the realtime socket dropped in the background. Live-data and focus effects depend on the cache's stable callbacks, not the `cache` object (its identity changes on every bump, which would have torn down the channel on every refresh).
+
 **Open**
+- Not exercised: a realtime event delivered to a signed-in coach (needs a coach session; the anon probe only proves the channel subscribes).
 - Target weight for app clients: `routine_exercises.target_weight` + `saveRoutineAsCoach` + `link_view` + athlete app.
 - Not exercised: the signed-in add path against production (needs a coach session). Reload the coach dashboard after the deploy and check "senha g" and "Test Subject1" are in the table, then open "Vardan's link" from the share message.
 

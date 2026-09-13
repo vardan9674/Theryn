@@ -12,7 +12,7 @@ import {
   softDeleteTemplate, assignTemplate, pushTemplateUpdate, unassignTemplate, getTemplateAssignments, getActiveAssignmentsForAthletes,
 } from "../../hooks/useTemplates.ts";
 import {
-  isManualId, manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
+  isManualId, manualIdOf, toClientId, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
 import { generateToken, hashToken, submissionToMeasurement, submissionToHistory } from "../lib/clientLinks.js";
@@ -236,17 +236,24 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       })();
       return () => { cancelled = true; if (channel) supabase.removeChannel(channel); };
     },
+    // Tables must be in the supabase_realtime publication (20260913120000).
+    // Link submissions cover name-only clients, whose only data is that table.
     subscribeLiveData(clients, onChange) {
       const ids = clients.filter((c) => !c.manual).map((c) => c.athlete_id).sort();
-      if (ids.length === 0) return () => {};
-      const filterIn = `user_id=in.(${ids.join(",")})`;
-      const channel = supabase
-        .channel(`coach-live-data:${coachId}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "workout_sessions", filter: filterIn }, (p) => onChange(p.new?.user_id))
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "workout_sessions", filter: filterIn }, (p) => onChange(p.new?.user_id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "body_weights", filter: filterIn }, (p) => onChange(p.new?.user_id || p.old?.user_id))
-        .on("postgres_changes", { event: "*", schema: "public", table: "body_measurements", filter: filterIn }, (p) => onChange(p.new?.user_id || p.old?.user_id))
-        .subscribe();
+      const channel = supabase.channel(`coach-live-data:${coachId}`);
+      if (ids.length > 0) {
+        const filterIn = `user_id=in.(${ids.join(",")})`;
+        channel
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "workout_sessions", filter: filterIn }, (p) => onChange(p.new?.user_id))
+          .on("postgres_changes", { event: "UPDATE", schema: "public", table: "workout_sessions", filter: filterIn }, (p) => onChange(p.new?.user_id))
+          .on("postgres_changes", { event: "*", schema: "public", table: "body_weights", filter: filterIn }, (p) => onChange(p.new?.user_id || p.old?.user_id))
+          .on("postgres_changes", { event: "*", schema: "public", table: "body_measurements", filter: filterIn }, (p) => onChange(p.new?.user_id || p.old?.user_id));
+      }
+      channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "client_submissions", filter: `coach_id=eq.${coachId}` }, (p) => {
+        const row = p.new || {};
+        onChange(row.manual_client_id ? toClientId(row.manual_client_id) : row.athlete_id);
+      });
+      channel.subscribe();
       return () => { supabase.removeChannel(channel); };
     },
 
