@@ -25,6 +25,11 @@ describe("buildPlanSheets", () => {
     expect(sheets[0].rows[1][4]).toBe(150);
     expect(sheets[0].rows[2][4]).toBe("");
   });
+  it("keeps the coach's target weight over the last lifted one", () => {
+    const withTarget: any = { Mon: { type: "Push", exercises: [{ name: "Bench Press", sets: 4, reps: "8", weight: 60 }] } };
+    const sheets = buildPlanSheets(withTarget, { includeLastWeights: true, history });
+    expect(sheets[0].rows[1][4]).toBe("60");
+  });
   it("adds blank columns when asked", () => {
     const sheets = buildPlanSheets(templates, { blankColumns: true, unit: "kg" });
     expect(sheets[0].rows[0].slice(4)).toEqual(["Weight (kg)", "Coach note", "Done sets", "Done reps", "Done weight (kg)", "How it felt"]);

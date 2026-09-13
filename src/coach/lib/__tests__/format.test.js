@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { initialsOf, setsReps, relativeTime, startOfWeek, dayKey, isoDate } from "../format.js";
+import { initialsOf, setsReps, parseWeight, relativeTime, startOfWeek, dayKey, isoDate } from "../format.js";
 
 describe("format", () => {
   it("initials", () => {
@@ -11,6 +11,19 @@ describe("format", () => {
     expect(setsReps({ name: "x", sets: 4, reps: "8-10" })).toBe("4 × 8-10");
     expect(setsReps("Bench")).toBe("");
     expect(setsReps({ name: "x", sets: 3 })).toBe("3 sets");
+    expect(setsReps({ name: "x", sets: 4, reps: "8", weight: 40 }, "kg")).toBe("4 × 8 · 40 kg");
+    expect(setsReps({ name: "x", weight: 12.5 })).toBe("12.5 lb");
+    expect(setsReps({ name: "x", sets: 3, weight: "" })).toBe("3 sets");
+  });
+  it("target weight parsing", () => {
+    expect(parseWeight("40")).toBe(40);
+    expect(parseWeight(" 12.5 ")).toBe(12.5);
+    expect(parseWeight(12.456)).toBe(12.46);
+    expect(parseWeight("")).toBeNull();
+    expect(parseWeight(null)).toBeNull();
+    expect(parseWeight("0")).toBeNull();
+    expect(parseWeight("abc")).toBeNull();
+    expect(parseWeight("5000")).toBeNull();
   });
   it("week starts Monday", () => {
     const sun = new Date(2026, 8, 13, 12); // Sunday

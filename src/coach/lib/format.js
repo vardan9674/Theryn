@@ -89,15 +89,26 @@ export function exerciseName(ex) {
   return typeof ex === "string" ? ex : (ex?.name || "");
 }
 
-/** "4 × 8" for the plan view, tolerant of missing values. */
-export function setsReps(ex) {
+/** Target weight typed by the coach → number, or null when blank or not a sensible load. */
+export function parseWeight(v) {
+  if (v == null || String(v).trim() === "") return null;
+  const n = Number(String(v).trim());
+  if (!Number.isFinite(n) || n <= 0 || n > 2000) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/** "4 × 8 · 40 lb" for the plan view, tolerant of missing values. */
+export function setsReps(ex, unit) {
   const o = normalizeExercise(ex);
   const s = o.sets != null && o.sets !== "" ? String(o.sets) : null;
   const r = o.reps != null && o.reps !== "" ? String(o.reps) : null;
-  if (s && r) return `${s} × ${r}`;
-  if (s) return `${s} sets`;
-  if (r) return `${r} reps`;
-  return "";
+  const w = parseWeight(o.weight);
+  let out = "";
+  if (s && r) out = `${s} × ${r}`;
+  else if (s) out = `${s} sets`;
+  else if (r) out = `${r} reps`;
+  if (w != null) out = out ? `${out} · ${w} ${unit || "lb"}` : `${w} ${unit || "lb"}`;
+  return out;
 }
 
 export function plural(n, one, many) {

@@ -3,7 +3,7 @@ import { DndContext, PointerSensor, TouchSensor, KeyboardSensor, closestCenter, 
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button, Icon, Confirm, useViewport, useToast } from "../ui/primitives.jsx";
-import { DAYS, DAY_LONG, normalizeExercise } from "../lib/format.js";
+import { DAYS, DAY_LONG, normalizeExercise, parseWeight } from "../lib/format.js";
 import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
@@ -20,7 +20,7 @@ function toEditable(templates) {
       type: day.type || "Rest",
       exercises: (day.exercises || []).map((ex) => {
         const o = normalizeExercise(ex);
-        return { _key: mkKey(), name: o.name, sets: o.sets ?? "", reps: o.reps ?? "", coachNote: o.coachNote ?? "" };
+        return { _key: mkKey(), name: o.name, sets: o.sets ?? "", reps: o.reps ?? "", weight: o.weight ?? "", coachNote: o.coachNote ?? "" };
       }),
     };
   }
@@ -38,6 +38,10 @@ function toTemplates(days) {
         const s = Number(e.sets);
         if (Number.isInteger(s) && s > 0) o.sets = s;
         if (e.reps && String(e.reps).trim()) o.reps = String(e.reps).trim();
+        // Target weight in the client's unit. Stored as a number; the link page
+        // and the Excel export show it, the client can log a different weight.
+        const w = parseWeight(e.weight);
+        if (w != null) o.weight = w;
         if (e.coachNote && e.coachNote.trim()) o.coachNote = e.coachNote.trim();
         return Object.keys(o).length === 1 ? o.name : o;
       });
@@ -82,12 +86,12 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   const setType = (d, type) => update((next) => {
     next[d].type = type;
     if (type === "Rest") next[d].exercises = [];
-    else if (next[d].exercises.length === 0) next[d].exercises = (TYPE_DEFAULTS[type] || []).map((name) => ({ _key: mkKey(), name, sets: "", reps: "", coachNote: "" }));
+    else if (next[d].exercises.length === 0) next[d].exercises = (TYPE_DEFAULTS[type] || []).map((name) => ({ _key: mkKey(), name, sets: "", reps: "", weight: "", coachNote: "" }));
     return next;
   });
   const addExercise = (d) => {
     const key = mkKey();
-    update((next) => { if (next[d].type === "Rest") next[d].type = "Custom"; next[d].exercises.push({ _key: key, name: "", sets: "", reps: "", coachNote: "" }); return next; });
+    update((next) => { if (next[d].type === "Rest") next[d].type = "Custom"; next[d].exercises.push({ _key: key, name: "", sets: "", reps: "", weight: "", coachNote: "" }); return next; });
     setFocusKey(key);
   };
   const setField = (d, key, field, value) => update((next) => { const ex = next[d].exercises.find((e) => e._key === key); if (ex) ex[field] = value; return next; });
@@ -206,6 +210,7 @@ function ExerciseCard({ ex, unit, last, autoFocus, onField, onRemove }) {
       <div className="cx-numgrid">
         <div><label>Sets</label><input className="cx-num" inputMode="numeric" value={ex.sets} placeholder="3" onChange={(e) => onField("sets", e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} aria-label="Sets" /></div>
         <div><label>Reps</label><input className="cx-num" value={ex.reps} placeholder="8-12" onChange={(e) => onField("reps", e.target.value.slice(0, 12))} aria-label="Reps" /></div>
+        <div><label>Weight ({unit})</label><input className="cx-num" inputMode="decimal" value={ex.weight} placeholder={last != null ? String(last) : "—"} onChange={(e) => onField("weight", e.target.value.replace(/[^0-9.]/g, "").slice(0, 6))} aria-label={`Target weight in ${unit}`} title="Target weight for them. Leave blank to let them choose." /></div>
         <div><label>Last ({unit})</label><div className="cx-num ro" title="Heaviest weight in their most recent session with this exercise">{last ?? "—"}</div></div>
       </div>
       <input className={`cx-noteinput ${ex.coachNote ? "has" : ""}`} value={ex.coachNote} placeholder="Add a note for them" onChange={(e) => onField("coachNote", e.target.value.slice(0, 200))} aria-label="Coach note" />

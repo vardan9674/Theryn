@@ -80,6 +80,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
 
 // ── Plan ──────────────────────────────────────────────────────────────────
 function PlanTab({ data, row, actions }) {
+  const unit = data.profile?.unit_system === "metric" ? "kg" : "lb";
   const routine = data.routine;
   const athleteId = row.link.athlete_id;
   const trainingDays = routine ? DAYS.filter((d) => routine[d]?.type && routine[d].type !== "Rest") : [];
@@ -129,7 +130,7 @@ function PlanTab({ data, row, actions }) {
                 const o = normalizeExercise(ex);
                 return (
                   <div key={i}>
-                    <div className="cx-exrow"><span>{exerciseName(ex)}</span><span>{setsReps(ex)}</span></div>
+                    <div className="cx-exrow"><span>{exerciseName(ex)}</span><span>{setsReps(ex, unit)}</span></div>
                     {o.coachNote && <div className="cx-note">Note: {o.coachNote}</div>}
                   </div>
                 );
