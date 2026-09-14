@@ -9,8 +9,8 @@ import {
   useTransform,
 } from "framer-motion";
 
-import { WorkoutLinkPreview } from "../link/LinkPage.jsx";
 import "./landing-responsive.css";
+import { HeroDashboard, ToolPile, AthletePhone, useAthleteFlow, FLOW_STAGES, ConnectionMoment, PayoffFlip } from "./landing-motion.jsx";
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
 const ThemeCtx = createContext({ theme: "dark", toggle: () => {} });
@@ -285,20 +285,6 @@ function ScrollReveal({ children }) {
   const opacity = useTransform(scrollYProgress, [0, .16, .84, 1], [.25, 1, 1, .25]);
   return <motion.div ref={ref} className="landing-reveal" style={{ y: enabled ? y : 0, opacity: enabled ? opacity : 1 }}>{children}</motion.div>;
 }
-function AthleteProduct({ step }) {
-  const scroll = useRef(null);
-  useEffect(() => {
-    // Keep the active exercise visible without hijacking the page scroll.
-    if (scroll.current) scroll.current.scrollTop = step === 1 ? 300 : 0;
-  }, [step]);
-  return <figure className="athlete-product">
-    <div className="product-browser-bar">{["Your coach’s workout link", "Sets ticked · ready to send", "Sent to your coach"][step]}</div>
-    <div className="product-window" ref={scroll} data-story-step={step}>
-      <div inert="" aria-hidden="true"><WorkoutLinkPreview step={step} /></div>
-    </div>
-    <figcaption>Sample athlete · automatic product demonstration</figcaption>
-  </figure>;
-}
 function CoachProduct({ screen = "dashboard", compact = false }) {
   const ref = useRef(null);
   const [width, setWidth] = useState(compact ? 300 : 900);
@@ -319,14 +305,6 @@ function CoachProduct({ screen = "dashboard", compact = false }) {
     </div>
   </div>;
 }
-function FittedHero() {
-  return <div className="hero-product">
-    <CoachProduct compact />
-    <div className="hero-ticket"><span className="ticket-arrow" aria-hidden="true">↗</span><div><small>FROM YOUR COACH</small><strong>Your workout is ready.</strong><span>Open the link. You’re in. →</span></div></div>
-    <small className="sample-label">Sample athletes</small>
-  </div>;
-}
-
 // ── NAVBAR ────────────────────────────────────────────────────────────────────
 function SunIcon({ color }) {
   return (
@@ -1469,30 +1447,48 @@ function LandingContent({ onEnterApp }) {
 const ASK_COACH_MESSAGE = "Hey coach — can you set me up on Theryn? It's free, and you send my workouts as a link so I don't need another app. https://theryn.fit";
 
 // Conversion landing composition. It keeps the existing product tokens and
-// the original hero frames, while routing every coach CTA through App.jsx's
-// existing Supabase OAuth entry point.
+// routes every coach CTA through App.jsx's existing Supabase OAuth entry
+// point. Choreography lives in landing-motion.jsx / .css; this file only
+// decides when each beat is allowed to play.
 function ConversionLandingContent({ onEnterApp }) {
   const c = useC();
   const { theme, toggle } = useTheme();
-  const [step, setStep] = useState(0);
-  const [coachFrame, setCoachFrame] = useState(1);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [paused, setPaused] = useState(false);
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(media.matches);
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  const motionOn = !reducedMotion;
-  const athleteRef = useRef(null);
-  const athleteVisible = useInView(athleteRef, { amount: .15 });
+  const motionOn = !reducedMotion && !paused;
+  const { scrollYProgress } = useScroll();
+
+  // Beat 03's coach screens cycle on their own; Beat 02's phone plays its
+  // Open → Tick → Send → Measure loop only while it is on screen.
+  const [coachFrame, setCoachFrame] = useState(1);
   useEffect(() => {
     if (!motionOn) return;
-    const athleteTimer = athleteVisible ? setInterval(() => setStep(s => (s + 1) % 3), 3200) : null;
-    const coachTimer = setInterval(() => setCoachFrame(s => (s + 1) % 3), 3200);
-    return () => { clearInterval(athleteTimer); clearInterval(coachTimer); };
-  }, [motionOn, athleteVisible]);
-  const steps = ["Open", "Tick", "Send to coach"];
+    const t = setInterval(() => setCoachFrame(f => (f + 1) % 3), 3200);
+    return () => clearInterval(t);
+  }, [motionOn]);
+  const athleteRef = useRef(null);
+  const athleteVisible = useInView(athleteRef, { amount: .15 });
+  const flow = useAthleteFlow(athleteVisible, motionOn);
+  const stageInfo = FLOW_STAGES.find(st => st.id === flow.stage);
+
+  // Mobile sticky CTAs: shown once the hero's buttons scroll away, hidden
+  // again when the closer (which has the same two buttons) is on screen.
+  const heroRef = useRef(null);
+  const closerRef = useRef(null);
+  const heroVisible = useInView(heroRef, { amount: .5 });
+  const closerVisible = useInView(closerRef, { amount: .2 });
+  // useInView starts false, so wait until the hero has actually been seen —
+  // otherwise the bar flashes up on first paint.
+  const [heroSeen, setHeroSeen] = useState(false);
+  useEffect(() => { if (heroVisible) setHeroSeen(true); }, [heroVisible]);
+  const showSticky = heroSeen && !heroVisible && !closerVisible;
+
   const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior: motionOn ? "smooth" : "auto" });
   // Athletes never sign in from here: the closer hands them a ready-made
   // message for their coach via the native share sheet, falling back to the
@@ -1508,27 +1504,50 @@ function ConversionLandingContent({ onEnterApp }) {
       setAskState("failed");
     }
   };
+  const kicker = { color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 };
+  const chipVars = { "--chip-bd": c.bd, "--chip-bg": c.s1, "--chip-tx": c.sb2, "--flip-bg": c.s1, "--flip-bd": c.bd, "--accent-text": c.accentText };
   return (
-    <LandingMotion.Provider value={motionOn}><div className="theryn-conversion-landing" data-motion={motionOn ? "on" : "off"} style={{ fontFamily: "-apple-system, 'Helvetica Neue', Helvetica, sans-serif", background: c.bg, color: c.tx, minHeight: "100vh", overflow: "clip" }}>
+    <LandingMotion.Provider value={motionOn}><div className="theryn-conversion-landing" data-motion={motionOn ? "on" : "off"} style={{ fontFamily: "-apple-system, 'Helvetica Neue', Helvetica, sans-serif", background: c.bg, color: c.tx, minHeight: "100vh", overflow: "clip", ...chipVars }}>
+      {motionOn && <motion.div className="scroll-progress" style={{ scaleX: scrollYProgress }} aria-hidden="true" />}
       <header style={{ height: 76, maxWidth: 1320, margin: "0 auto", padding: "0 clamp(18px, 5vw, 64px)", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${c.bd}`, position: "relative", zIndex: 10 }}>
         <a href="#home" style={{ display: "flex", gap: 9, alignItems: "center", color: c.tx, textDecoration: "none", fontWeight: 900, letterSpacing: "0.16em" }}><img src="/theryn-logo.svg" alt="" style={{ width: 25, height: 25 }} />THERYN</a>
         <nav style={{ display: "flex", gap: 26, fontSize: 12, color: c.sb2 }}><a href="#coaches" style={{ color: "inherit", textDecoration: "none" }}>For coaches</a><a href="#athletes" style={{ color: "inherit", textDecoration: "none" }}>For athletes</a></nav>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button aria-label="Toggle theme" onClick={toggle} style={{ width: 31, height: 31, borderRadius: 20, border: `1px solid ${c.bd}`, background: "none", color: c.tx }}>{theme === "dark" ? "☀" : "☾"}</button><button onClick={() => onEnterApp("coach")} style={{ border: 0, background: "none", color: c.tx, fontSize: 12, fontWeight: 700 }}>Coach sign in ↗</button></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{!reducedMotion && <button className="motion-toggle" aria-pressed={paused} onClick={() => setPaused(p => !p)} style={{ border: `1px solid ${c.bd}`, background: "none", color: c.sb2 }}>{paused ? "▶ Motion" : "❚❚ Motion"}</button>}<button aria-label="Toggle theme" onClick={toggle} style={{ width: 31, height: 31, borderRadius: 20, border: `1px solid ${c.bd}`, background: "none", color: c.tx }}>{theme === "dark" ? "☀" : "☾"}</button><button onClick={() => onEnterApp("coach")} style={{ border: 0, background: "none", color: c.tx, fontSize: 12, fontWeight: 700 }}>Coach sign in ↗</button></div>
       </header>
       <main>
-        <section id="home" style={{ maxWidth: 1320, minHeight: "calc(100vh - 76px)", margin: "0 auto", padding: "clamp(65px, 10vw, 135px) clamp(18px, 6vw, 80px) 100px", display: "grid", gridTemplateColumns: "1.1fr .9fr", alignItems: "center", gap: 60, position: "relative" }}>
-          <div><div style={{ fontSize: 10, letterSpacing: "0.2em", color: c.sb2, marginBottom: 24 }}>YOUR COACHING. ONE LINK.</div><h1 style={{ fontSize: "clamp(48px, 6.3vw, 86px)", lineHeight: .98, letterSpacing: "-.055em", margin: 0, maxWidth: 700 }}>Get your athletes training with <span style={{ color: c.accentText }}>one link.</span></h1><p style={{ fontSize: 20, lineHeight: 1.55, color: c.sb2, margin: "28px 0" }}>Coaches, send the plan.<br />Athletes, open it and train.</p><div className="hero-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}><small>I’m a coach</small><strong>Sign in</strong><span className="action-arrow" aria-hidden="true">↗</span></button><button onClick={() => scrollTo("get-link")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}><small>I’m an athlete</small><strong>Get my workout link</strong><span className="action-arrow" aria-hidden="true">↓</span></button></div><div style={{ color: c.sb, fontSize: 11, marginTop: 15 }}>Free for coaches and athletes.</div></div>
-          <FittedHero />
+        <section id="home" data-phase={motionOn ? "play" : "done"} style={{ maxWidth: 1320, minHeight: "calc(100vh - 76px)", margin: "0 auto", padding: "clamp(65px, 10vw, 135px) clamp(18px, 6vw, 80px) 100px", display: "grid", gridTemplateColumns: "1.1fr .9fr", alignItems: "center", gap: 60, position: "relative" }}>
+          <div><div style={{ fontSize: 10, letterSpacing: "0.2em", color: c.sb2, marginBottom: 24 }}>YOUR COACHING. ONE LINK.</div><h1 style={{ fontSize: "clamp(48px, 6.3vw, 86px)", lineHeight: .98, letterSpacing: "-.055em", margin: 0, maxWidth: 700 }}>Get your athletes training with <span style={{ color: c.accentText, whiteSpace: "nowrap" }}>one link.</span></h1><p style={{ fontSize: 20, lineHeight: 1.55, color: c.sb2, margin: "28px 0" }}>Coaches, send the plan.<br />Athletes, open it and train.<span className="hero-pain" style={{ color: c.tx }}>No Excel. No WhatsApp threads. No guessing who trained.</span></p><div className="hero-actions" ref={heroRef} style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button className="cta-breathe" onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}><small>I’m a coach</small><strong>Sign in</strong><span className="action-arrow" aria-hidden="true">↗</span></button><button onClick={() => scrollTo("get-link")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}><small>I’m an athlete</small><strong>Get my workout link</strong><span className="action-arrow" aria-hidden="true">↓</span></button></div><div className="hero-chips"><span><b>Plans · progress · notes</b> — one place</span><span><b>Athletes need no app</b></span><span><b>Free</b> for both</span></div></div>
+          <HeroDashboard motionOn={motionOn} />
         </section>
-        <ScrollReveal><section style={{ maxWidth: 1080, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}`, textAlign: "center" }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>01 / FOR COACHES</div><h2 style={{ fontSize: "clamp(38px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>You sent the workout.<br /><span style={{ color: c.sb }}>Now you’re chasing the update.</span></h2><div style={{ display: "grid", gap: 12, maxWidth: 670, margin: "50px auto 0" }}>{["Where’s my plan?", "What weight should I use?", "Did you finish yesterday?"].map((msg, i) => <motion.div key={msg} whileInView={{ x: 0, opacity: 1 }} initial={{ x: i % 2 ? 35 : -35, opacity: 0 }} viewport={{ once: false }} transition={{ delay: i * .12 }} style={{ padding: "18px 21px", border: `1px solid ${c.bd}`, background: c.s1, borderRadius: 13, display: "flex", justifyContent: "space-between", textAlign: "left" }}><span><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".15em", marginBottom: 6 }}>{i === 2 ? "YOU → MAYA" : "MAYA → YOU"}</small><strong>{msg}</strong></span><small style={{ color: c.sb }}>9:{String(2 + i * 2).padStart(2, "0")}</small></motion.div>)}</div><p style={{ color: c.sb2, marginTop: 48, fontSize: 19 }}>Give every athlete <span style={{ color: c.accentText }}>one link</span> to come back to.</p></section></ScrollReveal>
-        <ScrollReveal><section ref={athleteRef} id="athletes" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 75, alignItems: "center" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>02 / FOR ATHLETES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your next workout<br />is <span style={{ color: c.accentText }}>one tap away.</span></h2><p style={{ marginTop: 26 }}>Open your coach’s link. See the plan.<br />Tick it off. Send it to your coach.</p><div className="athlete-steps" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 30 }}>{steps.map((s, i) => <React.Fragment key={s}><button onClick={() => setStep(i)} style={{ background: "none", border: 0, borderBottom: `2px solid ${step === i ? c.accentText : "transparent"}`, color: step === i ? c.accentText : c.sb2, padding: "0 0 7px", fontSize: 18 }}>{s}</button>{i < 2 && <span style={{ color: c.sb }}>→</span>}</React.Fragment>)}</div><div style={{ color: c.sb, fontSize: 12, marginTop: 19 }}>{["Open the workout link your coach sent.", "Tick the sets you complete.", "Send the finished workout to your coach."][step]}</div><p style={{ fontSize: 13, marginTop: 20 }}>No app or sign-in needed.<br />Logging weights is optional.</p><button onClick={() => onEnterApp("athlete")} style={{ background: "none", color: c.accentText, border: 0, padding: 0, marginTop: 18, fontWeight: 700 }}>Want more? Explore the athlete app →</button></div><AthleteProduct step={step} /></section></ScrollReveal>
-        <ScrollReveal><section id="coaches" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 30, alignItems: "end" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>03 / FOR COACHES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your side<br />of the link.</h2></div><p style={{ maxWidth: 370 }}>Build the plan once. Save it as a template.<br />Send it to your athletes.<br /><br />See who trained today, who didn’t,<br />and what they wrote.</p></div><div className="coach-showcase"><div className="coach-story-labels">{["Build the plan", "Save a template", "See your athletes"].map((label, i) => <span key={label} className={i === coachFrame ? "active" : ""}><small>0{i + 1}</small>{label}</span>)}</div><CoachProduct screen={["plan", "templates", "dashboard"][coachFrame]} /><p className="sample-label">Sample athletes · actual Theryn coach screens</p></div></section></ScrollReveal>
-        <ScrollReveal><section style={{ maxWidth: 1000, margin: "0 auto", padding: "100px clamp(18px, 6vw, 80px)", textAlign: "center", borderTop: `1px solid ${c.bd}` }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>04 / THE PAYOFF</div><h2 style={{ fontSize: "clamp(38px, 5vw, 62px)", letterSpacing: "-.05em", margin: 0 }}>Show athletes what<br />their effort is <span style={{ color: c.accentText }}>building.</span></h2><p style={{ marginTop: 25 }}>At your next check-in, open their progress together.</p><div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 40 }}>{["You’re lifting more.", "You’re showing up more often.", "Here’s what we’ll work on next."].map(t => <div key={t} style={{ borderLeft: `2px solid ${c.accentText}`, padding: "17px 20px", background: c.s1, textAlign: "left", borderRadius: "0 12px 12px 0" }}><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".12em", marginBottom: 7 }}>COACH → MAYA</small><strong>{t}</strong></div>)}</div><h3 style={{ marginTop: 45, fontSize: 26 }}>Make the progress visible.<br />Make the next goal clear.</h3></section></ScrollReveal>
+        <ScrollReveal><PainSection c={c} motionOn={motionOn} /></ScrollReveal>
+        <ScrollReveal><section ref={athleteRef} id="athletes" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 75, alignItems: "center" }}><div><div style={kicker}>02 / FOR ATHLETES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your next workout<br />is <span style={{ color: c.accentText }}>one tap away.</span></h2><p style={{ marginTop: 26 }}>Open your coach’s link. See the plan.<br />Tick it off. Send it to your coach.</p><div className="athlete-steps" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 30 }}>{FLOW_STAGES.map((st, i) => <React.Fragment key={st.id}><button onClick={() => flow.jump(st.id)} style={{ background: "none", border: 0, borderBottom: `2px solid ${flow.stage === st.id ? c.accentText : "transparent"}`, color: flow.stage === st.id ? c.accentText : c.sb2, padding: "0 0 7px", fontSize: 17, transition: "color .3s, border-color .3s" }}>{st.label}</button>{i < FLOW_STAGES.length - 1 && <span style={{ color: c.sb }}>→</span>}</React.Fragment>)}</div><div className="athlete-caption" aria-live="polite" style={{ color: c.sb2, fontSize: 13, marginTop: 19, lineHeight: 1.5 }}>{stageInfo.caption}</div><p style={{ fontSize: 13, marginTop: 20 }}>No app or sign-in needed.<br />Logging weights is optional.</p><button onClick={() => onEnterApp("athlete")} style={{ background: "none", color: c.accentText, border: 0, padding: 0, marginTop: 18, fontWeight: 700 }}>Want more? Explore the athlete app →</button></div><AthletePhone screen={flow.screen} ticks={flow.ticks} filled={flow.filled} /></section></ScrollReveal>
+        <ScrollReveal><section id="coaches" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 30, alignItems: "end" }}><div><div style={kicker}>03 / FOR COACHES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your side<br />of the link.</h2></div><p style={{ maxWidth: 370 }}>Build the plan once. Save it as a template.<br />Send it to your athletes.</p></div><div className="coach-showcase"><div className="coach-story-labels">{["Build the plan", "Save a template", "See your athletes"].map((label, i) => <span key={label} className={i === coachFrame ? "active" : ""}><small>0{i + 1}</small>{label}</span>)}</div><CoachProduct screen={["plan", "templates", "dashboard"][coachFrame]} /><p className="sample-label">Sample athletes · actual Theryn coach screens</p></div><p style={{ maxWidth: 520, margin: "80px 0 0", fontSize: "clamp(22px, 2.6vw, 30px)", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1.2 }}>They log it. <span style={{ color: c.accentText }}>You see it.</span> Same second.</p><p style={{ maxWidth: 420, marginTop: 14, color: c.sb2 }}>See who trained today, who didn’t, and what they wrote — the moment they tap Finish.</p><ConnectionMoment motionOn={motionOn} /></section></ScrollReveal>
+        <ScrollReveal><section style={{ maxWidth: 1100, margin: "0 auto", padding: "100px clamp(18px, 6vw, 80px)", textAlign: "center", borderTop: `1px solid ${c.bd}` }}><div style={kicker}>04 / THE PAYOFF</div><h2 style={{ fontSize: "clamp(38px, 5vw, 62px)", letterSpacing: "-.05em", margin: 0 }}>Show athletes what<br />their effort is <span style={{ color: c.accentText }}>building.</span></h2><p style={{ marginTop: 25 }}>At your next check-in, open their progress together.</p><PayoffFlip motionOn={motionOn}><h3 className="payoff-closer">Make the progress visible.<br />Make the next goal clear.</h3></PayoffFlip></section></ScrollReveal>
         <ScrollReveal><section className="landing-trust"><div className="trust-intro"><span className="trust-kicker">LESS FRICTION. MORE TRAINING.</span><h2>One link.<br /><span>Zero barriers.</span></h2><p>Free for coaches and athletes.</p></div><div className="trust-facts">{[["01", "Free", "For coaches and athletes."], ["02", "Any browser", "Open your workout wherever you are."], ["03", "No installation", "Your coach sends a link. You’re ready."]].map(([n, title, text]) => <div key={n}><span className="trust-number">{n}</span><h3>{title}</h3><p>{text}</p><span className="trust-check" aria-hidden="true">✓</span></div>)}</div></section></ScrollReveal>
-        <ScrollReveal><section className="closing-grid" style={{ maxWidth: 1100, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60 }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR COACHES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Build your first plan.<br />Send your first link.</h2><p style={{ margin: "22px 0" }}>Give your athletes clear workouts.<br />Give yourself a clearer picture of their training.</p><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}>Coach sign in ↗</button><div style={{ color: c.sb, fontSize: 11, marginTop: 13 }}>Free for coaches and athletes.</div></div><div id="get-link" style={{ borderLeft: `1px solid ${c.bd}`, paddingLeft: 55 }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR ATHLETES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Bring your coach.<br />Get your plan.<br /><span style={{ color: c.accentText }}>Start training.</span></h2><p style={{ margin: "22px 0" }}>Send your coach a quick message.<br />They set up your workout. You open the link.</p><button onClick={askCoach} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}>Ask my coach for a workout link ↗</button><div aria-live="polite" style={{ color: c.sb, fontSize: 12, marginTop: 14, minHeight: 18 }}>{askState === "copied" ? "Message copied — paste it to your coach." : askState === "failed" ? "Couldn’t open sharing. Copy this message to your coach:" : "Already have your link? Open it directly — no sign-in needed."}</div>{askState === "failed" && <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, color: c.sb2, background: c.s1, border: `1px solid ${c.bd}`, borderRadius: 10, padding: 14, marginTop: 10 }}>{ASK_COACH_MESSAGE}</pre>}</div></section></ScrollReveal>
+        <ScrollReveal><section ref={closerRef} className="closing-grid" style={{ maxWidth: 1100, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60 }}><div><div style={kicker}>FOR COACHES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Build your first plan.<br />Send your first link.</h2><p style={{ margin: "22px 0" }}>Give your athletes clear workouts.<br />Give yourself a clearer picture of their training.</p><button className="cta-breathe" onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}>Coach sign in <span className="nudge" aria-hidden="true">↗</span></button><div style={{ color: c.sb, fontSize: 11, marginTop: 13 }}>Free for coaches and athletes.</div></div><div id="get-link" style={{ borderLeft: `1px solid ${c.bd}`, paddingLeft: 55 }}><div style={kicker}>FOR ATHLETES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Bring your coach.<br />Get your plan.<br /><span style={{ color: c.accentText }}>Start training.</span></h2><p style={{ margin: "22px 0" }}>Send your coach a quick message.<br />They set up your workout. You open the link.</p><button onClick={askCoach} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}>Ask my coach for a workout link ↗</button><div aria-live="polite" style={{ color: c.sb, fontSize: 12, marginTop: 14, minHeight: 18 }}>{askState === "copied" ? "Message copied — paste it to your coach." : askState === "failed" ? "Couldn’t open sharing. Copy this message to your coach:" : "Already have your link? Open it directly — no sign-in needed."}</div>{askState === "failed" && <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, color: c.sb2, background: c.s1, border: `1px solid ${c.bd}`, borderRadius: 10, padding: 14, marginTop: 10 }}>{ASK_COACH_MESSAGE}</pre>}</div></section></ScrollReveal>
       </main>
       <footer style={{ borderTop: `1px solid ${c.bd}`, padding: "28px clamp(18px, 6vw, 80px)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 15, color: c.sb, fontSize: 11 }}><span>THERYN · Better connected. Better coached.</span><span>© 2026 Theryn</span></footer>
+      <div className="sticky-cta" data-show={showSticky} aria-hidden={!showSticky}><button className="coach" tabIndex={showSticky ? 0 : -1} onClick={() => onEnterApp("coach")}>Coach sign in</button><button className="athlete" tabIndex={showSticky ? 0 : -1} onClick={() => scrollTo("get-link")}>Get my link</button></div>
     </div></LandingMotion.Provider>
+  );
+}
+
+// 01 / For coaches: the tool pile. Its copy fades in with the cards and the
+// closer only appears once the four apps have become one row.
+function PainSection({ c, motionOn }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: .35 });
+  const phase = !motionOn ? "done" : inView ? "play" : "pending";
+  return (
+    <section ref={ref} data-phase={phase} style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60, alignItems: "center" }} className="pain-grid">
+      <div>
+        <div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>01 / FOR COACHES</div>
+        <h2 style={{ fontSize: "clamp(38px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0, lineHeight: 1 }}>Too many apps.<br /><span style={{ color: c.sb }}>Not enough coaching.</span></h2>
+        <p className="pain-body" style={{ fontSize: 18, lineHeight: 1.55, color: c.sb2, marginTop: 26 }}>The plan lives in Excel.<br />The questions live on WhatsApp.<br />The weights live in your head.</p>
+        <p className="pain-closer" style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.45, marginTop: 26 }}>Put every athlete in <span style={{ color: c.accentText }}>one place</span> —<br />and keep your head for the coaching.</p>
+      </div>
+      <ToolPile motionOn={motionOn} phase={phase} />
+    </section>
   );
 }
 
