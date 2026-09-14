@@ -9,6 +9,9 @@ import {
   useTransform,
 } from "framer-motion";
 
+import { WorkoutLinkPreview } from "../link/LinkPage.jsx";
+import "./landing-responsive.css";
+
 // ── THEME ─────────────────────────────────────────────────────────────────────
 const ThemeCtx = createContext({ theme: "dark", toggle: () => {} });
 
@@ -273,31 +276,47 @@ function HeroFrame({ frame, c }) {
   );
 }
 
-function AthleteStoryFrame({ step, c }) {
-  const sent = step === 2;
-  const ticked = step >= 1;
-  if (sent) return (
-    <div style={{ padding: "22px 16px", textAlign: "center" }}>
-      <div style={{ width: 46, height: 46, margin: "8px auto 14px", borderRadius: "50%", background: c.accent, color: "#000", display: "grid", placeItems: "center", fontSize: 24, fontWeight: 900 }}>✓</div>
-      <div style={{ fontSize: 15, fontWeight: 850, color: c.tx }}>Sent to your coach</div>
-      <div style={{ fontSize: 10, lineHeight: 1.45, color: c.sb, marginTop: 8 }}>Maya’s push day is complete.<br />Your coach can see it now.</div>
-      <div style={{ marginTop: 18, padding: "9px 10px", borderRadius: 9, background: c.s2, color: c.accentText, fontSize: 9, fontWeight: 800 }}>UPDATE RECEIVED · VARDAN</div>
+const LandingMotion = createContext(true);
+function ScrollReveal({ children }) {
+  const enabled = useContext(LandingMotion);
+  const ref = useRef(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
+  const y = useTransform(scrollYProgress, [0, .25, .75, 1], [24, 0, 0, -24]);
+  const opacity = useTransform(scrollYProgress, [0, .16, .84, 1], [.25, 1, 1, .25]);
+  return <motion.div ref={ref} className="landing-reveal" style={{ y: enabled ? y : 0, opacity: enabled ? opacity : 1 }}>{children}</motion.div>;
+}
+function AthleteProduct({ step }) {
+  const scroll = useRef(null);
+  useEffect(() => {
+    // Keep the active exercise visible without hijacking the page scroll.
+    if (scroll.current) scroll.current.scrollTop = step === 1 ? 300 : 0;
+  }, [step]);
+  return <figure className="athlete-product">
+    <div className="product-browser-bar">{["Your coach’s workout link", "Sets ticked · ready to send", "Sent to your coach"][step]}</div>
+    <div className="product-window" ref={scroll} data-story-step={step}>
+      <div inert="" aria-hidden="true"><WorkoutLinkPreview step={step} /></div>
     </div>
-  );
-  return (
-    <div style={{ padding: "12px 14px" }}>
-      <div style={{ fontSize: 9, color: c.sb, letterSpacing: ".12em", textTransform: "uppercase" }}>From your coach · Today</div>
-      <div style={{ fontSize: 17, fontWeight: 850, color: c.tx, marginTop: 7 }}>Your push day.</div>
-      <div style={{ fontSize: 9, color: c.sb, marginTop: 4 }}>3 exercises · 9 sets · follow the plan</div>
-      {[['Bench Press','3 sets · 8 reps · 135 lb'],['Overhead Press','3 sets · 10 reps · 65 lb'],['Cable Fly','3 sets · 12 reps · 25 lb']].map(([name,meta], i) => (
-        <div key={name} style={{ marginTop: 9, padding: "9px 10px", borderRadius: 9, background: c.s2, border: `1px solid ${ticked && i < 2 ? c.accent + "80" : c.bd}` }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}><span style={{ fontSize: 10, fontWeight: 750, color: c.tx }}>{name}</span><span style={{ width: 19, height: 19, borderRadius: 5, display: "grid", placeItems: "center", background: ticked && i < 2 ? c.accent : c.s1, color: ticked && i < 2 ? "#000" : c.sb, fontSize: 11, fontWeight: 900 }}>{ticked && i < 2 ? "✓" : i + 1}</span></div>
-          <div style={{ fontSize: 8, color: c.sb, marginTop: 4 }}>{meta}</div>
-        </div>
-      ))}
-      <div style={{ marginTop: 12, textAlign: "center", fontSize: 9, color: ticked ? c.accentText : c.sb2, fontWeight: 750 }}>{ticked ? "Sets ticked · ready to send" : step === 0 ? "Open your coach’s link" : "Your plan is ready"}</div>
+    <figcaption>Sample athlete · automatic product demonstration</figcaption>
+  </figure>;
+}
+function FittedHero({ c, frame, motionOn }) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(270);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.min(270, entry.contentRect.width)));
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+  const scale = width / 270;
+  return <div className="hero-product" ref={ref} style={{ height: 530 * scale }}>
+    <div style={{ width: 270, transform: `scale(${scale})`, transformOrigin: "top left", margin: "0 auto" }}>
+      <motion.div animate={motionOn ? { y: [0, -6, 0] } : { y: 0 }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}>
+        <PhoneShell c={c} size="lg"><HeroFrame frame={frame} c={c} /></PhoneShell>
+        <div className="hero-ticket" style={{ background: c.s2, borderColor: c.bd }}><small>FROM YOUR COACH</small><strong>Your workout is ready.</strong><span>Open the link. You’re in. →</span></div>
+      </motion.div>
+      <small className="sample-label">Sample athlete</small>
     </div>
-  );
+  </div>;
 }
 
 // ── NAVBAR ────────────────────────────────────────────────────────────────────
@@ -1448,38 +1467,45 @@ function ConversionLandingContent({ onEnterApp }) {
   const [paused, setPaused] = useState(false);
   const [step, setStep] = useState(0);
   const [coachFrame, setCoachFrame] = useState(1);
-  const motionOn = !paused;
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const motionOn = !paused && !reducedMotion;
+  const athleteRef = useRef(null);
+  const athleteVisible = useInView(athleteRef, { amount: .15 });
   useEffect(() => {
     if (!motionOn) return;
-    const athleteTimer = setInterval(() => setStep(s => (s + 1) % 3), 2200);
-    const coachTimer = setInterval(() => setCoachFrame(s => (s + 1) % 3), 3200);
+    const athleteTimer = athleteVisible ? setInterval(() => setStep(s => (s + 1) % 3), 3200) : null;
+    const coachTimer = setInterval(() => setCoachFrame(s => (s + 1) % 4), 3200);
     return () => { clearInterval(athleteTimer); clearInterval(coachTimer); };
-  }, [motionOn]);
+  }, [motionOn, athleteVisible]);
   const steps = ["Open", "Tick", "Send to coach"];
-  const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior: motionOn ? "smooth" : "auto" });
   return (
-    <div className="theryn-conversion-landing" style={{ fontFamily: "-apple-system, 'Helvetica Neue', Helvetica, sans-serif", background: c.bg, color: c.tx, minHeight: "100vh", overflow: "hidden" }}>
-      <style>{`html{scroll-behavior:smooth}.theryn-conversion-landing section{scroll-margin-top:80px}.theryn-conversion-landing h1,.theryn-conversion-landing h2,.theryn-conversion-landing h3{font-weight:800}.theryn-conversion-landing button{font-family:inherit;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}.theryn-conversion-landing button:hover{transform:translateY(-2px)}@media(min-width:701px){.theryn-conversion-landing .hero-actions{flex-direction:column;max-width:540px}.theryn-conversion-landing .hero-actions button{width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left}}@media(max-width:700px){.theryn-conversion-landing header nav{display:none}.theryn-conversion-landing #home{grid-template-columns:minmax(0,1.1fr) minmax(120px,.9fr)!important;gap:10px!important;min-height:520px!important;align-items:start!important;padding:54px 14px 70px!important}.theryn-conversion-landing #athletes{grid-template-columns:1fr!important;gap:42px!important;min-height:auto!important}.theryn-conversion-landing .hero-actions{flex-direction:column;gap:8px}.theryn-conversion-landing .hero-actions button{width:100%;padding:13px 10px!important;font-size:11px;text-align:left}.theryn-conversion-landing #home>div:last-child{transform:scale(.62);transform-origin:top center;margin-top:110px;margin-left:-42px;width:160%;}.theryn-conversion-landing #coaches{padding-top:80px!important}.theryn-conversion-landing #coaches>div:first-child{display:block!important}.theryn-conversion-landing #coaches>div:first-child>p{margin-top:24px}.theryn-conversion-landing .closing-grid{grid-template-columns:1fr!important}.theryn-conversion-landing .closing-grid>div:last-child{border-left:0!important;border-top:1px solid ${c.bd};padding:48px 0 0!important}.theryn-conversion-landing h1{font-size:clamp(36px,11vw,52px)!important}.theryn-conversion-landing h2{font-size:clamp(38px,11vw,54px)!important}}@media(prefers-reduced-motion:reduce){.theryn-conversion-landing *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}`}</style>
+    <LandingMotion.Provider value={motionOn}><div className="theryn-conversion-landing" data-motion={motionOn ? "on" : "off"} style={{ fontFamily: "-apple-system, 'Helvetica Neue', Helvetica, sans-serif", background: c.bg, color: c.tx, minHeight: "100vh", overflow: "clip" }}>
       <header style={{ height: 76, maxWidth: 1320, margin: "0 auto", padding: "0 clamp(18px, 5vw, 64px)", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${c.bd}`, position: "relative", zIndex: 10 }}>
         <a href="#home" style={{ display: "flex", gap: 9, alignItems: "center", color: c.tx, textDecoration: "none", fontWeight: 900, letterSpacing: "0.16em" }}><img src="/theryn-logo.svg" alt="" style={{ width: 25, height: 25 }} />THERYN</a>
         <nav style={{ display: "flex", gap: 26, fontSize: 12, color: c.sb2 }}><a href="#coaches" style={{ color: "inherit", textDecoration: "none" }}>For coaches</a><a href="#athletes" style={{ color: "inherit", textDecoration: "none" }}>For athletes</a></nav>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}><button aria-label={paused ? "Resume animation" : "Pause animation"} onClick={() => setPaused(v => !v)} style={{ width: 31, height: 31, borderRadius: 20, border: `1px solid ${c.bd}`, background: "none", color: c.tx }}>{paused ? "▶" : "Ⅱ"}</button><button aria-label="Toggle theme" onClick={toggle} style={{ width: 31, height: 31, borderRadius: 20, border: `1px solid ${c.bd}`, background: "none", color: c.tx }}>{theme === "dark" ? "☀" : "☾"}</button><button onClick={() => onEnterApp("coach")} style={{ border: 0, background: "none", color: c.tx, fontSize: 12, fontWeight: 700 }}>Coach sign in ↗</button></div>
       </header>
-      <style>{`@media(max-width:700px){.theryn-conversion-landing .hero-actions button{min-height:66px;padding:14px 10px!important;font-size:14px;line-height:1.05}.theryn-conversion-landing .hero-actions button small{font-size:8px;line-height:1.2}}`}</style>
       <main>
         <section id="home" style={{ maxWidth: 1320, minHeight: "calc(100vh - 76px)", margin: "0 auto", padding: "clamp(65px, 10vw, 135px) clamp(18px, 6vw, 80px) 100px", display: "grid", gridTemplateColumns: "1.1fr .9fr", alignItems: "center", gap: 60, position: "relative" }}>
-          <div><div style={{ fontSize: 10, letterSpacing: "0.2em", color: c.sb2, marginBottom: 24 }}>YOUR COACHING. ONE LINK.</div><h1 style={{ fontSize: "clamp(48px, 6.3vw, 86px)", lineHeight: .98, letterSpacing: "-.055em", margin: 0, maxWidth: 700 }}>Get your athletes training with <span style={{ color: c.accentText }}>one link.</span></h1><p style={{ fontSize: 20, lineHeight: 1.55, color: c.sb2, margin: "28px 0" }}>Coaches, send the plan.<br />Athletes, open it and train.</p><div className="hero-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}>I’m a coach · Sign in ↗</button><button onClick={() => scrollTo("athletes")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}>I’m an athlete · Get my workout link ↓</button></div><div style={{ color: c.sb, fontSize: 11, marginTop: 15 }}>Free for coaches and athletes.</div></div>
-          <motion.div animate={motionOn ? { y: [0, -13, 0] } : { y: 0 }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }} style={{ display: "flex", justifyContent: "center", position: "relative" }}><PhoneShell c={c} size="lg"><AnimatePresence mode="wait"><motion.div key={coachFrame} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={{ duration: .35 }}><HeroFrame frame={coachFrame} c={c} /></motion.div></AnimatePresence></PhoneShell><div style={{ position: "absolute", bottom: -25, left: "50%", transform: "translateX(-50%)", background: c.s2, border: `1px solid ${c.bd}`, borderRadius: 13, padding: "15px 18px", width: 250, boxShadow: "0 20px 50px #0005" }}><div style={{ color: c.sb, fontSize: 8, letterSpacing: ".16em" }}>FROM YOUR COACH</div><strong style={{ display: "block", marginTop: 5, fontSize: 14 }}>Your workout is ready.</strong><span style={{ fontSize: 11, color: c.sb2 }}>Open the link. You’re in. →</span></div><small style={{ position: "absolute", bottom: -57, right: 4, color: c.sb, fontSize: 10 }}>Sample athlete</small></motion.div>
+          <div><div style={{ fontSize: 10, letterSpacing: "0.2em", color: c.sb2, marginBottom: 24 }}>YOUR COACHING. ONE LINK.</div><h1 style={{ fontSize: "clamp(48px, 6.3vw, 86px)", lineHeight: .98, letterSpacing: "-.055em", margin: 0, maxWidth: 700 }}>Get your athletes training with <span style={{ color: c.accentText }}>one link.</span></h1><p style={{ fontSize: 20, lineHeight: 1.55, color: c.sb2, margin: "28px 0" }}>Coaches, send the plan.<br />Athletes, open it and train.</p><div className="hero-actions" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}><small>I’m a coach</small><strong>Sign in ↗</strong></button><button onClick={() => scrollTo("athletes")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}><small>I’m an athlete</small><strong>Get my workout link ↓</strong></button></div><div style={{ color: c.sb, fontSize: 11, marginTop: 15 }}>Free for coaches and athletes.</div></div>
+          <FittedHero c={c} frame={coachFrame} motionOn={motionOn} />
         </section>
-        <Reveal><section style={{ maxWidth: 1080, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}`, textAlign: "center" }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>01 / FOR COACHES</div><h2 style={{ fontSize: "clamp(38px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>You sent the workout.<br /><span style={{ color: c.sb }}>Now you’re chasing the update.</span></h2><div style={{ display: "grid", gap: 12, maxWidth: 670, margin: "50px auto 0" }}>{["Where’s my plan?", "What weight should I use?", "Did you finish yesterday?"].map((msg, i) => <motion.div key={msg} whileInView={{ x: 0, opacity: 1 }} initial={{ x: i % 2 ? 35 : -35, opacity: 0 }} viewport={{ once: true }} transition={{ delay: i * .12 }} style={{ padding: "18px 21px", border: `1px solid ${c.bd}`, background: c.s1, borderRadius: 13, display: "flex", justifyContent: "space-between", textAlign: "left" }}><span><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".15em", marginBottom: 6 }}>{i === 2 ? "YOU → MAYA" : "MAYA → YOU"}</small><strong>{msg}</strong></span><small style={{ color: c.sb }}>9:{String(2 + i * 2).padStart(2, "0")}</small></motion.div>)}</div><p style={{ color: c.sb2, marginTop: 48, fontSize: 19 }}>Give every athlete <span style={{ color: c.accentText }}>one link</span> to come back to.</p></section></Reveal>
-        <Reveal><section id="athletes" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 75, alignItems: "center" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>02 / FOR ATHLETES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your next workout<br />is <span style={{ color: c.accentText }}>one tap away.</span></h2><p style={{ marginTop: 26 }}>Open your coach’s link. See the plan.<br />Tick it off. Send it to your coach.</p><div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 30 }}>{steps.map((s, i) => <React.Fragment key={s}><button onClick={() => setStep(i)} style={{ background: "none", border: 0, borderBottom: `2px solid ${step === i ? c.accentText : "transparent"}`, color: step === i ? c.accentText : c.sb2, padding: "0 0 7px", fontSize: 18 }}>{s}</button>{i < 2 && <span style={{ color: c.sb }}>→</span>}</React.Fragment>)}</div><div style={{ color: c.sb, fontSize: 12, marginTop: 19 }}>{["Open the workout link your coach sent.", "Tick the sets you complete.", "Send the finished workout to your coach."][step]}</div><p style={{ fontSize: 13, marginTop: 20 }}>No app or sign-in needed.<br />Logging weights is optional.</p><button onClick={() => onEnterApp("athlete")} style={{ background: "none", color: c.accentText, border: 0, padding: 0, marginTop: 18, fontWeight: 700 }}>Want more? Explore the athlete app →</button></div><div style={{ display: "flex", justifyContent: "center" }}><PhoneShell c={c} size="lg"><AnimatePresence mode="wait"><motion.div key={step} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: .4 }}><AthleteStoryFrame step={step} c={c} /></motion.div></AnimatePresence></PhoneShell></div></section></Reveal>
-        <Reveal><section id="coaches" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 30, alignItems: "end" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>03 / FOR COACHES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your side<br />of the link.</h2></div><p style={{ maxWidth: 370 }}>Build the plan once. Save it as a template.<br />Send it to your athletes.<br /><br />See who trained today, who didn’t,<br />and what they wrote.</p></div><div style={{ marginTop: 45, display: "flex", justifyContent: "center" }}><PhoneShell c={c} size="lg"><AnimatePresence mode="wait"><motion.div key={coachFrame} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: .4 }}><HeroFrame frame={coachFrame} c={c} /></motion.div></AnimatePresence></PhoneShell></div><div style={{ textAlign: "center", marginTop: 20, color: c.sb, fontSize: 12 }}>Routine builder → template → dashboard → progress</div></section></Reveal>
-        <Reveal><section style={{ maxWidth: 1000, margin: "0 auto", padding: "100px clamp(18px, 6vw, 80px)", textAlign: "center", borderTop: `1px solid ${c.bd}` }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>04 / THE PAYOFF</div><h2 style={{ fontSize: "clamp(38px, 5vw, 62px)", letterSpacing: "-.05em", margin: 0 }}>Show athletes what<br />their effort is <span style={{ color: c.accentText }}>building.</span></h2><p style={{ marginTop: 25 }}>At your next check-in, open their progress together.</p><div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 40 }}>{["You’re lifting more.", "You’re showing up more often.", "Here’s what we’ll work on next."].map(t => <div key={t} style={{ borderLeft: `2px solid ${c.accentText}`, padding: "17px 20px", background: c.s1, textAlign: "left", borderRadius: "0 12px 12px 0" }}><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".12em", marginBottom: 7 }}>COACH → MAYA</small><strong>{t}</strong></div>)}</div><h3 style={{ marginTop: 45, fontSize: 26 }}>Make the progress visible.<br />Make the next goal clear.</h3></section></Reveal>
-        <Reveal><section style={{ padding: "75px 18px", textAlign: "center", borderTop: `1px solid ${c.bd}`, borderBottom: `1px solid ${c.bd}` }}><h3 style={{ fontSize: 26 }}>Free for coaches and athletes.</h3><p style={{ fontSize: 15, marginTop: 12 }}>Workout links open in any browser.<br />Nothing to install.</p></section></Reveal>
-        <Reveal><section className="closing-grid" style={{ maxWidth: 1100, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60 }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR COACHES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Build your first plan.<br />Send your first link.</h2><p style={{ margin: "22px 0" }}>Give your athletes clear workouts.<br />Give yourself a clearer picture of their training.</p><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}>Coach sign in ↗</button><div style={{ color: c.sb, fontSize: 11, marginTop: 13 }}>Free for coaches and athletes.</div></div><div style={{ borderLeft: `1px solid ${c.bd}`, paddingLeft: 55 }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR ATHLETES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Bring your coach.<br />Get your plan.<br /><span style={{ color: c.accentText }}>Start training.</span></h2><p style={{ margin: "22px 0" }}>Send your coach a quick message.<br />They set up your workout. You open the link.</p><button onClick={() => onEnterApp("athlete")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}>Ask my coach for a workout link ↗</button></div></section></Reveal>
+        <ScrollReveal><section style={{ maxWidth: 1080, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}`, textAlign: "center" }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>01 / FOR COACHES</div><h2 style={{ fontSize: "clamp(38px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>You sent the workout.<br /><span style={{ color: c.sb }}>Now you’re chasing the update.</span></h2><div style={{ display: "grid", gap: 12, maxWidth: 670, margin: "50px auto 0" }}>{["Where’s my plan?", "What weight should I use?", "Did you finish yesterday?"].map((msg, i) => <motion.div key={msg} whileInView={{ x: 0, opacity: 1 }} initial={{ x: i % 2 ? 35 : -35, opacity: 0 }} viewport={{ once: false }} transition={{ delay: i * .12 }} style={{ padding: "18px 21px", border: `1px solid ${c.bd}`, background: c.s1, borderRadius: 13, display: "flex", justifyContent: "space-between", textAlign: "left" }}><span><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".15em", marginBottom: 6 }}>{i === 2 ? "YOU → MAYA" : "MAYA → YOU"}</small><strong>{msg}</strong></span><small style={{ color: c.sb }}>9:{String(2 + i * 2).padStart(2, "0")}</small></motion.div>)}</div><p style={{ color: c.sb2, marginTop: 48, fontSize: 19 }}>Give every athlete <span style={{ color: c.accentText }}>one link</span> to come back to.</p></section></ScrollReveal>
+        <ScrollReveal><section ref={athleteRef} id="athletes" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 75, alignItems: "center" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>02 / FOR ATHLETES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your next workout<br />is <span style={{ color: c.accentText }}>one tap away.</span></h2><p style={{ marginTop: 26 }}>Open your coach’s link. See the plan.<br />Tick it off. Send it to your coach.</p><div className="athlete-steps" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 30 }}>{steps.map((s, i) => <React.Fragment key={s}><button onClick={() => setStep(i)} style={{ background: "none", border: 0, borderBottom: `2px solid ${step === i ? c.accentText : "transparent"}`, color: step === i ? c.accentText : c.sb2, padding: "0 0 7px", fontSize: 18 }}>{s}</button>{i < 2 && <span style={{ color: c.sb }}>→</span>}</React.Fragment>)}</div><div style={{ color: c.sb, fontSize: 12, marginTop: 19 }}>{["Open the workout link your coach sent.", "Tick the sets you complete.", "Send the finished workout to your coach."][step]}</div><p style={{ fontSize: 13, marginTop: 20 }}>No app or sign-in needed.<br />Logging weights is optional.</p><button onClick={() => onEnterApp("athlete")} style={{ background: "none", color: c.accentText, border: 0, padding: 0, marginTop: 18, fontWeight: 700 }}>Want more? Explore the athlete app →</button></div><AthleteProduct step={step} /></section></ScrollReveal>
+        <ScrollReveal><section id="coaches" style={{ maxWidth: 1320, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", borderTop: `1px solid ${c.bd}` }}><div style={{ display: "flex", justifyContent: "space-between", gap: 30, alignItems: "end" }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>03 / FOR COACHES</div><h2 style={{ fontSize: "clamp(40px, 5vw, 64px)", letterSpacing: "-.05em", margin: 0 }}>Your side<br />of the link.</h2></div><p style={{ maxWidth: 370 }}>Build the plan once. Save it as a template.<br />Send it to your athletes.<br /><br />See who trained today, who didn’t,<br />and what they wrote.</p></div><div style={{ marginTop: 45, display: "flex", justifyContent: "center" }}><PhoneShell c={c} size="lg"><AnimatePresence mode="wait"><motion.div key={coachFrame} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: .4 }}><HeroFrame frame={coachFrame} c={c} /></motion.div></AnimatePresence></PhoneShell></div><div style={{ textAlign: "center", marginTop: 20, color: c.sb, fontSize: 12 }}>Routine builder → template → dashboard → progress</div></section></ScrollReveal>
+        <ScrollReveal><section style={{ maxWidth: 1000, margin: "0 auto", padding: "100px clamp(18px, 6vw, 80px)", textAlign: "center", borderTop: `1px solid ${c.bd}` }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>04 / THE PAYOFF</div><h2 style={{ fontSize: "clamp(38px, 5vw, 62px)", letterSpacing: "-.05em", margin: 0 }}>Show athletes what<br />their effort is <span style={{ color: c.accentText }}>building.</span></h2><p style={{ marginTop: 25 }}>At your next check-in, open their progress together.</p><div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 40 }}>{["You’re lifting more.", "You’re showing up more often.", "Here’s what we’ll work on next."].map(t => <div key={t} style={{ borderLeft: `2px solid ${c.accentText}`, padding: "17px 20px", background: c.s1, textAlign: "left", borderRadius: "0 12px 12px 0" }}><small style={{ display: "block", color: c.sb, fontSize: 8, letterSpacing: ".12em", marginBottom: 7 }}>COACH → MAYA</small><strong>{t}</strong></div>)}</div><h3 style={{ marginTop: 45, fontSize: 26 }}>Make the progress visible.<br />Make the next goal clear.</h3></section></ScrollReveal>
+        <ScrollReveal><section style={{ padding: "75px 18px", textAlign: "center", borderTop: `1px solid ${c.bd}`, borderBottom: `1px solid ${c.bd}` }}><h3 style={{ fontSize: 26 }}>Free for coaches and athletes.</h3><p style={{ fontSize: 15, marginTop: 12 }}>Workout links open in any browser.<br />Nothing to install.</p></section></ScrollReveal>
+        <ScrollReveal><section className="closing-grid" style={{ maxWidth: 1100, margin: "0 auto", padding: "110px clamp(18px, 6vw, 80px)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60 }}><div><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR COACHES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Build your first plan.<br />Send your first link.</h2><p style={{ margin: "22px 0" }}>Give your athletes clear workouts.<br />Give yourself a clearer picture of their training.</p><button onClick={() => onEnterApp("coach")} style={{ background: c.accent, color: "#000", border: 0, borderRadius: 10, padding: "16px 22px", fontWeight: 800 }}>Coach sign in ↗</button><div style={{ color: c.sb, fontSize: 11, marginTop: 13 }}>Free for coaches and athletes.</div></div><div style={{ borderLeft: `1px solid ${c.bd}`, paddingLeft: 55 }}><div style={{ color: c.sb2, fontSize: 10, letterSpacing: ".18em", marginBottom: 25 }}>FOR ATHLETES</div><h2 style={{ fontSize: 42, letterSpacing: "-.05em", margin: 0 }}>Bring your coach.<br />Get your plan.<br /><span style={{ color: c.accentText }}>Start training.</span></h2><p style={{ margin: "22px 0" }}>Send your coach a quick message.<br />They set up your workout. You open the link.</p><button onClick={() => onEnterApp("athlete")} style={{ background: c.s1, color: c.tx, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "16px 22px", fontWeight: 700 }}>Ask my coach for a workout link ↗</button></div></section></ScrollReveal>
       </main>
       <footer style={{ borderTop: `1px solid ${c.bd}`, padding: "28px clamp(18px, 6vw, 80px)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 15, color: c.sb, fontSize: 11 }}><span>THERYN · Better connected. Better coached.</span><span>© 2026 Theryn</span></footer>
-    </div>
+    </div></LandingMotion.Provider>
   );
 }
 
@@ -1492,7 +1518,7 @@ export default function LandingPage({ onEnterApp }) {
     document.body.style.overflow = "auto";
     document.body.style.height = "auto";
     const root = document.getElementById("root");
-    if (root) { root.style.maxWidth = "none"; root.style.overflow = "auto"; }
+    if (root) { root.style.maxWidth = "none"; root.style.overflow = "visible"; root.style.height = "auto"; }
 
     return () => {
       document.body.removeAttribute("data-landing");
@@ -1502,7 +1528,7 @@ export default function LandingPage({ onEnterApp }) {
       document.body.style.height = "";
       document.body.style.background = "";
       document.body.style.color = "";
-      if (root) { root.style.maxWidth = ""; root.style.overflow = ""; }
+      if (root) { root.style.maxWidth = ""; root.style.overflow = ""; root.style.height = ""; }
     };
   }, []);
 

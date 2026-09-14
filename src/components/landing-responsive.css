@@ -1,0 +1,67 @@
+.theryn-conversion-landing { --landing-gap:clamp(16px,4vw,60px); }
+.theryn-conversion-landing *, .theryn-conversion-landing *::before, .theryn-conversion-landing *::after { box-sizing:border-box; }
+.theryn-conversion-landing section { scroll-margin-top:24px; }
+.theryn-conversion-landing section > *, .theryn-conversion-landing header > *, .theryn-conversion-landing .closing-grid > * { min-width:0; }
+.theryn-conversion-landing button { font-family:inherit; cursor:pointer; max-width:100%; min-height:44px; }
+.theryn-conversion-landing button:focus-visible, .theryn-conversion-landing a:focus-visible { outline:2px solid #C8FF00; outline-offset:4px; }
+.theryn-conversion-landing header { gap:12px; }
+.theryn-conversion-landing header > div { flex-wrap:wrap; justify-content:flex-end; }
+.theryn-conversion-landing #home { grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)!important; gap:var(--landing-gap)!important; }
+.theryn-conversion-landing .hero-actions { flex-direction:column; max-width:540px; }
+.theryn-conversion-landing .hero-actions button { width:100%; text-align:left; display:flex; flex-direction:column; align-items:flex-start; gap:7px; min-height:72px; line-height:1.25; }
+.theryn-conversion-landing .hero-actions small { font-size:12px; font-weight:500; }
+.theryn-conversion-landing .hero-actions strong { font-size:18px; }
+.hero-product { width:100%; max-width:270px; justify-self:center; }
+.hero-ticket { position:relative; border:1px solid; border-radius:14px; padding:14px 16px; width:270px; margin-top:-12px; }
+.hero-ticket small,.hero-ticket strong,.hero-ticket span { display:block; }
+.hero-ticket small { font-size:9px; letter-spacing:.1em; color:#A8AEB7; }
+.hero-ticket strong { font-size:17px; margin:5px 0; }
+.hero-ticket span { font-size:12px; }
+.sample-label { display:block; font-size:10px; color:#585858; margin-top:12px; text-align:right; }
+.theryn-conversion-landing #athletes { grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important; gap:var(--landing-gap)!important; }
+.athlete-steps { flex-wrap:wrap; }
+.athlete-steps button { white-space:normal; }
+.athlete-product { width:100%; max-width:390px; margin:0 auto; min-width:0; }
+.product-browser-bar { padding:14px; font-size:13px; border:1px solid #303030; border-radius:14px 14px 0 0; background:#181818; color:#F0F0F0; }
+.product-window { height:640px; overflow:hidden; border:4px solid #282828; border-radius:0 0 24px 24px; background:#080808; }
+.product-window .lk-page { height:auto; min-height:630px; overflow:visible; }
+.product-window .lk-main { padding-bottom:24px; }
+.product-window .lk-footer { position:static; }
+.product-window .lk-tabs { position:static; }
+.product-window .lk-tab { display:flex; align-items:center; justify-content:center; }
+.product-window .lk-center { min-height:620px; padding:24px; }
+.product-window h1 { font-size:30px!important; line-height:1.1; }
+.athlete-product figcaption { font-size:11px; color:#A8AEB7; line-height:1.5; margin-top:14px; }
+.theryn-conversion-landing[data-motion="off"] * { animation:none!important; transition:none!important; }
+@media(max-width:900px) {
+ .theryn-conversion-landing header nav { display:none!important; }
+ .theryn-conversion-landing section { padding:64px 24px!important; }
+ .theryn-conversion-landing #home { min-height:auto!important; }
+ .theryn-conversion-landing #coaches > div:first-child { display:block!important; }
+ .theryn-conversion-landing #coaches > div:first-child > p { margin-top:24px; }
+ .theryn-conversion-landing .closing-grid { gap:24px!important; }
+ .theryn-conversion-landing .closing-grid > div:last-child { padding-left:24px!important; }
+}
+@media(max-width:600px) {
+ .theryn-conversion-landing header { height:auto!important; min-height:76px; padding:12px!important; flex-wrap:wrap; }
+ .theryn-conversion-landing header > a { font-size:13px; gap:5px!important; }
+ .theryn-conversion-landing header > div { gap:3px!important; }
+ .theryn-conversion-landing header button { min-width:36px; padding:5px; }
+ .theryn-conversion-landing section { padding:56px 16px!important; }
+ .theryn-conversion-landing #home { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)!important; gap:12px!important; align-items:start!important; padding-top:40px!important; }
+ .theryn-conversion-landing #home h1 { font-size:clamp(26px,7.4vw,44px)!important; line-height:1.05!important; overflow-wrap:break-word; }
+ .theryn-conversion-landing #home p { font-size:14px!important; margin:18px 0!important; }
+ .theryn-conversion-landing .hero-product { margin-top:50px; }
+ .theryn-conversion-landing .hero-actions button { padding:12px 10px!important; min-height:70px; }
+ .theryn-conversion-landing .hero-actions small { font-size:11px; }
+ .theryn-conversion-landing .hero-actions strong { font-size:16px; }
+ .theryn-conversion-landing #athletes { grid-template-columns:minmax(0,1fr)!important; gap:32px!important; }
+ .theryn-conversion-landing h2 { font-size:clamp(28px,8vw,44px)!important; line-height:1.1; }
+ .theryn-conversion-landing .closing-grid { grid-template-columns:minmax(0,1fr)!important; gap:40px!important; }
+ .theryn-conversion-landing .closing-grid > div:last-child { border-left:0!important; padding:32px 0 0!important; }
+ .theryn-conversion-landing footer { gap:14px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ html { scroll-behavior:auto!important; }
+ .theryn-conversion-landing * { animation:none!important; transition:none!important; }
+}
