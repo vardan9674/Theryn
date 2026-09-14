@@ -70,7 +70,19 @@ export function WorkoutLinkPreview({ step }) {
     { name: "Overhead Press", sets: 3, reps: "10", weight: 65 },
     { name: "Cable Fly", sets: 3, reps: "12", weight: 25 },
   ];
-  const plan = Object.fromEntries(DAY_ORDER.map(day => [day, { type: "Push", exercises }]));
+  // A realistic push/pull/legs week, rotated so today is always the push day
+  // the demo ticks through (never a rest day, whatever day the visitor lands).
+  const week = [
+    { type: "Push", exercises },
+    { type: "Pull", exercises: [{ name: "Deadlift", sets: 3, reps: "5", weight: 225 }, { name: "Pull-Up", sets: 3, reps: "8" }, { name: "Barbell Row", sets: 3, reps: "10", weight: 115 }] },
+    { type: "Legs", exercises: [{ name: "Back Squat", sets: 4, reps: "6", weight: 185 }, { name: "Romanian Deadlift", sets: 3, reps: "10", weight: 135 }, { name: "Walking Lunge", sets: 3, reps: "12" }] },
+    { type: "Rest", exercises: [] },
+    { type: "Push", exercises },
+    { type: "Pull", exercises: [{ name: "Deadlift", sets: 3, reps: "5", weight: 225 }, { name: "Pull-Up", sets: 3, reps: "8" }, { name: "Barbell Row", sets: 3, reps: "10", weight: 115 }] },
+    { type: "Rest", exercises: [] },
+  ];
+  const todayIdx = DAY_ORDER.indexOf(new Date().toLocaleDateString("en-US", { weekday: "short" }));
+  const plan = Object.fromEntries(DAY_ORDER.map((day, i) => [day, week[(i - todayIdx + 7) % 7]]));
   const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan };
   const today = todayFromPlan(plan);
   const noop = () => {};
