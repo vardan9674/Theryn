@@ -8,6 +8,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: { input: { app: 'index.html', product: 'product-preview.html' } },
 
   },
 })

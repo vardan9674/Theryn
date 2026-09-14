@@ -65,3 +65,56 @@
  html { scroll-behavior:auto!important; }
  .theryn-conversion-landing * { animation:none!important; transition:none!important; }
 }
+/* Product-led presentation; all controls inside demos remain untouched. */
+.theryn-conversion-landing .hero-actions { max-width:460px; gap:12px!important; }
+.theryn-conversion-landing .hero-actions button { position:relative; padding:18px 54px 18px 22px!important; border-radius:16px!important; min-height:92px; justify-content:center; box-shadow:0 8px 24px #0002; }
+.theryn-conversion-landing .hero-actions .action-arrow { position:absolute; right:22px; top:50%; transform:translateY(-50%); font-size:26px; font-weight:400; }
+.theryn-conversion-landing .hero-actions strong { font-size:20px; letter-spacing:-.02em; }
+.theryn-conversion-landing .hero-actions small { color:inherit; opacity:.7; }
+.theryn-conversion-landing .hero-product { max-width:360px; width:100%; height:auto; }
+.coach-product { border:1px solid #3b3b3b; border-radius:18px; background:#080808; overflow:hidden; box-shadow:0 24px 64px #0004,0 0 0 5px #ffffff04; width:100%; }
+.coach-browser-bar { height:42px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 16px; font-size:9px; color:#A8AEB7; background:linear-gradient(#242424,#181818); border-bottom:1px solid #303030; }
+.coach-browser-bar small { font-size:11px; }
+.coach-product-viewport { overflow:hidden; position:relative; background:#080808; }
+.coach-product iframe { display:block; pointer-events:none; }
+.hero-product .hero-ticket { width:100%; margin-top:24px; padding:18px; border-radius:16px; background:#181818; border-color:#343434; display:flex; gap:12px; align-items:center; box-shadow:0 16px 32px #0003; }
+.ticket-arrow { flex:none; background:#C8FF00; border-radius:10px; width:40px; height:46px; display:grid!important; place-items:center; color:#080808; font-size:24px!important; }
+.hero-ticket > div { min-width:0; }
+.hero-ticket strong { font-size:17px; }
+.coach-showcase { margin-top:44px; }
+.coach-story-labels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:22px; }
+.coach-story-labels > span { display:flex; align-items:center; gap:12px; color:#A8AEB7; padding:16px; border:1px solid #303030; border-radius:12px; font-size:15px; }
+.coach-story-labels > span.active { color:#C8FF00; border-color:#C8FF0070; background:#c8ff0007; }
+.coach-story-labels small { font-size:10px; opacity:.6; }
+.athlete-product { padding:10px; background:linear-gradient(145deg,#383838,#151515 40%,#252a16); border:1px solid #4a4a4a; border-radius:30px; box-shadow:0 28px 70px #0006,0 0 0 7px #ffffff03; }
+.product-browser-bar { border-radius:20px 20px 0 0; padding:16px; background:#1b1b1b; border-color:#333; }
+.product-window { border:1px solid #333; border-radius:0 0 20px 20px; }
+.athlete-product figcaption { padding:0 6px; font-size:10px; }
+.landing-trust { max-width:1160px; margin:0 auto; padding:80px 40px; display:grid; grid-template-columns:1fr 1.2fr; gap:70px; align-items:center; border-block:1px solid #282828; }
+.trust-kicker { display:block; color:#A8AEB7; font-size:10px; letter-spacing:.15em; margin-bottom:24px; }
+.trust-intro h2 { font-size:clamp(40px,5vw,64px); letter-spacing:-.04em; line-height:1.04; }
+.trust-intro h2 span { color:#C8FF00; }
+.trust-intro > p { margin-top:22px; font-size:18px; color:#A8AEB7; }
+.trust-facts { display:grid; gap:14px; }
+.trust-facts > div { position:relative; padding:24px 60px 24px 52px; border:1px solid #303030; border-radius:16px; background:linear-gradient(120deg,#181818,#101010); color:#F0F0F0; }
+.trust-number { position:absolute; top:28px; left:18px; color:#585858; font-size:11px; }
+.trust-facts h3 { font-size:20px; margin-bottom:7px; letter-spacing:-.02em; }
+.trust-facts p { font-size:13px; line-height:1.5; color:#A8AEB7; }
+.trust-check { position:absolute; right:22px; top:30px; color:#C8FF00; font-size:18px; }
+@media(max-width:600px) {
+ .theryn-conversion-landing .hero-actions button { padding:14px 28px 14px 12px!important; min-height:80px; border-radius:12px!important; }
+ .theryn-conversion-landing .hero-actions strong { font-size:16px; }
+ .theryn-conversion-landing .hero-actions .action-arrow { right:8px; font-size:18px; }
+ .hero-product .coach-browser-bar { padding:0 7px; height:28px; gap:3px; }
+ .hero-product .coach-browser-bar small { font-size:8px; }
+ .hero-product .coach-browser-bar > span { display:none; }
+ .hero-product .hero-ticket { margin-top:18px; padding:10px; gap:6px; display:block; }
+ .hero-product .ticket-arrow { display:none!important; }
+ .hero-ticket small { font-size:7px; }
+ .hero-ticket strong { font-size:12px; }
+ .hero-ticket span { font-size:10px; line-height:1.4; }
+ .coach-story-labels { gap:6px; }
+ .coach-story-labels > span { padding:10px 7px; font-size:11px; gap:5px; flex-direction:column; align-items:flex-start; }
+ .landing-trust { grid-template-columns:minmax(0,1fr); gap:30px; }
+ .athlete-product { padding:7px; border-radius:26px; }
+}
