@@ -76,8 +76,10 @@
 .coach-browser-bar { height:42px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 16px; font-size:9px; color:#A8AEB7; background:linear-gradient(#242424,#181818); border-bottom:1px solid #303030; }
 .coach-browser-bar small { font-size:11px; }
 .coach-product-viewport { overflow:hidden; position:relative; background:#080808; }
-.coach-product iframe { display:block; pointer-events:none; }
-.hero-product .hero-ticket { width:100%; margin-top:24px; padding:18px; border-radius:16px; background:#181818; border-color:#343434; display:flex; gap:12px; align-items:center; box-shadow:0 16px 32px #0003; }
+.coach-product iframe { display:block; pointer-events:none; position:absolute; inset:0; opacity:0; transition:opacity .6s ease; }
+.coach-product iframe[data-active="true"] { opacity:1; }
+/* The ticket sits on a fixed dark card in both themes, so its text is fixed light too. */
+.hero-product .hero-ticket { width:100%; margin-top:24px; padding:18px; border-radius:16px; background:#181818; border-color:#343434; color:#F0F0F0; display:flex; gap:12px; align-items:center; box-shadow:0 16px 32px #0003; }
 .ticket-arrow { flex:none; background:#C8FF00; border-radius:10px; width:40px; height:46px; display:grid!important; place-items:center; color:#080808; font-size:24px!important; }
 .hero-ticket > div { min-width:0; }
 .hero-ticket strong { font-size:17px; }

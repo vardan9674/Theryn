@@ -64,20 +64,40 @@ export default function LinkPage({ token, api }) {
 }
 
 // Marketing renders the real link UI using local sample data only.
-export function WorkoutLinkPreview({ step }) {
+// screen: "workout" | "sent" | "measure" | "measured"; ticks 0–3 exercises
+// fully ticked; filled 0–3 measurement fields entered.
+export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }) {
   const exercises = [
     { name: "Bench Press", sets: 3, reps: "8", weight: 135, coachNote: "Keep each rep controlled." },
     { name: "Overhead Press", sets: 3, reps: "10", weight: 65 },
     { name: "Cable Fly", sets: 3, reps: "12", weight: 25 },
   ];
-  const plan = Object.fromEntries(DAY_ORDER.map(day => [day, { type: "Push", exercises }]));
-  const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan };
+  // A realistic push/pull/legs week, rotated so today is always the push day
+  // the demo ticks through (never a rest day, whatever day the visitor lands).
+  const week = [
+    { type: "Push", exercises },
+    { type: "Pull", exercises: [{ name: "Deadlift", sets: 3, reps: "5", weight: 225 }, { name: "Pull-Up", sets: 3, reps: "8" }, { name: "Barbell Row", sets: 3, reps: "10", weight: 115 }] },
+    { type: "Legs", exercises: [{ name: "Back Squat", sets: 4, reps: "6", weight: 185 }, { name: "Romanian Deadlift", sets: 3, reps: "10", weight: 135 }, { name: "Walking Lunge", sets: 3, reps: "12" }] },
+    { type: "Rest", exercises: [] },
+    { type: "Push", exercises },
+    { type: "Pull", exercises: [{ name: "Deadlift", sets: 3, reps: "5", weight: 225 }, { name: "Pull-Up", sets: 3, reps: "8" }, { name: "Barbell Row", sets: 3, reps: "10", weight: 115 }] },
+    { type: "Rest", exercises: [] },
+  ];
+  const todayIdx = DAY_ORDER.indexOf(new Date().toLocaleDateString("en-US", { weekday: "short" }));
+  const plan = Object.fromEntries(DAY_ORDER.map((day, i) => [day, week[(i - todayIdx + 7) % 7]]));
+  const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan, requested: ["waist", "hips", "chest"] };
   const today = todayFromPlan(plan);
   const noop = () => {};
-  if (step === 2) return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets" } }} />;
+  const tickState = React.useMemo(() => Object.fromEntries(Array.from({ length: ticks }, (_, i) => [i, 3])), [ticks]);
+  const valueState = React.useMemo(() => Object.fromEntries([["weight", "138"], ["waist", "29"], ["hips", "37"]].slice(0, filled)), [filled]);
+  if (screen === "sent") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets" } }} />;
+  if (screen === "measured") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "measurements", summary: { count: 3, date: isoToday() } }} />;
+  const measuring = screen === "measure";
   return <div className="lk-page cx-app">
-    <div className="lk-tabs"><span className="lk-tab" aria-selected="true">Today's workout</span><span className="lk-tab">Measurements</span></div>
-    <WorkoutTab key={step} d={d} today={today} initialTicks={step === 1 ? { 0: 3, 1: 3, 2: 3 } : {}} onSubmit={async () => ({ ok: true })} onSent={noop} onMeasure={noop} />
+    <div className="lk-tabs"><span className="lk-tab" aria-selected={!measuring}>Today's workout</span><span className="lk-tab" aria-selected={measuring}>Measurements</span></div>
+    {measuring
+      ? <MeasurementsTab d={d} controlledValues={valueState} onSubmit={async () => ({ ok: true })} onSent={noop} />
+      : <WorkoutTab d={d} today={today} controlledTicks={tickState} onSubmit={async () => ({ ok: true })} onSent={noop} onMeasure={noop} />}
   </div>;
 }
 
@@ -86,8 +106,11 @@ function Byline({ coach }) {
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {} }) {
+function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, controlledTicks }) {
   const [ticks, setTicks] = React.useState(initialTicks);      // exerciseIndex → sets done
+  // The marketing demo steps ticks in from outside so only the newly ticked
+  // box animates; real athletes never pass this.
+  React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
   const [weights, setWeights] = React.useState({});  // exerciseIndex → weight used
   const [openWeight, setOpenWeight] = React.useState({});
   const [skipped, setSkipped] = React.useState({});
@@ -245,12 +268,13 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {} }
 }
 
 // ── Measurements ───────────────────────────────────────────────────────────
-function MeasurementsTab({ d, onSubmit, onSent }) {
+function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
   const requested = (Array.isArray(d.requested) && d.requested.length ? d.requested : ALL_FIELD_IDS).filter((id) => ALL_FIELD_IDS.includes(id));
   const [unit, setUnit] = React.useState(d.unit_system === "metric" ? "metric" : "imperial");
   const [date, setDate] = React.useState(isoToday());
   const [values, setValues] = React.useState({});
   const [selected, setSelected] = React.useState(requested[0] || "chest");
+  React.useEffect(() => { if (controlledValues) setValues(controlledValues); }, [controlledValues]);
   const [error, setError] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const inputs = React.useRef({});
