@@ -63,13 +63,31 @@ export default function LinkPage({ token, api }) {
   );
 }
 
+// Marketing renders the real link UI using local sample data only.
+export function WorkoutLinkPreview({ step }) {
+  const exercises = [
+    { name: "Bench Press", sets: 3, reps: "8", weight: 135, coachNote: "Keep each rep controlled." },
+    { name: "Overhead Press", sets: 3, reps: "10", weight: 65 },
+    { name: "Cable Fly", sets: 3, reps: "12", weight: 25 },
+  ];
+  const plan = Object.fromEntries(DAY_ORDER.map(day => [day, { type: "Push", exercises }]));
+  const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan };
+  const today = todayFromPlan(plan);
+  const noop = () => {};
+  if (step === 2) return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets" } }} />;
+  return <div className="lk-page cx-app">
+    <div className="lk-tabs"><span className="lk-tab" aria-selected="true">Today's workout</span><span className="lk-tab">Measurements</span></div>
+    <WorkoutTab key={step} d={d} today={today} initialTicks={step === 1 ? { 0: 3, 1: 3, 2: 3 } : {}} onSubmit={async () => ({ ok: true })} onSent={noop} onMeasure={noop} />
+  </div>;
+}
+
 function Byline({ coach }) {
   return <div className="lk-byline"><span className="cx-avatar cx-avatar-sm" aria-hidden="true">{(coach || "C")[0]}</span><span>From your coach, <b>{coach}</b></span></div>;
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, onSubmit, onSent, onMeasure }) {
-  const [ticks, setTicks] = React.useState({});      // exerciseIndex → sets done
+function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {} }) {
+  const [ticks, setTicks] = React.useState(initialTicks);      // exerciseIndex → sets done
   const [weights, setWeights] = React.useState({});  // exerciseIndex → weight used
   const [openWeight, setOpenWeight] = React.useState({});
   const [skipped, setSkipped] = React.useState({});
