@@ -6,7 +6,7 @@ import { relativeTime } from "../lib/format.js";
 /** The bell in the header. */
 export function NotificationsButton({ unread, onClick, size }) {
   return (
-    <button type="button" className="cx-bell" onClick={onClick} aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}>
+    <button type="button" className="cx-bell" data-tour="bell" onClick={onClick} aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}>
       <Icon.Bell size={size || 20} />
       {unread > 0 && <span className="cx-badge">{unread > 99 ? "99+" : unread}</span>}
     </button>

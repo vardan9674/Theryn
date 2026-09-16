@@ -50,7 +50,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       </div>
 
       <div className="cx-actions-2">
-        <Button variant="primary" icon={<Icon.Link size={16} />} onClick={() => actions.shareLink(athleteId)}>Share link</Button>
+        <Button variant="primary" icon={<Icon.Link size={16} />} onClick={() => actions.shareLink(athleteId)} data-tour="share-link">Share link</Button>
         {manual
           ? <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}

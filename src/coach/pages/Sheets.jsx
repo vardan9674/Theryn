@@ -122,7 +122,7 @@ export function LinkClientSheet({ open, onClose, client, candidates, onLinked })
 }
 
 // ── Profile & account ─────────────────────────────────────────────────────
-export function ProfileSheet({ open, onClose, clients, onRemoveClient }) {
+export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour }) {
   const data = useCoachData();
   const toast = useToast();
   const [name, setName] = React.useState(data.coachName);
@@ -187,6 +187,7 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient }) {
           </div>
         )}
 
+        {onTour && <Button block onClick={onTour} icon={<Icon.Help size={16} />}>Show me around</Button>}
         <div className="cx-actions-2">
           <Button onClick={() => { onClose(); data.switchRole(); }}>Switch to Athlete</Button>
           <Button variant="danger" onClick={() => { onClose(); data.signOut(); }}>Sign out</Button>

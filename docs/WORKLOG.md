@@ -21,9 +21,18 @@ Newest first. One entry per working session. Record what was done, what was foun
 **Verified**
 - Coach preview (1280 and 375): bell shows 8 unread → sheet grouped by day → tap → client opens on Workouts; Ravi (name-only) shows the link workout with planned/done, weights, skipped and note; Marcus (app) shows set chips. No console errors. Typecheck, 50 tests, build pass.
 
+**Also done: "Show me around", a first-visit tour for coaches who aren't technical**
+- The old `CoachTourOverlay` in App.jsx describes the previous dashboard (Athletes / Templates / Routines tabs) and is never mounted by Direction B. New `src/coach/pages/CoachTour.jsx`: 11 short steps, each spotlighting a real element found by `data-tour="…"` (Clients tab, first client row, Add client, Share link, Plans, Payments, Messages, bell, profile picture) with a plain-language card (no jargon: "Your people, one row each", "Every client gets their own private link. They open it on their phone, no app and no password…"). Steps adapt: no clients → "Add your first client" instead of the row step; on laptop/tablet the Share link step opens the first client so the green button is really on screen (on the phone an open client hides the tab bar, so the card sits in the middle instead). Card goes under the target when there is room, else above; Back / Next / Skip, arrow keys, Escape, Android back. Progress dots.
+- Shown once per coach per device (`theryn_coach_tour_done_<coachId>` in localStorage) after the client list loads; **Show me around** in the profile sheet replays it any time.
+- Verified at 1280 and 375: all 11 steps spotlight the right element (or fall back cleanly), Done marks it seen, replay from the profile sheet works, Back works. Typecheck, 51 tests, build pass.
+
+**Note on the working tree**
+- Another session was editing the landing page (`LandingPage.jsx`, `landing-motion.jsx`, `landing-motion.css`) in this checkout at the same time. A temporary stash of mine briefly reset those files while it was writing; everything was restored from the stash and verified identical to its work-in-progress, but if that session sees something odd, the three files as of 21:07 are also in this session's scratchpad.
+
 **Open**
 - Realtime delivery to a signed-in coach still unexercised (needs a coach session).
 - Push notification on submission (roadmap 1.12) would complete this: the centre is in-app only.
+- Tour "seen" flag is per device; a coach who signs in on a second device sees it once more (one tap on Skip).
 
 ## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync` (PR #43); target weight and coach data freshness, branch `fix/coach-submissions-target-weight`
 
