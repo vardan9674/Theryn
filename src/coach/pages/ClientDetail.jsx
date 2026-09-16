@@ -6,10 +6,11 @@ import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
+import { attachSubmissions, workoutDetail, workoutSummary } from "../lib/workouts.js";
 
 const TABS = [
   { id: "plan", label: "Plan" },
-  { id: "progress", label: "Progress" },
+  { id: "progress", label: "Workouts" },
   { id: "body", label: "Body" },
   { id: "payments", label: "Payments" },
 ];
@@ -68,7 +69,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       ) : tab === "plan" ? (
         <PlanTab data={data} row={row} actions={actions} />
       ) : tab === "progress" ? (
-        <ProgressTab data={data} />
+        <ProgressTab data={data} row={row} />
       ) : tab === "body" ? (
         <BodyTab data={data} />
       ) : (
@@ -147,13 +148,18 @@ function PlanTab({ data, row, actions }) {
   );
 }
 
-// ── Progress ──────────────────────────────────────────────────────────────
-function ProgressTab({ data }) {
+// ── Workouts ──────────────────────────────────────────────────────────────
+function ProgressTab({ data, row }) {
   const { history, routine, profile } = data;
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
+  const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
   const stats = React.useMemo(() => computeStats(data), [data]);
   const streak = routineStreak(history, routine);
-  if (!history || history.length === 0) return <Empty title="No workouts logged yet">Progress charts appear after the first workout.</Empty>;
+  // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
+  const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
+  const [openId, setOpenId] = React.useState(null);
+  React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!history || history.length === 0) return <Empty title="No workouts yet">{row.link.manual ? "Workouts they tick off through their link show up here." : "Workouts they log in the app or tick off through their link show up here."}</Empty>;
   return (
     <>
       <div className="cx-stats" style={{ marginBottom: 0 }}>
@@ -162,6 +168,45 @@ function ProgressTab({ data }) {
         <div className="cx-card cx-stat"><span className="k">Avg session</span><span className="v">{stats.sessionAvgMin == null ? "—" : `${stats.sessionAvgMin}m`}</span></div>
       </div>
       <div className="cx-small cx-muted">"Last 28 days" is the share of planned workouts that were done.</div>
+
+      <div className="cx-card">
+        <div className="cx-card-pad" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600 }}>Recent workouts</div>
+        {workouts.slice(0, 12).map((w) => {
+          const isOpen = openId === w.id;
+          const color = TYPE_COLORS[w.type] || "var(--cx-tx2)";
+          return (
+            <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
+              <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
+                <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
+                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-small cx-muted">{workoutSummary(w)}{w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
+                </span>
+                <Icon.Down />
+              </button>
+              {isOpen && (
+                <div className="cx-card-pad" style={{ paddingTop: 0 }}>
+                  {w.exercises.map((e, i) => (
+                    <div key={i} className="cx-exrow" style={{ alignItems: "flex-start", padding: "6px 0", opacity: e.skipped ? 0.55 : 1 }}>
+                      <span>{e.name}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
+                      <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {e.sets.length > 0
+                          ? <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className="cx-setchip">{s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
+                          : <>
+                              <b style={{ color: e.skipped ? "var(--cx-mu)" : "var(--cx-tx)" }}>{e.done}{e.planned ? `/${e.planned}` : ""}</b> sets
+                              {e.reps ? <span className="cx-muted"> × {e.reps}</span> : null}
+                              {e.weight != null ? <span className={e.weightChanged ? "" : "cx-muted"}> · {e.weight} {wUnit}{e.weightChanged ? " (changed)" : ""}</span> : null}
+                            </>}
+                      </span>
+                    </div>
+                  ))}
+                  {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{row.name.split(" ")[0]}: "{w.note}"</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       <AthleteAttendanceCalendar history={history} />
       <AthleteVolumeChart history={history} unit={unit} />
       <AthletePRTimeline history={history} unit={unit} />

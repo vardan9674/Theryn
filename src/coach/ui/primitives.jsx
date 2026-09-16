@@ -28,6 +28,7 @@ export const Icon = {
   Link: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>,
   Person: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" /></svg>,
   User: (p) => <svg width={p.size || 18} height={p.size || 18} {...svgProps}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-7 8-7s8 3 8 7" /></svg>,
+  Bell: (p) => <svg width={p.size || 20} height={p.size || 20} {...svgProps}><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2z" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>,
 };
 
 // ── Buttons ──────────────────────────────────────────────────────────────

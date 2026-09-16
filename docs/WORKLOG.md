@@ -2,6 +2,29 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-15 — Workout detail for the coach and a notification centre, branch `feat/coach-workouts-notifications`
+
+**Asked**
+- "Once the client ticks the workout and sends it, the coach should be able to see the workout and details." And: "a notification centre within the coach dashboard."
+
+**Found**
+- A link workout only surfaced as a one-line "8 of 9 sets done · weights: …" under the day on the Plan tab, and for app clients not even that: `loadWorkoutHistory` never read the `source` column, so promoted link sessions looked like app sessions and the "Done via link" tag never showed. Nowhere could the coach open a workout and see what was actually done.
+
+**Done**
+- `loadWorkoutHistory` selects `source` and parses `viaLink`/`note` out of the session notes; entries carry `source` and `note`.
+- `src/coach/lib/workouts.js`: `attachSubmissions` pairs each link session with the submission that produced it (same id for name-only clients; date + best exercise overlap for app clients, since `link_submit` promotes without a back-reference), `workoutDetail` gives one shape for both (done/planned sets, reps, weight used vs target, skipped, note, duration), `workoutSummary`. 5 tests.
+- Progress tab renamed **Workouts**: stats, then "Recent workouts" (one expandable row per session: date, type, via link / in app, "5 of 9 sets · 1 skipped"; open → per-exercise `3/3 sets × 8-12 · 60 kg`, skipped rows dimmed, "(changed)" when the client used a different weight than prescribed, app sessions as set chips `205×6 225×5`, and the client's note), then the existing charts.
+- Notification centre: bell in the top nav (laptop/tablet) and the phone clients header with an unread badge; sheet grouped Today / Yesterday / Earlier; items are link workouts ("Vaishnavi finished Full Body via their link · 5 of 6 sets · 'note'"), measurements sent ("168 lb · chest 36, waist 28 in") and workouts logged in the app ("12 sets · 48 min"). Tap → that client on the Workouts or Body tab. Built from rows that already exist (`client_submissions` + app-sourced `workout_sessions`, last 30 days) by `src/coach/lib/notifications.js` (2 tests). Refreshes on the realtime events and on focus.
+- Seen watermark: `20260915120000_coach_notifications_seen.sql` adds `profiles.coach_notifications_seen_at` (applied to production) so the badge agrees across devices; localStorage mirror as fallback. The badge clears when the centre opens; rows keep their unread highlight until it closes.
+- Clearing (asked for after the first pass): **Clear all** at the top of the sheet hides everything up to now (`profiles.coach_notifications_cleared_at`, same migration, applied; also resets seen) and an **×** on each row dismisses that one (ids kept in localStorage, per device, capped at 300). Empty state reads "You're all caught up". Verified from a scratch worktree on port 5199 because another session's in-progress landing-page edit broke the main dev bundle at the time: badge 8 → open → dismiss one (20 → 19 rows) → Clear all → 0 rows, toast, badge gone.
+
+**Verified**
+- Coach preview (1280 and 375): bell shows 8 unread → sheet grouped by day → tap → client opens on Workouts; Ravi (name-only) shows the link workout with planned/done, weights, skipped and note; Marcus (app) shows set chips. No console errors. Typecheck, 50 tests, build pass.
+
+**Open**
+- Realtime delivery to a signed-in coach still unexercised (needs a coach session).
+- Push notification on submission (roadmap 1.12) would complete this: the centre is in-app only.
+
 ## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync` (PR #43); target weight and coach data freshness, branch `fix/coach-submissions-target-weight`
 
 **Found**
