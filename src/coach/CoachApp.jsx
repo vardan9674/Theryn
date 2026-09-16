@@ -123,6 +123,8 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   // Notification centre: link submissions + app workouts, unread against the coach's seen watermark.
   const [notifFeed, setNotifFeed] = React.useState({ submissions: [], sessions: [] });
   const [notifSeenAt, setNotifSeenAt] = React.useState(null);
+  const [notifClearedAt, setNotifClearedAt] = React.useState(null);
+  const [notifDismissed, setNotifDismissed] = React.useState([]);
   const [notifLoading, setNotifLoading] = React.useState(true);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const refreshNotifications = React.useCallback(() => {
@@ -130,12 +132,25 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     data.loadNotificationFeed(clients).then((f) => { setNotifFeed(f); setNotifLoading(false); }).catch(() => setNotifLoading(false));
   }, [data, clients, loadedClients]);
   React.useEffect(() => { refreshNotifications(); }, [refreshNotifications]);
-  React.useEffect(() => { if (typeof data.getNotificationsSeenAt === "function") data.getNotificationsSeenAt().then(setNotifSeenAt).catch(() => {}); }, [data]);
+  React.useEffect(() => {
+    if (typeof data.getNotificationsState !== "function") return;
+    data.getNotificationsState().then((st) => { setNotifSeenAt(st.seenAt); setNotifClearedAt(st.clearedAt); setNotifDismissed(st.dismissed || []); }).catch(() => {});
+  }, [data]);
   // Two watermarks: the badge clears the moment the centre opens; the rows keep
   // their unread highlight until it closes, so the coach can see what is new.
   const [badgeSeenAt, setBadgeSeenAt] = React.useState(null);
-  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt }), [notifFeed, clients, notifSeenAt]);
-  const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null })), [notifFeed, clients, badgeSeenAt, notifSeenAt]);
+  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt, clearedAt: notifClearedAt, dismissed: notifDismissed }), [notifFeed, clients, notifSeenAt, notifClearedAt, notifDismissed]);
+  const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null, clearedAt: notifClearedAt, dismissed: notifDismissed })), [notifFeed, clients, badgeSeenAt, notifSeenAt, notifClearedAt, notifDismissed]);
+  const clearNotifications = () => {
+    const iso = new Date().toISOString();
+    setNotifClearedAt(iso); setNotifSeenAt(iso); setBadgeSeenAt(iso); setNotifDismissed([]);
+    Promise.resolve(data.clearNotifications?.(iso)).catch(() => {});
+    toast("Notifications cleared");
+  };
+  const dismissNotification = (id) => {
+    setNotifDismissed((d) => (d.includes(id) ? d : [...d, id]));
+    Promise.resolve(data.dismissNotification?.(id)).catch(() => {});
+  };
   const openNotifications = () => {
     const iso = new Date().toISOString();
     setNotifOpen(true);
@@ -315,7 +330,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
-      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading}
+      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />

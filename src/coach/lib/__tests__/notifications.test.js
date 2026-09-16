@@ -22,6 +22,16 @@ describe("notifications", () => {
     expect(unreadCount(items)).toBe(2);
   });
 
+  it("hides everything at or before clearedAt and any dismissed id", () => {
+    const base = { clients, submissions: [
+      { id: "s1", kind: "workout", submitted_at: "2026-09-13T00:49:10Z", athlete_id: "a1", payload: { type: "Push", exercises: [] } },
+      { id: "s2", kind: "measurements", submitted_at: "2026-09-11T00:00:00Z", athlete_id: "a1", payload: { unit: "metric", weight: 70 } },
+    ] };
+    expect(buildNotifications({ ...base, clearedAt: "2026-09-12T00:00:00Z" }).map((i) => i.id)).toEqual(["sub:s1"]);
+    expect(buildNotifications({ ...base, dismissed: ["sub:s1"] }).map((i) => i.id)).toEqual(["sub:s2"]);
+    expect(buildNotifications({ ...base, clearedAt: "2026-09-13T00:49:10Z" })).toEqual([]);
+  });
+
   it("groups by local day", () => {
     const now = new Date(2026, 8, 13, 15, 0, 0);
     const g = groupByDay([{ at: new Date(2026, 8, 13, 9).toISOString() }, { at: new Date(2026, 8, 12, 23).toISOString() }, { at: new Date(2026, 8, 1).toISOString() }], now);

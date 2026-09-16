@@ -1,5 +1,5 @@
 import React from "react";
-import { Sheet, Icon, Avatar, Empty } from "../ui/primitives.jsx";
+import { Sheet, Icon, Avatar, Empty, Button } from "../ui/primitives.jsx";
 import { groupByDay } from "../lib/notifications.js";
 import { relativeTime } from "../lib/format.js";
 
@@ -18,14 +18,19 @@ export function NotificationsButton({ unread, onClick, size }) {
  * sent, and workouts logged in the app, newest first. Tapping one opens that
  * client on the right tab. Everything is marked seen when the sheet opens.
  */
-export default function NotificationsSheet({ open, onClose, items, loading, onOpenItem }) {
+export default function NotificationsSheet({ open, onClose, items, loading, onOpenItem, onClearAll, onDismiss }) {
   const groups = React.useMemo(() => groupByDay(items || []), [items]);
   return (
     <Sheet open={open} onClose={onClose} title="Notifications" subtitle="What your clients sent, newest first.">
+      {items && items.length > 0 && (
+        <div className="cx-row" style={{ justifyContent: "flex-end", marginTop: -6 }}>
+          <Button size="sm" icon={<Icon.Trash size={14} />} onClick={onClearAll} aria-label="Clear all notifications">Clear all</Button>
+        </div>
+      )}
       {loading && (!items || items.length === 0) ? (
         <div className="cx-col"><span className="cx-skel" style={{ height: 56 }} /><span className="cx-skel" style={{ height: 56 }} /><span className="cx-skel" style={{ height: 56 }} /></div>
       ) : !items || items.length === 0 ? (
-        <Empty title="Nothing yet">When a client ticks off a workout or sends measurements, it shows up here.</Empty>
+        <Empty title="You're all caught up">When a client ticks off a workout or sends measurements, it shows up here.</Empty>
       ) : (
         <div className="cx-col" style={{ gap: 14 }}>
           {groups.map((g) => (
@@ -33,17 +38,20 @@ export default function NotificationsSheet({ open, onClose, items, loading, onOp
               <div className="cx-small cx-muted" style={{ marginBottom: 6, fontWeight: 600 }}>{g.label}</div>
               <div className="cx-card">
                 {g.items.map((it) => (
-                  <button key={it.id} type="button" className={`cx-notif ${it.unread ? "unread" : ""}`} onClick={() => onOpenItem?.(it)}>
-                    <Avatar name={it.clientName} size="sm" />
-                    <span className="cx-col" style={{ gap: 2, minWidth: 0, flex: 1, textAlign: "left" }}>
-                      <span className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
-                        <span style={{ fontWeight: it.unread ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
-                        <span className="cx-small cx-muted" style={{ flexShrink: 0 }}>{relativeTime(it.at)}</span>
+                  <div key={it.id} className={`cx-notif ${it.unread ? "unread" : ""}`}>
+                    <button type="button" className="cx-notif-main" onClick={() => onOpenItem?.(it)}>
+                      <Avatar name={it.clientName} size="sm" />
+                      <span className="cx-col" style={{ gap: 2, minWidth: 0, flex: 1, textAlign: "left" }}>
+                        <span className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ fontWeight: it.unread ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+                          <span className="cx-small cx-muted" style={{ flexShrink: 0 }}>{relativeTime(it.at)}</span>
+                        </span>
+                        <span className="cx-small" style={{ color: "var(--cx-tx2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.body}</span>
                       </span>
-                      <span className="cx-small" style={{ color: "var(--cx-tx2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.body}</span>
-                    </span>
-                    {it.unread && <span className="cx-dot" aria-hidden="true" />}
-                  </button>
+                      {it.unread && <span className="cx-dot" aria-hidden="true" />}
+                    </button>
+                    <button type="button" className="cx-notif-x" onClick={() => onDismiss?.(it.id)} aria-label={`Clear: ${it.title}`}><Icon.Close size={14} /></button>
+                  </div>
                 ))}
               </div>
             </div>

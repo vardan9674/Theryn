@@ -334,18 +334,35 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       });
       return { submissions: submissions.filter((x) => x.submitted_at >= sinceIso), sessions };
     },
-    async getNotificationsSeenAt() {
-      const { data } = await supabase.from("profiles").select("coach_notifications_seen_at").eq("id", coachId).maybeSingle();
-      let local = null; try { local = localStorage.getItem(`theryn_coach_notif_seen_${coachId}`); } catch {}
-      // Whichever is later: the column may not exist yet, or this device may be ahead of it.
-      const remote = data?.coach_notifications_seen_at || null;
-      return [remote, local].filter(Boolean).sort().pop() || null;
+    // Seen and cleared watermarks live on the profile (so phone and laptop agree)
+    // with a localStorage mirror, in case the column is missing or the network is out.
+    // Whichever is later wins. Single dismissals are per device only.
+    async getNotificationsState() {
+      const { data } = await supabase.from("profiles").select("coach_notifications_seen_at, coach_notifications_cleared_at").eq("id", coachId).maybeSingle();
+      const later = (remote, key) => { let local = null; try { local = localStorage.getItem(key); } catch {} return [remote || null, local].filter(Boolean).sort().pop() || null; };
+      let dismissed = []; try { dismissed = JSON.parse(localStorage.getItem(`theryn_coach_notif_dismissed_${coachId}`) || "[]"); } catch {}
+      return {
+        seenAt: later(data?.coach_notifications_seen_at, `theryn_coach_notif_seen_${coachId}`),
+        clearedAt: later(data?.coach_notifications_cleared_at, `theryn_coach_notif_cleared_${coachId}`),
+        dismissed: Array.isArray(dismissed) ? dismissed : [],
+      };
     },
     async markNotificationsSeen(iso = new Date().toISOString()) {
       try { localStorage.setItem(`theryn_coach_notif_seen_${coachId}`, iso); } catch {}
-      // Best effort: if the migration has not been run yet the local value still works on this device.
       await supabase.from("profiles").update({ coach_notifications_seen_at: iso }).eq("id", coachId);
       return iso;
+    },
+    async clearNotifications(iso = new Date().toISOString()) {
+      try { localStorage.setItem(`theryn_coach_notif_cleared_${coachId}`, iso); localStorage.removeItem(`theryn_coach_notif_dismissed_${coachId}`); } catch {}
+      await supabase.from("profiles").update({ coach_notifications_cleared_at: iso, coach_notifications_seen_at: iso }).eq("id", coachId);
+      return iso;
+    },
+    async dismissNotification(id) {
+      let list = []; try { list = JSON.parse(localStorage.getItem(`theryn_coach_notif_dismissed_${coachId}`) || "[]"); } catch {}
+      if (!Array.isArray(list)) list = [];
+      if (!list.includes(id)) list.push(id);
+      try { localStorage.setItem(`theryn_coach_notif_dismissed_${coachId}`, JSON.stringify(list.slice(-300))); } catch {}
+      return list;
     },
 
     // Profile & account

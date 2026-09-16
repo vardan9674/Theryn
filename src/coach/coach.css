@@ -451,8 +451,11 @@
 .cx-bell { position: relative; width: 44px; height: 44px; border-radius: 50%; border: none; background: none; color: var(--cx-tx2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .cx-bell:hover { background: var(--cx-s2); color: var(--cx-tx); }
 .cx-bell .cx-badge { position: absolute; top: 4px; right: 2px; }
-.cx-notif { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: none; border: none; border-bottom: 1px solid var(--cx-bd); color: inherit; font: inherit; cursor: pointer; text-align: left; min-height: 56px; }
+.cx-notif { display: flex; align-items: stretch; border-bottom: 1px solid var(--cx-bd); }
 .cx-notif:last-child { border-bottom: none; }
 .cx-notif:hover { background: var(--cx-s2); }
+.cx-notif-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px 4px 10px 12px; background: none; border: none; color: inherit; font: inherit; cursor: pointer; text-align: left; min-height: 56px; }
+.cx-notif-x { width: 44px; flex-shrink: 0; background: none; border: none; color: var(--cx-mu); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.cx-notif-x:hover { color: var(--cx-tx); }
 .cx-notif.unread { background: rgba(200, 255, 0, 0.04); }
 .cx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cx-a); flex-shrink: 0; }

@@ -29,10 +29,14 @@ function workoutBody(p) {
  * @param sessions app-logged workouts: { id, athlete_id, type, completed_at, totalSets, durationMin }
  * @param clients the dashboard's client list (athlete_id, athlete_name)
  * @param seenAt ISO string or null: everything after it is unread
+ * @param clearedAt ISO string or null: everything at or before it is hidden ("Clear all")
+ * @param dismissed ids the coach cleared one by one
  */
-export function buildNotifications({ submissions = [], sessions = [], clients = [], seenAt = null, limit = 60 }) {
+export function buildNotifications({ submissions = [], sessions = [], clients = [], seenAt = null, clearedAt = null, dismissed = [], limit = 60 }) {
   const names = new Map(clients.map((c) => [c.athlete_id, c.athlete_name]));
   const seen = seenAt ? new Date(seenAt).getTime() : 0;
+  const cleared = clearedAt ? new Date(clearedAt).getTime() : 0;
+  const gone = new Set(dismissed || []);
   const items = [];
   for (const s of submissions) {
     const clientId = clientIdOfSubmission(s);
@@ -57,7 +61,10 @@ export function buildNotifications({ submissions = [], sessions = [], clients = 
       title: `${name} logged ${w.type || "a workout"} in the app`, body: bits.join(" · ") || "Workout logged" });
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return items.slice(0, limit).map((it) => ({ ...it, unread: new Date(it.at).getTime() > seen }));
+  return items
+    .filter((it) => new Date(it.at).getTime() > cleared && !gone.has(it.id))
+    .slice(0, limit)
+    .map((it) => ({ ...it, unread: new Date(it.at).getTime() > seen }));
 }
 
 export function unreadCount(items) {

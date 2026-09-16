@@ -319,8 +319,10 @@ export function createMockCoachData() {
       }
       return { submissions: st.submissions.slice(), sessions };
     },
-    async getNotificationsSeenAt() { return st.notifSeenAt || new Date(Date.now() - 2 * 86400000).toISOString(); },
+    async getNotificationsState() { return { seenAt: st.notifSeenAt || new Date(Date.now() - 2 * 86400000).toISOString(), clearedAt: st.notifClearedAt || null, dismissed: st.notifDismissed || [] }; },
     async markNotificationsSeen(iso = new Date().toISOString()) { st.notifSeenAt = iso; return iso; },
+    async clearNotifications(iso = new Date().toISOString()) { st.notifClearedAt = iso; st.notifSeenAt = iso; st.notifDismissed = []; return iso; },
+    async dismissNotification(id) { st.notifDismissed = [...(st.notifDismissed || []), id]; return st.notifDismissed; },
     async updateDisplayName() { await wait(100); },
     async updateCurrency() { await wait(100); },
     signOut() { alert("Preview mode: sign out does nothing."); },

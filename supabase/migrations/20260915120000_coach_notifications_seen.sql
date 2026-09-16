@@ -10,3 +10,6 @@
 -- ============================================================================
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS coach_notifications_seen_at TIMESTAMPTZ;
+
+-- "Clear all": everything at or before this moment is hidden from the centre.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS coach_notifications_cleared_at TIMESTAMPTZ;
