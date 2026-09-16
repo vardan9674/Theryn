@@ -309,6 +309,18 @@ export function createMockCoachData() {
     async revokeClientLink(clientId) { await wait(150); delete st.clientLinks[clientId]; },
     async updateClientLinkRequested(clientId, requested) { await wait(100); if (st.clientLinks[clientId]) st.clientLinks[clientId].requested = requested; },
     async loadRecentSubmissions() { await wait(100); return st.submissions.slice(); },
+    async loadNotificationFeed(clients) {
+      await wait(120);
+      const ids = new Set((clients || []).filter((c) => !c.manual).map((c) => c.athlete_id));
+      const sessions = [];
+      for (const [athleteId, hist] of Object.entries(st.histories)) {
+        if (!ids.has(athleteId)) continue;
+        for (const h of hist.slice(0, 3)) sessions.push({ id: h.id, athlete_id: athleteId, type: h.type, completed_at: new Date(new Date(h.startedAt).getTime() + h.duration * 1000).toISOString(), totalSets: h.totalSets, durationMin: Math.round(h.duration / 60) });
+      }
+      return { submissions: st.submissions.slice(), sessions };
+    },
+    async getNotificationsSeenAt() { return st.notifSeenAt || new Date(Date.now() - 2 * 86400000).toISOString(); },
+    async markNotificationsSeen(iso = new Date().toISOString()) { st.notifSeenAt = iso; return iso; },
     async updateDisplayName() { await wait(100); },
     async updateCurrency() { await wait(100); },
     signOut() { alert("Preview mode: sign out does nothing."); },

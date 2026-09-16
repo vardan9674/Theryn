@@ -308,11 +308,44 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const { error } = await q;
       if (error) throw new Error(error.message);
     },
-    /** Latest link submissions across all clients, for the "what to do" line and a future inbox. */
+    /** Latest link submissions across all clients, for the "what to do" line and the notification centre. */
     async loadRecentSubmissions(limit = 50) {
       const { data, error } = await supabase.from("client_submissions").select("id, kind, payload, submitted_at, athlete_id, manual_client_id").eq("coach_id", coachId).order("submitted_at", { ascending: false }).limit(limit);
       if (error) { if (isMissingLinks(error)) return []; throw new Error(error.message); }
       return data || [];
+    },
+
+    // ── Notification centre ────────────────────────────────────────────────
+    // Built from rows that already exist: link submissions (all clients) and
+    // workouts app clients logged themselves. Link workouts are not read from
+    // workout_sessions here, or they would appear twice.
+    async loadNotificationFeed(clients, { days = 30 } = {}) {
+      const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
+      const ids = (clients || []).filter((c) => !c.manual).map((c) => c.athlete_id);
+      const [submissions, sessionsRes] = await Promise.all([
+        this.loadRecentSubmissions(60),
+        ids.length === 0 ? Promise.resolve({ data: [] }) : supabase.from("workout_sessions").select("id, user_id, workout_type, started_at, completed_at, notes, source").in("user_id", ids).not("completed_at", "is", null).neq("source", "link").gte("completed_at", sinceIso).order("completed_at", { ascending: false }).limit(60),
+      ]);
+      if (sessionsRes.error) throw new Error(sessionsRes.error.message);
+      const sessions = (sessionsRes.data || []).map((s) => {
+        let n = {}; try { n = s.notes ? JSON.parse(s.notes) : {}; } catch {}
+        const mins = s.started_at && s.completed_at ? Math.round((new Date(s.completed_at) - new Date(s.started_at)) / 60000) : null;
+        return { id: s.id, athlete_id: s.user_id, type: s.workout_type, completed_at: s.completed_at, totalSets: n.totalSets || null, durationMin: mins && mins > 0 && mins < 600 ? mins : null };
+      });
+      return { submissions: submissions.filter((x) => x.submitted_at >= sinceIso), sessions };
+    },
+    async getNotificationsSeenAt() {
+      const { data } = await supabase.from("profiles").select("coach_notifications_seen_at").eq("id", coachId).maybeSingle();
+      let local = null; try { local = localStorage.getItem(`theryn_coach_notif_seen_${coachId}`); } catch {}
+      // Whichever is later: the column may not exist yet, or this device may be ahead of it.
+      const remote = data?.coach_notifications_seen_at || null;
+      return [remote, local].filter(Boolean).sort().pop() || null;
+    },
+    async markNotificationsSeen(iso = new Date().toISOString()) {
+      try { localStorage.setItem(`theryn_coach_notif_seen_${coachId}`, iso); } catch {}
+      // Best effort: if the migration has not been run yet the local value still works on this device.
+      await supabase.from("profiles").update({ coach_notifications_seen_at: iso }).eq("id", coachId);
+      return iso;
     },
 
     // Profile & account

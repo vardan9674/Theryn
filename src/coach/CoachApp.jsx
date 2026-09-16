@@ -13,6 +13,8 @@ import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
 import { AddClientSheet, ProfileSheet, LinkClientSheet } from "./pages/Sheets.jsx";
 import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
+import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
+import { buildNotifications, unreadCount } from "./lib/notifications.js";
 import { consumeBackPress } from "../lib/backStack.ts";
 import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
@@ -118,18 +120,43 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   React.useEffect(() => data.subscribeMessages(realClients, () => refreshPreviews()), [data, realClients, refreshPreviews]);
   const unread = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
 
+  // Notification centre: link submissions + app workouts, unread against the coach's seen watermark.
+  const [notifFeed, setNotifFeed] = React.useState({ submissions: [], sessions: [] });
+  const [notifSeenAt, setNotifSeenAt] = React.useState(null);
+  const [notifLoading, setNotifLoading] = React.useState(true);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const refreshNotifications = React.useCallback(() => {
+    if (!loadedClients || typeof data.loadNotificationFeed !== "function") return;
+    data.loadNotificationFeed(clients).then((f) => { setNotifFeed(f); setNotifLoading(false); }).catch(() => setNotifLoading(false));
+  }, [data, clients, loadedClients]);
+  React.useEffect(() => { refreshNotifications(); }, [refreshNotifications]);
+  React.useEffect(() => { if (typeof data.getNotificationsSeenAt === "function") data.getNotificationsSeenAt().then(setNotifSeenAt).catch(() => {}); }, [data]);
+  // Two watermarks: the badge clears the moment the centre opens; the rows keep
+  // their unread highlight until it closes, so the coach can see what is new.
+  const [badgeSeenAt, setBadgeSeenAt] = React.useState(null);
+  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt }), [notifFeed, clients, notifSeenAt]);
+  const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null })), [notifFeed, clients, badgeSeenAt, notifSeenAt]);
+  const openNotifications = () => {
+    const iso = new Date().toISOString();
+    setNotifOpen(true);
+    setBadgeSeenAt(iso);
+    refreshNotifications();
+    Promise.resolve(data.markNotificationsSeen?.(iso)).catch(() => {});
+  };
+  const closeNotifications = () => { setNotifOpen(false); if (badgeSeenAt) setNotifSeenAt((cur) => (cur && cur > badgeSeenAt ? cur : badgeSeenAt)); };
+
   // Live data: a client logs a workout, body data or a link submission → refresh their facts.
   // Depend on the stable callbacks, not `cache` (its identity changes on every version bump).
   const { load: loadClient, reloadAll: reloadLoadedClients } = cache;
-  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) loadClient(athleteId, { force: true }).catch(() => {}); }), [data, clients, loadClient]);
+  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) loadClient(athleteId, { force: true }).catch(() => {}); refreshNotifications(); }), [data, clients, loadClient, refreshNotifications]);
   // Safety net when realtime was disconnected (phone in the background): refresh on return, at most every 20s.
   React.useEffect(() => {
     let last = Date.now();
-    const onBack = () => { if (document.visibilityState !== "visible" || Date.now() - last < 20000) return; last = Date.now(); reloadLoadedClients(); };
+    const onBack = () => { if (document.visibilityState !== "visible" || Date.now() - last < 20000) return; last = Date.now(); reloadLoadedClients(); refreshNotifications(); };
     document.addEventListener("visibilitychange", onBack);
     window.addEventListener("focus", onBack);
     return () => { document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); };
-  }, [reloadLoadedClients]);
+  }, [reloadLoadedClients, refreshNotifications]);
 
   // Native: catch-up notification on resume, Android back, deep links, foreground toasts
   React.useEffect(() => {
@@ -237,6 +264,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         </nav>
         <div className="cx-spacer" />
         {tab === "clients" && <div className="cx-search"><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>}
+        <NotificationsButton unread={notifUnread} onClick={openNotifications} />
         <Button variant="primary" size="sm" icon={<Icon.Plus />} onClick={actions.addClient} aria-label="Add client"><span>Add client</span></Button>
         <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} size="sm" /></button>
       </header>
@@ -248,6 +276,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         <div className="cx-row" style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 4px", gap: 8 }}>
           <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} /></button>
           <div className="cx-search" style={{ flex: 1, maxWidth: "none", width: "auto", height: 44 }}><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>
+          <NotificationsButton unread={notifUnread} onClick={openNotifications} />
           <Button variant="primary" icon={<Icon.Plus />} aria-label="Add client" onClick={actions.addClient} />
         </div>
       )}
@@ -286,6 +315,8 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
+      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading}
+        onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
       <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} />

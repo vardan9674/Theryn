@@ -440,3 +440,19 @@
 @media (prefers-reduced-motion: reduce) {
   .cx-app *, .cx-app *::before, .cx-app *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ── Workouts tab: one row per session, expandable ── */
+.cx-workout-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: none; color: inherit; font: inherit; cursor: pointer; min-height: 56px; }
+.cx-workout-hd:hover { background: var(--cx-s2); }
+.cx-setchips { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 220px; }
+.cx-setchip { font-size: 12px; padding: 2px 6px; border-radius: 6px; background: var(--cx-s2); border: 1px solid var(--cx-bd); white-space: nowrap; }
+
+/* ── Notification centre ── */
+.cx-bell { position: relative; width: 44px; height: 44px; border-radius: 50%; border: none; background: none; color: var(--cx-tx2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.cx-bell:hover { background: var(--cx-s2); color: var(--cx-tx); }
+.cx-bell .cx-badge { position: absolute; top: 4px; right: 2px; }
+.cx-notif { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: none; border: none; border-bottom: 1px solid var(--cx-bd); color: inherit; font: inherit; cursor: pointer; text-align: left; min-height: 56px; }
+.cx-notif:last-child { border-bottom: none; }
+.cx-notif:hover { background: var(--cx-s2); }
+.cx-notif.unread { background: rgba(200, 255, 0, 0.04); }
+.cx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cx-a); flex-shrink: 0; }

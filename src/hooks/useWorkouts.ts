@@ -221,6 +221,10 @@ export interface WorkoutHistoryEntry {
   exercises: HistoryExercise[];
   totalSets: number;
   totalVolume: number;
+  /** 'app' when logged in the app, 'link' when sent through a client link. */
+  source?: string;
+  /** What the client wrote when they sent it through their link. */
+  note?: string;
 }
 
 /**
@@ -246,7 +250,7 @@ export async function loadWorkoutHistory(
     const { data: sessions, error } = await supabase
       .from("workout_sessions")
       .select(`
-        id, workout_type, started_at, completed_at, notes,
+        id, workout_type, started_at, completed_at, notes, source,
         workout_sets ( exercise_id, set_number, weight, reps )
       `)
       .eq("user_id", userId)
@@ -290,10 +294,10 @@ export async function loadWorkoutHistory(
         sets: exMap[exId],
       }));
 
-      let parsedNotes: { totalSets?: number; totalVolume?: number } = {};
+      let parsedNotes: { totalSets?: number; totalVolume?: number; viaLink?: boolean; note?: string } = {};
       try { parsedNotes = s.notes ? JSON.parse(s.notes) : {}; } catch {}
 
-      return {
+      const entry: WorkoutHistoryEntry = {
         id: s.id,
         date: s.started_at.split("T")[0],
         type: s.workout_type || "Custom",
@@ -302,7 +306,10 @@ export async function loadWorkoutHistory(
         exercises,
         totalSets: parsedNotes.totalSets ?? exercises.reduce((a, ex) => a + ex.sets.length, 0),
         totalVolume: parsedNotes.totalVolume ?? exercises.reduce((a, ex) => a + ex.sets.reduce((ss, s) => ss + (Number(s.w) || 0) * (Number(s.r) || 0), 0), 0),
+        source: (s as any).source || (parsedNotes.viaLink ? "link" : "app"),
       };
+      if (parsedNotes.note) entry.note = String(parsedNotes.note);
+      return entry;
     });
 
     localStorage.setItem(cacheKey, JSON.stringify(history));
