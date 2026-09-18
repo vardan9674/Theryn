@@ -2,6 +2,19 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (later) — Week strip opens any day; optional measurements, branch `fix/link-week-and-optional-measurements`
+
+**Asked**
+- "I'm still not able to see the old days' workout, it only shows Friday and measurements." The "Log another day" control from PR #53 was a small text link, and only past days with a planned workout were listed. The week strip looked tappable but wasn't.
+- "If the coach unticks a measurement I want it optional, not gone; the coach chooses which are required." Unticked measurements used to disappear from the client's page, and at least one had to stay ticked.
+
+**Done** (client code only, no database change)
+- Every day in "This week" is a button. Past days and today open that day's plan, ready to tick and send with that date. Later days show the plan read-only ("Coming up · Saturday… You can tick it off on the day", with "Back to today"). The selected day is outlined. "Earlier days" keeps the chips for last week's days.
+- The Measurements tab always shows all five. The coach's ticks, now labelled **Required measurements**, are required (`*`); the rest say Optional. Unticking all makes everything optional (`requested = []`; a missing list still means all, as before). Sending nothing is blocked with "Add at least one measurement to send." Saving shows "Saved. X sees it next time they open the link." The link reads `requested` from `link_view` every time it opens, so no new link is needed.
+
+**Verified**
+- `/f/preview` at 375: Mon opens "Logging Monday…" with "Send Monday's workout"; Sat is read-only with "Back to today"; Measurements shows three required and two optional, and the empty send is blocked. Coach preview: all five unticked, saved. Typecheck, 63 tests, build pass.
+
 ## 2026-09-18 — Client link reliability for India, branch `fix/link-reliability` (on top of PR #52)
 
 **Context**

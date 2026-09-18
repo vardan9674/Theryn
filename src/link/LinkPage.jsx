@@ -4,7 +4,7 @@ import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 
 const APP_URL = "https://theryn.fit";
@@ -157,13 +157,16 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [picking, setPicking] = React.useState(false);
   const isToday = date === isoToday();
+  const upcoming = date > isoToday(); // a day later this week: show the plan, nothing to tick yet
   const realToday = dayKeyOf(new Date());
+  // This week's dates, Monday first, so each day in the strip can be opened.
+  const weekDates = React.useMemo(() => { const now = new Date(); const js = now.getDay(); const mon = new Date(now); mon.setDate(now.getDate() - (js === 0 ? 6 : js - 1)); return DAY_ORDER.map((_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return isoOf(x); }); }, []);
   const sentBefore = store?.sent(date) || null;
   // Save every tick as it happens.
   React.useEffect(() => {
-    if (!store || controlledTicks) return;
+    if (!store || controlledTicks || upcoming) return;
     store.saveDraft(date, { day: today.key, type: today.type, ticks, weights, skipped, note });
-  }, [store, date, today.key, today.type, ticks, weights, skipped, note, controlledTicks]);
+  }, [store, date, today.key, today.type, ticks, weights, skipped, note, controlledTicks, upcoming]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -204,16 +207,18 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
       <main className="lk-main">
         <Byline coach={d.coach_name} />
         <div className="lk-intro">
-          <div className="lk-eyebrow">{isToday ? longDate() : `Logging ${longDate(dateOf(date))}`}</div>
+          <div className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : `Logging ${longDate(dateOf(date))}`}</div>
           {today.isRest
             ? <h1 className="lk-h1">Rest day.</h1>
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
           <p className="lk-lede">{today.isRest
-            ? (today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
-            : isToday ? `Hi ${first}. Follow your coach's plan and tick off each exercise.` : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
+            ? (!isToday ? `Hi ${first}. Nothing is planned for ${DAY_LONG[today.key]}.` : today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
+            : isToday ? `Hi ${first}. Follow your coach's plan and tick off each exercise.`
+            : upcoming ? `Hi ${first}. Here's ${DAY_LONG[today.key]}'s plan. You can tick it off on the day.`
+            : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
         </div>
 
-        {days.length > 1 && (picking || !isToday) ? (
+        {days.length > 1 && picking ? (
           <div className="lk-daypick" role="group" aria-label="Which day are you logging?">
             {days.map((x) => (
               <button key={x.iso} type="button" className="lk-daychip" aria-pressed={x.iso === date} onClick={() => { onPickDate?.(x.iso); setPicking(false); }}>
@@ -221,19 +226,27 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               </button>
             ))}
           </div>
-        ) : days.length > 1 && !today.isRest ? (
-          <button type="button" className="lk-linkbtn" style={{ alignSelf: "flex-start" }} onClick={() => setPicking(true)}>Missed sending a workout? Log another day <Icon.Down size={14} /></button>
         ) : null}
 
         {d.plan && (
           <section aria-label="This week">
             <div className="lk-row" style={{ marginBottom: 10 }}><span className="lk-eyebrow">This week</span><span className="lk-small">{weekRange()}</span></div>
-            <div className="lk-week">
-              {DAY_ORDER.map((k) => {
+            <div className="lk-week" role="group" aria-label="Pick a day">
+              {DAY_ORDER.map((k, i) => {
                 const day = d.plan[k]; const t = day?.type && day.type !== "Rest" && (day.exercises || []).length ? day.type : "Rest";
                 const c = t === "Rest" ? undefined : TYPE_COLORS[t];
-                return <div key={k} className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""}`} style={c ? { "--day": c } : undefined}><span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}</div>;
+                const iso = weekDates[i];
+                return (
+                  <button key={k} type="button" className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""} ${iso === date ? "selected" : ""}`} style={c ? { "--day": c } : undefined}
+                    aria-pressed={iso === date} aria-label={`${DAY_LONG[k]}, ${t}${k === realToday ? ", today" : ""}`} onClick={() => { onPickDate?.(iso); setPicking(false); }}>
+                    <span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}
+                  </button>
+                );
               })}
+            </div>
+            <div className="lk-row" style={{ marginTop: 8 }}>
+              <span className="lk-small">Tap a day to see its workout.</span>
+              {days.length > 1 && !picking && <button type="button" className="lk-linkbtn" style={{ minHeight: 32, fontSize: 13 }} onClick={() => setPicking(true)}>Earlier days</button>}
             </div>
           </section>
         )}
@@ -249,10 +262,10 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               <span className="cx-pill" style={{ color, background: `${color}1A`, height: 32, fontSize: 13 }}>{today.type}</span>
             </div>
 
-            <div>
+            {!upcoming && <div>
               <div className="lk-row" style={{ marginBottom: 8 }}><span style={{ fontSize: 16, fontWeight: 700 }}>{doneCount} of {total} complete</span><span className="lk-small">Tap the box to tick it off</span></div>
               <div className="lk-progress"><i style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} /></div>
-            </div>
+            </div>}
 
             {today.exercises.map((e, i) => {
               const full = e.sets || 1;
@@ -262,7 +275,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               return (
                 <div key={i} className={`lk-card lk-ex ${done ? "done" : ""}`} style={isCurrent ? { borderColor: "var(--cx-bd2)" } : undefined}>
                   <div className="lk-ex-head">
-                    <button type="button" className={`lk-tick ${done ? "on" : n > 0 ? "partial" : isCurrent ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo" : "Mark done"}: ${e.name}`} onClick={() => toggleExercise(i)}>
+                    <button type="button" className={`lk-tick ${done ? "on" : n > 0 ? "partial" : isCurrent ? "current" : ""}`} aria-pressed={done} aria-label={upcoming ? e.name : `${done ? "Undo" : "Mark done"}: ${e.name}`} disabled={upcoming} onClick={() => toggleExercise(i)}>
                       {done ? <Icon.Check size={22} /> : n > 0 ? `${n}/${full}` : String(i + 1).padStart(2, "0")}
                     </button>
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -276,14 +289,14 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                       {skipped[i] && !done && <div className="lk-small">Skipped</div>}
                     </div>
                   </div>
-                  {e.sets > 1 && !done && (
+                  {e.sets > 1 && !done && !upcoming && (
                     <div className="lk-sets" aria-label="Sets done">
                       {Array.from({ length: e.sets }, (_, s) => (
                         <button key={s} type="button" className={`lk-set ${s < n ? "on" : ""}`} aria-pressed={s < n} aria-label={`Set ${s + 1}`} onClick={() => setSets(i, s + 1 === n ? s : s + 1)}>{s < n ? <Icon.Check size={14} /> : s + 1}</button>
                       ))}
                     </div>
                   )}
-                  <div className="lk-ex-actions">
+                  {!upcoming && <div className="lk-ex-actions">
                     <button type="button" className="lk-linkbtn" onClick={() => setOpenWeight((o) => ({ ...o, [i]: !o[i] }))} aria-expanded={Boolean(openWeight[i])}>
                       Used a different weight? <Icon.Down size={14} />
                     </button>
@@ -292,8 +305,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                       : skipped[i]
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => setSkipped((s) => ({ ...s, [i]: false }))}>Undo skip</button>
                       : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
-                  </div>
-                  {openWeight[i] && (
+                  </div>}
+                  {openWeight[i] && !upcoming && (
                     <div className="lk-row" style={{ justifyContent: "flex-start" }}>
                       <input className="lk-weight" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "0"} value={weights[i] || ""} onChange={(ev) => setWeights((w) => ({ ...w, [i]: ev.target.value.replace(/[^0-9.]/g, "").slice(0, 6) }))} aria-label={`Weight used for ${e.name}`} />
                       <span className="lk-small">{unit} used</span>
@@ -303,11 +316,13 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               );
             })}
 
+            {!upcoming && <>
             <div>
               <div className="lk-row" style={{ marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 700 }}>How did it feel?</span><span className="lk-small">Optional</span></div>
               <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
             </div>
             <div className="lk-small">Your checkmarks tell your coach what you completed. Actual weights are optional.</div>
+            </>}
             {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
@@ -317,11 +332,15 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
           <div className="lk-card">
             <span style={{ fontSize: 16, fontWeight: 700 }}>Want to send measurements instead?</span>
             <button type="button" className="lk-send secondary" onClick={onMeasure}>Go to Measurements</button>
-            {days.length > 1 && !picking && <button type="button" className="lk-linkbtn" onClick={() => setPicking(true)}>Missed sending a workout? Log another day</button>}
           </div>
         )}
       </main>
-      {!today.isRest && (
+      {!today.isRest && upcoming && (
+        <div className="lk-footer"><div className="lk-footer-inner">
+          <button type="button" className="lk-send secondary" onClick={() => onPickDate?.(isoToday())}>Back to today</button>
+        </div></div>
+      )}
+      {!today.isRest && !upcoming && (
         <div className="lk-footer"><div className="lk-footer-inner">
           <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
@@ -333,11 +352,13 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
 
 // ── Measurements ───────────────────────────────────────────────────────────
 function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
-  const requested = (Array.isArray(d.requested) && d.requested.length ? d.requested : ALL_FIELD_IDS).filter((id) => ALL_FIELD_IDS.includes(id));
+  // Every measurement is on the page. The ones the coach ticked are required;
+  // the rest are optional. An empty list means everything is optional.
+  const requested = requiredFields(d.requested);
   const [unit, setUnit] = React.useState(d.unit_system === "metric" ? "metric" : "imperial");
   const [date, setDate] = React.useState(isoToday());
   const [values, setValues] = React.useState({});
-  const [selected, setSelected] = React.useState(requested[0] || "chest");
+  const [selected, setSelected] = React.useState(requested[0] || ALL_FIELD_IDS[0]);
   React.useEffect(() => { if (controlledValues) setValues(controlledValues); }, [controlledValues]);
   const [error, setError] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
@@ -345,7 +366,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
   const first = d.first_name;
   const lenUnit = unit === "metric" ? "cm" : "in";
   const wUnit = unit === "metric" ? "kg" : "lb";
-  const fields = MEASUREMENT_FIELDS.filter((f) => requested.includes(f.id));
+  const fields = MEASUREMENT_FIELDS;
   const guide = MEASUREMENT_FIELDS.find((f) => f.id === selected) || fields[0];
   const added = fields.filter((f) => values[f.id] != null && String(values[f.id]).trim() !== "").length;
 
@@ -374,7 +395,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
         <div className="lk-intro">
           <div className="lk-eyebrow">Body check-in</div>
           <h1 className="lk-h1">Body measurements.</h1>
-          <p className="lk-lede">Hi {first}. Add the measurements your coach asked for. No app or account needed.</p>
+          <p className="lk-lede">Hi {first}. {requested.length ? "Add the measurements your coach asked for, and any others you like." : "Add whichever measurements you have."} No app or account needed.</p>
         </div>
 
         <div className="lk-grid2">
@@ -387,7 +408,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
 
         <div className="lk-card">
           <div className="lk-row"><span className="lk-eyebrow">Where to measure</span><span className="lk-small">Measuring guide</span></div>
-          <BodyFigure requested={requested} selected={selected} onSelect={show} />
+          <BodyFigure requested={ALL_FIELD_IDS} selected={selected} onSelect={show} />
           <div className="lk-small" style={{ textAlign: "center" }}>Tap a label to see how to measure.</div>
           {guide && (
             <div className="lk-guide">
@@ -398,11 +419,11 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
         </div>
 
         <div>
-          <div className="lk-row" style={{ marginBottom: 12 }}><span style={{ fontSize: 20, fontWeight: 700 }}>Your measurements</span><span className="lk-small">{added} / {fields.length} added</span></div>
+          <div className="lk-row" style={{ marginBottom: 12 }}><span style={{ fontSize: 20, fontWeight: 700 }}>Your measurements</span><span className="lk-small">{requested.length ? `${requested.filter((id) => values[id] != null && String(values[id]).trim() !== "").length} / ${requested.length} required added` : `${added} added`}</span></div>
           <div className="lk-fields">
             {fields.map((f) => (
               <div key={f.id} className={`lk-numfield ${selected === f.id ? "on" : ""} ${error?.field === f.id ? "bad" : ""}`} onClick={() => pick(f.id)}>
-                <span className="lab">{f.label} <em>*</em></span>
+                <span className="lab">{f.label} {requested.includes(f.id) ? <em>*</em> : <small>Optional</small>}</span>
                 <span className="val"><input ref={(el) => { inputs.current[f.id] = el; }} inputMode="decimal" placeholder="—" value={values[f.id] || ""} onChange={(e) => setVal(f.id, e.target.value)} onFocus={() => setSelected(f.id)} aria-label={`${f.label} in ${lenUnit}`} /><span className="unit">{lenUnit}</span></span>
               </div>
             ))}
@@ -412,7 +433,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
             </div>
           </div>
         </div>
-        <div className="lk-small">* Asked for by your coach. Measure without pulling the tape tight.</div>
+        <div className="lk-small">{requested.length ? "* Asked for by your coach. " : ""}Measure without pulling the tape tight.</div>
         {error && <div className="lk-error" role="alert">{error.error}</div>}
         <div className="lk-note"><Icon.Lock size={16} /><span>Shared with Coach {d.coach_name} only. Your previous measurements aren't shown on this link.</span></div>
       </main>
