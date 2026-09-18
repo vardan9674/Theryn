@@ -16,6 +16,7 @@ import {
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
 import { generateToken, hashToken, linkClientData } from "../lib/clientLinks.js";
+import { convertPlan, normUnits } from "../lib/units.js";
 import { isoDate } from "../lib/format.js";
 
 const MANUAL_COLS = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
@@ -31,8 +32,9 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   const email = authUser?.email || "";
   const coachName = profile?.display_name || email.split("@")[0] || "Coach";
   const defaultCurrency = profile?.default_currency || "USD";
-  // The root keeps the profiles.unit_system column as `units`.
-  const unitSystem = (profile?.unit_system || profile?.units) === "metric" ? "metric" : "imperial";
+  // The coach's kg/lb choice (profiles.unit_system; the root keeps it as `units`).
+  // The whole dashboard reads in it; name-only clients' data is converted on load.
+  let unitSystem = (profile?.units || profile?.unit_system) === "metric" ? "metric" : "imperial";
   let manualAvailable = true;
 
   // ── Manual client rows ────────────────────────────────────────────────
@@ -84,7 +86,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     coachName,
     coachEmail: email,
     defaultCurrency,
-    unitSystem,
+    get unitSystem() { return unitSystem; },
     get manualClientsAvailable() { return manualAvailable; },
 
     // Clients: app accounts first, then name-only clients
@@ -99,7 +101,9 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         const [row, subs] = await Promise.all([getManualRow(mid), loadSubmissions({ manual_client_id: mid })]);
         const base = manualClientData(row);
         const linked = linkClientData(subs, { plan: row.plan, coachUnits: unitSystem });
-        return { ...base, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: subs };
+        // Plan target weights in the coach's units too (the editor saves them stamped with those units).
+        const routine = row.plan ? convertPlan(row.plan, unitSystem, { assumeFrom: unitSystem }) : base.routine;
+        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
       }
       const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
       // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.
@@ -386,6 +390,13 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const { error } = await supabase.from("profiles").update({ display_name: name }).eq("id", coachId);
       if (error) throw new Error(error.message);
       setProfile?.((p) => ({ ...p, display_name: name }));
+    },
+    async updateUnits(units) {
+      const u = normUnits(units);
+      unitSystem = u;
+      setProfile?.((p) => ({ ...p, units: u, unit_system: u }));
+      const { error } = await supabase.from("profiles").update({ unit_system: u }).eq("id", coachId);
+      if (error) throw new Error(error.message);
     },
     async updateCurrency(code) {
       setProfile?.((p) => ({ ...p, default_currency: code }));

@@ -1,4 +1,6 @@
 // Pure helpers for shareable client links (decision 0006).
+import { planUnits, convertSubmission, normUnits } from "./units.js";
+export { planUnits };
 
 export const MEASUREMENT_FIELDS = [
   { id: "chest", label: "Chest", hint: "Wrap the tape around the fullest part of your chest. Keep it level and breathe normally." },
@@ -131,8 +133,10 @@ export function measurementsPayload(values, unit, date) {
   return out;
 }
 
-export function workoutPayload(today, ticks, weights, note, date) {
+/** `units` is what the client typed weights in (and saw the targets in). */
+export function workoutPayload(today, ticks, weights, note, date, units) {
   return {
+    ...(units ? { weight_unit: units === "metric" ? "metric" : "imperial" } : {}),
     date,
     local_date: date,
     day: today.key,
@@ -168,12 +172,6 @@ export function submissionDate(sub) {
   return server;
 }
 
-/** "metric" | "imperial" stamped on a plan by the coach's editor, or null. */
-export function planUnits(plan) {
-  if (!plan || typeof plan !== "object") return null;
-  for (const k of DAY_ORDER) { const u = plan[k]?.units; if (u === "metric" || u === "imperial") return u; }
-  return null;
-}
 
 /** A submission row → what the coach's Body tab shows for name-only clients. */
 export function submissionToMeasurement(sub) {
@@ -198,29 +196,22 @@ export function submissionToHistory(sub) {
   return { id: sub.id, date: submissionDate(sub), type: p.type || "Workout", duration: 45 * 60, startedAt: sub.submitted_at, exercises, totalSets, totalVolume, source: "link", note: p.note || "", plannedSets: (p.exercises || []).reduce((a, e) => a + (e.sets_planned || 0), 0) };
 }
 
-const round1 = (n) => Math.round(n * 10) / 10;
-function convertMeasurement(m, metric) {
-  const out = { ...m };
-  const lenFrom = m.unit === "cm", wFrom = m.weightUnit === "kg";
-  if (lenFrom !== metric) for (const k of ["chest", "waist", "hips", "lArm", "lThigh"]) if (out[k] != null) out[k] = round1(metric ? out[k] * 2.54 : out[k] / 2.54);
-  if (wFrom !== metric && out.weight != null) out.weight = round1(metric ? out.weight / 2.20462262 : out.weight * 2.20462262);
-  out.unit = metric ? "cm" : "in"; out.weightUnit = metric ? "kg" : "lb";
-  return out;
-}
-
 /**
  * Everything the coach sees for a name-only client, built from their link
- * submissions. One unit for the whole client (the plan's, else their latest
- * measurements', else the coach's), so a client who switches between cm and
- * inches still reads right and the 2-week weight change compares like with like.
+ * submissions, in the coach's units: the client may send pounds and inches,
+ * the coach reads kilograms and centimetres (or the other way round).
+ * Workouts sent before they carried `weight_unit` are taken to be in the
+ * plan's units, which is what the link page showed.
  */
 export function linkClientData(submissions, { plan = null, coachUnits = "imperial" } = {}) {
-  const subs = [...(submissions || [])].sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : a.submitted_at > b.submitted_at ? -1 : 0));
-  const raw = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement);
-  const unitSystem = planUnits(plan) || (raw[0] ? (raw[0].unit === "cm" ? "metric" : "imperial") : null) || (coachUnits === "metric" ? "metric" : "imperial");
+  const unitSystem = normUnits(coachUnits);
+  const workoutFrom = planUnits(plan) || unitSystem;
+  const subs = [...(submissions || [])]
+    .sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : a.submitted_at > b.submitted_at ? -1 : 0))
+    .map((x) => convertSubmission(x, unitSystem, { workoutFrom }));
   const byDate = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
-  const measurements = raw.map((m) => convertMeasurement(m, unitSystem === "metric")).sort(byDate);
+  const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement).sort(byDate);
   const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
   const history = subs.filter((x) => x.kind === "workout").map(submissionToHistory).sort(byDate);
-  return { history, measurements, weights, unitSystem };
+  return { history, measurements, weights, unitSystem, submissions: subs };
 }

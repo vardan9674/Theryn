@@ -43,8 +43,13 @@ export function useClientDataCache(data) {
 
   const set = React.useCallback((athleteId, d) => { cacheRef.current[athleteId] = d; bump(); }, []);
   const invalidate = React.useCallback((athleteId) => { delete cacheRef.current[athleteId]; bump(); }, []);
+  /** Drop everything, e.g. when the coach switches kg/lb (loaded data is already converted). */
+  const reset = React.useCallback(() => { cacheRef.current = {}; inflightRef.current = {}; bump(); }, []);
+  // A new data object (the coach's profile changed) means reloaded, re-converted data.
+  const firstData = React.useRef(data);
+  React.useEffect(() => { if (firstData.current !== data) { firstData.current = data; reset(); } }, [data, reset]);
   /** Re-fetch every client already loaded (used when the coach comes back to the app). */
   const reloadAll = React.useCallback(() => Promise.all(Object.keys(cacheRef.current).map((id) => load(id, { force: true }).catch(() => {}))), [load]);
 
-  return React.useMemo(() => ({ get, load, set, invalidate, reloadAll, version }), [get, load, set, invalidate, reloadAll, version]);
+  return React.useMemo(() => ({ get, load, set, invalidate, reset, reloadAll, version }), [get, load, set, invalidate, reset, reloadAll, version]);
 }

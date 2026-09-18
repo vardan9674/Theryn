@@ -4,6 +4,7 @@ import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
+import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 
@@ -28,6 +29,8 @@ function linkStore(token) {
     draft: (date) => read().drafts?.[date] || null,
     saveDraft: (date, draft) => { const s = read(); write({ ...s, drafts: keepRecent({ ...s.drafts, [date]: draft }) }); },
     sent: (date) => read().sent?.[date] || null,
+    units: () => { const u = read().units; return u === "metric" || u === "imperial" ? u : null; },
+    setUnits: (u) => write({ ...read(), units: u }),
     markSent: (date, info) => { const s = read(); const drafts = { ...s.drafts }; delete drafts[date]; write({ ...s, drafts, sent: keepRecent({ ...s.sent, [date]: info }) }); },
   };
 }
@@ -64,6 +67,9 @@ export default function LinkPage({ token, api }) {
   const [sent, setSent] = React.useState(null); // { kind, summary }
   const store = React.useMemo(() => linkStore(token), [token]);
   const [logDate, setLogDate] = React.useState(isoToday); // which day's workout is being logged
+  // The client's own kg/lb, remembered on this phone. Until they pick, the plan's units.
+  const [units, setUnitsState] = React.useState(() => linkStore(token).units());
+  const setUnits = React.useCallback((u) => { setUnitsState(u); store.setUnits(u); }, [store]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -81,8 +87,11 @@ export default function LinkPage({ token, api }) {
 
   if (state.loading) return <div className="lk-page"><div className="lk-center"><div className="cx-spinner" /></div></div>;
   if (state.error || !state.data?.ok) return <Unavailable reason={state.error} />;
-  // Name-only clients have no profile, so the coach's editor stamps the plan with the units it used.
-  const d = { ...state.data, unit_system: planUnits(state.data.plan) || state.data.unit_system };
+  // The coach's editor stamps the plan with the units the coach typed in; the
+  // client sees every target converted to their own.
+  const coachUnits = planUnits(state.data.plan) || state.data.unit_system || "imperial";
+  const clientUnits = units || coachUnits;
+  const d = { ...state.data, plan: convertPlan(state.data.plan, clientUnits, { assumeFrom: coachUnits }), unit_system: clientUnits, onUnits: setUnits };
   const today = todayFromPlan(d.plan);
   const logging = logDate === isoToday() ? today : todayFromPlan(d.plan, dateOf(logDate));
 
@@ -95,7 +104,7 @@ export default function LinkPage({ token, api }) {
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
       {tab === "workout"
-        ? <WorkoutTab key={logDate} d={d} today={logging} date={logDate} days={loggableDays(d.plan)} onPickDate={setLogDate} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+        ? <WorkoutTab key={`${logDate}:${clientUnits}`} d={d} today={logging} date={logDate} days={loggableDays(d.plan)} onPickDate={setLogDate} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
     </div>
   );
@@ -139,14 +148,30 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   </div>;
 }
 
-function Byline({ coach }) {
-  return <div className="lk-byline"><span className="cx-avatar cx-avatar-sm" aria-hidden="true">{(coach || "C")[0]}</span><span>From your coach, <b>{coach}</b></span></div>;
+function Byline({ coach, units, onUnits }) {
+  return (
+    <div className="lk-byline">
+      <span className="cx-avatar cx-avatar-sm" aria-hidden="true">{(coach || "C")[0]}</span><span style={{ flex: 1 }}>From your coach, <b>{coach}</b></span>
+      {onUnits && (
+        <span className="lk-units" role="group" aria-label="Units">
+          <button type="button" aria-pressed={units === "metric"} onClick={() => onUnits("metric")}>kg</button>
+          <button type="button" aria-pressed={units !== "metric"} onClick={() => onUnits("imperial")}>lb</button>
+        </span>
+      )}
+    </div>
+  );
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
 function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
   // A draft only applies to the same day's plan (the coach may have changed it since).
-  const draft = React.useMemo(() => { const x = store?.draft(date); return x && x.day === today.key && x.type === today.type ? x : null; }, [store, date, today.key, today.type]);
+  const draft = React.useMemo(() => {
+    const x = store?.draft(date);
+    if (!x || x.day !== today.key || x.type !== today.type) return null;
+    // Weights typed before a kg/lb switch are converted, not reread in the new unit.
+    if (!x.units || x.units === d.unit_system) return x;
+    return { ...x, weights: Object.fromEntries(Object.entries(x.weights || {}).map(([k, v]) => [k, v === "" || v == null ? v : String(convertWeight(v, x.units, d.unit_system) ?? "")])) };
+  }, [store, date, today.key, today.type, d.unit_system]);
   const [ticks, setTicks] = React.useState(() => draft?.ticks || {});      // exerciseIndex → sets done
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
@@ -165,8 +190,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   // Save every tick as it happens.
   React.useEffect(() => {
     if (!store || controlledTicks || upcoming) return;
-    store.saveDraft(date, { day: today.key, type: today.type, ticks, weights, skipped, note });
-  }, [store, date, today.key, today.type, ticks, weights, skipped, note, controlledTicks, upcoming]);
+    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, weights, skipped, note });
+  }, [store, date, today.key, today.type, d.unit_system, ticks, weights, skipped, note, controlledTicks, upcoming]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -189,7 +214,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, weights, note, date);
+      const payload = workoutPayload(today, ticks, weights, note, date, d.unit_system);
       const res = await onSubmit(payload);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
       store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
@@ -205,7 +230,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   return (
     <>
       <main className="lk-main">
-        <Byline coach={d.coach_name} />
+        <Byline coach={d.coach_name} units={d.unit_system} onUnits={d.onUnits} />
         <div className="lk-intro">
           <div className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : `Logging ${longDate(dateOf(date))}`}</div>
           {today.isRest
@@ -355,7 +380,10 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
   // Every measurement is on the page. The ones the coach ticked are required;
   // the rest are optional. An empty list means everything is optional.
   const requested = requiredFields(d.requested);
-  const [unit, setUnit] = React.useState(d.unit_system === "metric" ? "metric" : "imperial");
+  // One kg/lb choice for the whole page (the byline switch and this one are the same setting).
+  const [localUnit, setLocalUnit] = React.useState(d.unit_system === "metric" ? "metric" : "imperial");
+  const unit = d.onUnits ? (d.unit_system === "metric" ? "metric" : "imperial") : localUnit;
+  const setUnit = d.onUnits || setLocalUnit;
   const [date, setDate] = React.useState(isoToday());
   const [values, setValues] = React.useState({});
   const [selected, setSelected] = React.useState(requested[0] || ALL_FIELD_IDS[0]);
@@ -391,7 +419,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
   return (
     <>
       <main className="lk-main">
-        <Byline coach={d.coach_name} />
+        <Byline coach={d.coach_name} units={d.unit_system} onUnits={d.onUnits} />
         <div className="lk-intro">
           <div className="lk-eyebrow">Body check-in</div>
           <h1 className="lk-h1">Body measurements.</h1>

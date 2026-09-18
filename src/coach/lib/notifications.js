@@ -3,6 +3,7 @@
 // coach's "seen" watermark. Pure; the data layer fetches the rows.
 import { clientIdOfSubmission } from "./workouts.js";
 import { isoDate } from "./format.js";
+import { convertSubmission } from "./units.js";
 
 const first = (name) => String(name || "Client").trim().split(/\s+/)[0];
 
@@ -31,8 +32,9 @@ function workoutBody(p) {
  * @param seenAt ISO string or null: everything after it is unread
  * @param clearedAt ISO string or null: everything at or before it is hidden ("Clear all")
  * @param dismissed ids the coach cleared one by one
+ * @param units the coach's "metric" | "imperial"; measurement numbers are shown in it
  */
-export function buildNotifications({ submissions = [], sessions = [], clients = [], seenAt = null, clearedAt = null, dismissed = [], limit = 60 }) {
+export function buildNotifications({ submissions = [], sessions = [], clients = [], seenAt = null, clearedAt = null, dismissed = [], limit = 60, units = null }) {
   const names = new Map(clients.map((c) => [c.athlete_id, c.athlete_name]));
   const seen = seenAt ? new Date(seenAt).getTime() : 0;
   const cleared = clearedAt ? new Date(clearedAt).getTime() : 0;
@@ -41,7 +43,7 @@ export function buildNotifications({ submissions = [], sessions = [], clients = 
   for (const s of submissions) {
     const clientId = clientIdOfSubmission(s);
     if (!clientId || !names.has(clientId)) continue;
-    const p = s.payload || {};
+    const p = (units && s.kind === "measurements" ? convertSubmission(s, units) : s).payload || {};
     const name = first(names.get(clientId));
     if (s.kind === "measurements") {
       items.push({ id: `sub:${s.id}`, at: s.submitted_at, clientId, clientName: names.get(clientId), kind: "measurements", tab: "body",
