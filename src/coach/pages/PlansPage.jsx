@@ -6,26 +6,13 @@ import TemplateEditor from "../../components/templates/TemplateEditor.jsx";
 import AssignAthletesSheet from "../../components/templates/AssignAthletesSheet.jsx";
 import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 
-const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-/** Template days → the weekly plan shape used by the client plan and the export. */
-export function templateDaysToPlan(days) {
-  const out = {};
-  for (const d of DAY_ORDER) out[d] = { type: "Rest", exercises: [] };
-  for (const d of days || []) {
-    const key = DAY_ORDER[d.day_index] || d.label;
-    if (!key) continue;
-    out[key] = {
-      type: d.workout_type || "Rest",
-      exercises: (d.exercises || []).map((e) => ({ name: e.exercise_name, sets: e.target_sets, reps: e.target_reps, coachNote: e.notes || undefined })),
-    };
-  }
-  return out;
-}
+// Moved to lib so the data layer can build name-only clients' weeks from a saved plan.
+export { templateDaysToPlan } from "../lib/manualTemplates.js";
+import { templateDaysToPlan } from "../lib/manualTemplates.js";
 
 /**
- * The coach's saved plans. Each row: Edit · Export to Excel · Send update ·
- * Give to a client. Editing opens the existing template editor full-screen.
+ * The coach's saved plans. Each row: Edit plan · Excel · Update clients ·
+ * Add clients. Editing opens the existing template editor full-screen.
  */
 export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const data = useCoachData();
@@ -95,11 +82,11 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     try {
       if (toAssign.length) {
         const res = await data.assignTemplate(template.id, toAssign);
-        if (res.failed?.length) toast(`${res.failed.length} could not be assigned`, "error");
+        if (res.failed?.length) toast(`${res.failed.length} could not be added`, "error");
       }
       if (toRemove.length) await data.unassignTemplate(template.id, toRemove);
       onClientsChanged?.([...toAssign, ...toRemove]);
-      toast(toAssign.length && toRemove.length ? "Assignments updated" : toAssign.length ? `Plan sent to ${plural(toAssign.length, "client")}` : "Removed from plan");
+      toast(toAssign.length && toRemove.length ? "Clients updated" : toAssign.length ? `Added ${plural(toAssign.length, "client")} to the plan` : "Taken off the plan");
       setGiving(null);
       await reload();
     } catch (e) { toast(e.message || "Could not update", "error"); }
@@ -109,7 +96,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   async function openPush(t) {
     try {
       const assignments = (await data.getTemplateAssignments(t.id)).filter((a) => !a.unassigned_at);
-      if (assignments.length === 0) { toast("Nobody has this plan yet. Use \"Give to a client\" first."); return; }
+      if (assignments.length === 0) { toast("No clients on this plan yet. Use \"Add clients\" first."); return; }
       setPushing({ template: t, assignments });
     } catch (e) { toast("Could not load assignments", "error"); }
   }
@@ -121,7 +108,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       const n = res.succeeded?.length || 0;
       const skipped = (res.skipped_overridden?.length || 0) + (res.skipped_mid_week?.length || 0) + (res.active_session_conflicts?.length || 0);
       onClientsChanged?.(res.succeeded || []);
-      toast(skipped ? `Sent to ${n}. ${skipped} skipped (edited by you or mid-workout).` : `Update sent to ${plural(n, "client")}`);
+      toast(skipped ? `Updated ${n}. ${skipped} skipped (you edited their plan, or they're mid-workout).` : `Updated ${plural(n, "client")}`);
       setPushing(null);
     } catch (e) { toast(e.message || "Could not send update", "error"); }
     finally { setBusy(false); }
@@ -145,7 +132,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       <TemplateEditor
         template={editing.template}
         initialDays={editing.days}
-        myAthletes={clients}
+        myAthletes={clients.filter((c) => !c.manual)}
         authUserId={data.coachId}
         onAthletesCacheInvalidate={(ids) => onClientsChanged?.(ids)}
         onBack={async () => { setEditing(null); await reload(); }}
@@ -162,7 +149,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       <div className="cx-page-head">
         <div>
           <h1 className="cx-h1">Your plans</h1>
-          <div className="cx-sub">Write a week of workouts once, then give it to any client. Editing a plan does not change clients who already have it until you press Send update.</div>
+          <div className="cx-sub">Write a week of workouts once, then give it to any client. Editing a plan doesn't change the clients on it until you press Update clients.</div>
         </div>
         <Button variant="primary" icon={<Icon.Plus />} onClick={() => setNaming(true)}>New plan</Button>
       </div>
@@ -178,33 +165,33 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
               <div className="cx-row" style={{ justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{t.name}</div>
-                  <div className="cx-small cx-muted">v{t.version} · {t.assignment_count > 0 ? `${plural(t.assignment_count, "client")} · ` : "Nobody yet · "}changed {shortDate(t.updated_at?.slice(0, 10))}</div>
+                  <div className="cx-small cx-muted">v{t.version} · {t.assignment_count > 0 ? `${plural(t.assignment_count, "client")} · ` : "No clients yet · "}changed {shortDate(t.updated_at?.slice(0, 10))}</div>
                 </div>
                 <RowMenu open={menuFor === t.id} onToggle={() => setMenuFor(menuFor === t.id ? null : t.id)} onDuplicate={() => duplicate(t)} onDelete={() => { setMenuFor(null); setDeleting(t); }} />
               </div>
               <div className="acts">
-                <Button size="sm" icon={<Icon.Edit />} onClick={() => openEditor(t)}>Edit</Button>
+                <Button size="sm" icon={<Icon.Edit />} onClick={() => openEditor(t)}>Edit plan</Button>
                 <Button size="sm" icon={<Icon.Sheet />} onClick={() => exportTemplate(t)}>Excel</Button>
-                <Button size="sm" onClick={() => openPush(t)} disabled={!t.assignment_count}>Send update</Button>
-                <Button size="sm" variant="soft" onClick={() => openGive(t)}>Give to a client</Button>
+                <Button size="sm" onClick={() => openPush(t)} disabled={!t.assignment_count}>Update clients</Button>
+                <Button size="sm" variant="soft" onClick={() => openGive(t)}>Add clients</Button>
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="cx-card cx-scroll-x">
-          <div className="cx-planhead" aria-hidden="true"><div>Plan</div><div>Version</div><div>Who has it</div><div>Last changed</div><div /></div>
+          <div className="cx-planhead" aria-hidden="true"><div>Plan</div><div>Version</div><div>Clients on it</div><div>Last changed</div><div /></div>
           {templates.map((t) => (
             <div key={t.id} className="cx-planrow">
               <div style={{ fontSize: 15, fontWeight: 600 }}>{t.name}</div>
               <div className="cx-small cx-muted">v{t.version}</div>
-              <div className="cx-small">{t.assignment_count > 0 ? plural(t.assignment_count, "client") : <span className="cx-muted">Nobody yet</span>}</div>
+              <div className="cx-small">{t.assignment_count > 0 ? plural(t.assignment_count, "client") : <span className="cx-muted">No clients yet</span>}</div>
               <div className="cx-small cx-muted">{shortDate(t.updated_at?.slice(0, 10))}</div>
               <div className="acts">
-                <Button size="sm" icon={<Icon.Edit />} onClick={() => openEditor(t)}>Edit</Button>
+                <Button size="sm" icon={<Icon.Edit />} onClick={() => openEditor(t)}>Edit plan</Button>
                 <Button size="sm" icon={<Icon.Sheet />} onClick={() => exportTemplate(t)}>Export to Excel</Button>
-                <Button size="sm" onClick={() => openPush(t)} disabled={!t.assignment_count} style={t.assignment_count ? { borderColor: "var(--cx-a)", color: "var(--cx-a)" } : undefined}>Send update</Button>
-                <Button size="sm" variant="soft" onClick={() => openGive(t)}>Give to a client</Button>
+                <Button size="sm" onClick={() => openPush(t)} disabled={!t.assignment_count} style={t.assignment_count ? { borderColor: "var(--cx-a)", color: "var(--cx-a)" } : undefined}>Update clients</Button>
+                <Button size="sm" variant="soft" onClick={() => openGive(t)}>Add clients</Button>
                 <RowMenu open={menuFor === t.id} onToggle={() => setMenuFor(menuFor === t.id ? null : t.id)} onDuplicate={() => duplicate(t)} onDelete={() => { setMenuFor(null); setDeleting(t); }} />
               </div>
             </div>
@@ -224,7 +211,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       )}
       {pushing && (
         <PushUpdateModal templateName={pushing.template.name} assignments={pushing.assignments.filter((a) => !a.is_overridden)} allAssignments={pushing.assignments} loading={busy} onConfirm={confirmPush} onSkip={() => setPushing(null)}
-          heading="Send update" subtitle={`Send the latest version of "${pushing.template.name}" (v${pushing.template.version}) to the clients who have it.`} skipLabel="Not now" skipHint="" />
+          heading="Update clients' plans" subtitle={`Give the clients on "${pushing.template.name}" its latest version (v${pushing.template.version}).`} skipLabel="Not now" skipHint="" />
       )}
       <Confirm open={Boolean(deleting)} title={`Delete "${deleting?.name}"?`} body="Clients who have it keep their current plan but won't get future updates." confirmLabel="Delete" danger busy={busy} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />
     </div>

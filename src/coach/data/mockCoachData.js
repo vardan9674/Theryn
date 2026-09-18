@@ -4,9 +4,10 @@
 // PR, one with a late payment, and several on track.
 import React from "react";
 import { isoDate } from "../lib/format.js";
-import { manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
+import { isManualId, toClientId, manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
 import { generateToken, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan } from "../lib/units.js";
+import { planTemplate, stampTemplate, manualPlanFromTemplate } from "../lib/manualTemplates.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -293,18 +294,26 @@ export function createMockCoachData() {
     subscribeMessages(_clients, onMessage) { const fn = () => onMessage({}); st.listeners.add(fn); return () => st.listeners.delete(fn); },
     subscribeLiveData() { return () => {}; },
 
-    async listTemplates() { await wait(150); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length })); },
+    async listTemplates() { await wait(150); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length + st.manual.filter((m) => planTemplate(m.plan)?.id === t.id).length })); },
     async createTemplate(name) { await wait(200); const t = { id: "t" + uid(), owner_coach_id: COACH_ID, name, version: 1, visibility: "private", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), days: [] }; st.templates.push(t); st.assignments[t.id] = []; return t; },
     async getTemplateWithTree(id) { await wait(150); const t = st.templates.find((x) => x.id === id); const { days, ...template } = t; return { template, days: JSON.parse(JSON.stringify(days)) }; },
     async updateTemplateName(id, name) { await wait(100); const t = st.templates.find((x) => x.id === id); if (t) t.name = name; },
     async saveTemplateTree(id, days) { await wait(300); const t = st.templates.find((x) => x.id === id); t.days = JSON.parse(JSON.stringify(days)); t.version += 1; t.updated_at = new Date().toISOString(); return t.version; },
     async duplicateTemplate(id, name) { await wait(200); const src = st.templates.find((x) => x.id === id); const t = { ...JSON.parse(JSON.stringify(src)), id: "t" + uid(), name, version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; st.templates.push(t); st.assignments[t.id] = []; return t; },
     async softDeleteTemplate(id) { await wait(200); st.templates = st.templates.filter((x) => x.id !== id); delete st.assignments[id]; },
-    async assignTemplate(id, athleteIds) { await wait(300); for (const a of athleteIds) { for (const k of Object.keys(st.assignments)) st.assignments[k] = st.assignments[k].filter((x) => x !== a); st.assignments[id].push(a); const t = st.templates.find((x) => x.id === id); st.routines[a] = fromTemplateDays(t.days); } return { succeeded: athleteIds, failed: [], archived: [] }; },
-    async pushTemplateUpdate(id, athleteIds) { await wait(300); const ids = athleteIds || st.assignments[id]; const t = st.templates.find((x) => x.id === id); for (const a of ids) st.routines[a] = fromTemplateDays(t.days); return { succeeded: ids, skipped_overridden: [], skipped_mid_week: [], active_session_conflicts: [], failed: [] }; },
-    async unassignTemplate(id, athleteIds) { await wait(200); st.assignments[id] = st.assignments[id].filter((a) => !athleteIds.includes(a)); },
-    async getTemplateAssignments(id) { await wait(100); return (st.assignments[id] || []).map((a) => ({ id: "as-" + a, template_id: id, athlete_id: a, coach_id: COACH_ID, athlete_name: st.links.find((l) => l.athlete_id === a)?.athlete_name, assigned_at: daysAgo(10).toISOString(), last_pushed_version: 1, is_overridden: false })); },
-    async getActiveAssignmentsForAthletes(ids) { await wait(100); const out = {}; for (const [tid, list] of Object.entries(st.assignments)) for (const a of list) if (ids.includes(a)) out[a] = { template_id: tid, template_name: st.templates.find((t) => t.id === tid)?.name }; return out; },
+    async assignTemplate(id, athleteIds) { await wait(300); const t0 = st.templates.find((x) => x.id === id); const given = athleteIds.filter(isManualId); for (const a of given) { const m = st.manual.find((r) => r.id === manualIdOf(a)); if (m) m.plan = manualPlanFromTemplate(t0, t0.days, st.units); } athleteIds = athleteIds.filter((a) => !isManualId(a)); for (const a of athleteIds) { for (const k of Object.keys(st.assignments)) st.assignments[k] = st.assignments[k].filter((x) => x !== a); st.assignments[id].push(a); const t = st.templates.find((x) => x.id === id); st.routines[a] = fromTemplateDays(t.days); } return { succeeded: [...athleteIds, ...given], failed: [], archived: [] }; },
+    async pushTemplateUpdate(id, athleteIds, force) {
+      await wait(300); const t = st.templates.find((x) => x.id === id);
+      const manualIds = st.manual.filter((m) => planTemplate(m.plan)?.id === id).map((m) => toClientId(m.id)).filter((mid) => !athleteIds || athleteIds.includes(mid));
+      const ids = (athleteIds || st.assignments[id]).filter((a) => !isManualId(a));
+      for (const a of ids) st.routines[a] = fromTemplateDays(t.days);
+      const done = [...ids], skipped = [];
+      for (const mid of manualIds) { const m = st.manual.find((r) => r.id === manualIdOf(mid)); if (planTemplate(m.plan)?.overridden && !force) { skipped.push(mid); continue; } m.plan = manualPlanFromTemplate(t, t.days, st.units); done.push(mid); }
+      return { succeeded: done, skipped_overridden: skipped, skipped_mid_week: [], active_session_conflicts: [], failed: [] };
+    },
+    async unassignTemplate(id, athleteIds) { await wait(200); st.assignments[id] = st.assignments[id].filter((a) => !athleteIds.includes(a)); for (const a of athleteIds.filter(isManualId)) { const m = st.manual.find((r) => r.id === manualIdOf(a)); if (m && planTemplate(m.plan)?.id === id) m.plan = stampTemplate(m.plan, null); } },
+    async getTemplateAssignments(id) { await wait(100); return (st.assignments[id] || []).map((a) => ({ id: "as-" + a, template_id: id, athlete_id: a, coach_id: COACH_ID, athlete_name: st.links.find((l) => l.athlete_id === a)?.athlete_name, assigned_at: daysAgo(10).toISOString(), last_pushed_version: 1, is_overridden: false })).concat(st.manual.filter((m) => planTemplate(m.plan)?.id === id).map((m) => ({ id: "manual-as:" + m.id, template_id: id, athlete_id: toClientId(m.id), coach_id: COACH_ID, athlete_name: [m.first_name, m.last_name].filter(Boolean).join(" "), assigned_at: daysAgo(1).toISOString(), last_pushed_version: planTemplate(m.plan).version, is_overridden: Boolean(planTemplate(m.plan).overridden), unassigned_at: null }))); },
+    async getActiveAssignmentsForAthletes(ids) { await wait(100); const out = {}; for (const [tid, list] of Object.entries(st.assignments)) for (const a of list) if (ids.includes(a)) out[a] = { template_id: tid, template_name: st.templates.find((t) => t.id === tid)?.name }; for (const m of st.manual) { const t = planTemplate(m.plan); if (t && ids.includes(toClientId(m.id))) out[toClientId(m.id)] = { template_id: t.id, template_name: t.name }; } return out; },
 
     // ?linkElsewhere=1 previews a link made on a device this one can't read the token from.
     async getClientLink(clientId) { await wait(150); const l = st.clientLinks[clientId]; const elsewhere = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("linkElsewhere"); return l ? { link: l, token: elsewhere ? null : l.token } : { link: null, token: null }; },

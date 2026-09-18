@@ -22,10 +22,10 @@ export default function PushUpdateModal({
   loading,
   // Optional copy overrides. Defaults fit the "just saved a template" flow in
   // the editor; the Plans page passes its own for the "Send update" button.
-  heading = "Template saved ✓",
+  heading = "Plan saved",
   subtitle,
-  skipLabel = "Save only (no push)",
-  skipHint = "New assignments will get the latest version",
+  skipLabel = "Don't update clients yet",
+  skipHint = "Clients you add later get this version",
 }) {
   const [pushMode, setPushMode] = React.useState("none"); // "none" | "all" | "choose"
   const [chosen, setChosen] = React.useState(new Set());
@@ -59,8 +59,8 @@ export default function PushUpdateModal({
 
   const modeLabel = {
     none:   skipLabel,
-    all:    `All assigned (${totalCount})`,
-    choose: "Choose athletes…",
+    all:    `Everyone on this plan (${totalCount})`,
+    choose: "Pick clients…",
   };
 
   return (
@@ -158,7 +158,7 @@ export default function PushUpdateModal({
                   )}
                 </div>
                 <div style={{ flex:1, fontSize:13, color:TX, textAlign:"left" }}>
-                  {a.athlete_name || "Athlete"}
+                  {a.athlete_name || "Client"}
                 </div>
                 {a.is_overridden && (
                   <span style={{ fontSize:10, background:`${A}18`, color:A, borderRadius:4, padding:"2px 6px", fontWeight:700 }}>
@@ -218,12 +218,12 @@ export default function PushUpdateModal({
           }}
         >
           {loading
-            ? "Pushing…"
+            ? "Updating…"
             : pushMode === "none"
-            ? "Save only"
+            ? "Close"
             : pushMode === "choose"
-            ? `Push to ${chosen.size} athlete${chosen.size !== 1 ? "s" : ""}`
-            : `Push to all (${totalCount})`}
+            ? `Update ${chosen.size} client${chosen.size !== 1 ? "s" : ""}`
+            : `Update all ${totalCount} client${totalCount !== 1 ? "s" : ""}`}
         </button>
       </div>
     </div>

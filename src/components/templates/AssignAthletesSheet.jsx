@@ -48,10 +48,10 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
 
   const confirmLabel = () => {
     if (loading) return "Saving…";
-    if (noChanges) return "No changes";
+    if (noChanges) return "Nothing changed";
     const parts = [];
-    if (toAssign > 0) parts.push(`Add ${toAssign}`);
-    if (toRemove > 0) parts.push(`Remove ${toRemove}`);
+    if (toAssign > 0) parts.push(`Add ${toAssign} client${toAssign !== 1 ? "s" : ""}`);
+    if (toRemove > 0) parts.push(`Take off ${toRemove}`);
     return parts.join(" · ");
   };
 
@@ -66,7 +66,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
           width:"100%", maxWidth:480,
           background:S1, borderRadius:"20px 20px 0 0",
           padding:"24px 20px 40px",
-          animation:"drawerUp 0.25s cubic-bezier(0.2,0.8,0.2,1)",
+          animation:"drawerUpCentered 0.25s cubic-bezier(0.2,0.8,0.2,1)",
           maxHeight:"85vh", display:"flex", flexDirection:"column",
         }}
         onClick={e => e.stopPropagation()}
@@ -75,25 +75,25 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
         <div style={{ width:36, height:4, borderRadius:2, background:MT, margin:"0 auto 20px" }}/>
         <div style={{ marginBottom:16 }}>
           <div style={{ fontSize:18, fontWeight:800, color:TX, letterSpacing:"-0.01em" }}>
-            Manage Athletes
+            Add clients to this plan
           </div>
           <div style={{ fontSize:12, color:SB, marginTop:3 }}>
-            "{templateName}" · check to assign, uncheck to remove
+            "{templateName}" · tick to add, untick to take off
           </div>
         </div>
 
         {/* Select-all bar */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
           <div style={{ fontSize:12, color:SB }}>
-            {selected.size} of {selectableAthletes.length} assigned
-            {lockedCount > 0 && ` · ${lockedCount} locked`}
+            {selected.size} of {selectableAthletes.length} on this plan
+            {lockedCount > 0 && ` · ${lockedCount} on another plan`}
           </div>
           <button
             onClick={allSelected ? clearAll : selectAll}
             disabled={selectableAthletes.length === 0}
             style={{ background:"none", border:`1px solid ${BD}`, borderRadius:8, padding:"5px 12px", color:A, fontSize:12, fontWeight:700, cursor: selectableAthletes.length === 0 ? "not-allowed" : "pointer", opacity: selectableAthletes.length === 0 ? 0.5 : 1 }}
           >
-            {allSelected ? "Remove all" : "Select all"}
+            {allSelected ? "Untick all" : "Tick all"}
           </button>
         </div>
 
@@ -101,7 +101,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
         <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:8 }}>
           {athletes.length === 0 ? (
             <div style={{ textAlign:"center", color:SB, padding:"32px 0", fontSize:14 }}>
-              No accepted athletes yet.
+              No clients yet. Add one from the Clients page.
             </div>
           ) : (
             athletes.map(link => {
@@ -118,7 +118,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
                   key={link.athlete_id}
                   onClick={() => toggle(link.athlete_id)}
                   disabled={locked}
-                  title={locked ? `Already assigned to "${lockInfo.template_name}". Remove from that template first.` : undefined}
+                  title={locked ? `Already on "${lockInfo.template_name}". Take them off that plan first.` : undefined}
                   style={{
                     display:"flex", alignItems:"center", gap:12,
                     background: bgColor,
@@ -161,19 +161,20 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
 
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:700, color:TX, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                      {link.athlete_name || "Athlete"}
+                      {link.athlete_name || "Client"}
+                      {link.manual && <span style={{ fontSize:11, fontWeight:600, color:SB, marginLeft:8 }}>· Not on app, gets it through their link</span>}
                     </div>
                     {locked ? (
                       <div style={{ fontSize:11, color:SB, marginTop:1, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                        Assigned to "{lockInfo.template_name}"
+                        On "{lockInfo.template_name}"
                       </div>
                     ) : wasAssigned ? (
                       <div style={{ fontSize:11, color: isSelected ? A : "#ff6666", marginTop:1, fontWeight:600 }}>
-                        {isSelected ? "Currently assigned" : "Will be removed"}
+                        {isSelected ? "On this plan" : "Will be taken off"}
                       </div>
                     ) : isSelected ? (
                       <div style={{ fontSize:11, color:"#aadd00", marginTop:1, fontWeight:600 }}>
-                        Will be assigned
+                        Will be added
                       </div>
                     ) : null}
                   </div>

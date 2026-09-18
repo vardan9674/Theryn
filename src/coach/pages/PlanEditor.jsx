@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button, Icon, Confirm, useViewport, useToast } from "../ui/primitives.jsx";
 import { DAYS, DAY_LONG, normalizeExercise, parseWeight } from "../lib/format.js";
 import { lastLiftedWeight } from "../lib/exportPlan.ts";
+import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { useBackHandler } from "../../lib/backStack.ts";
@@ -102,7 +103,11 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   const reorder = (d, from, to) => update((next) => { next[d].exercises = arrayMove(next[d].exercises, from, to); return next; });
 
   async function save() {
-    const templates = toTemplates(days, unit === "kg" ? "metric" : "imperial");
+    let templates = toTemplates(days, unit === "kg" ? "metric" : "imperial");
+    // A name-only client's week that came from a saved plan keeps saying so, marked
+    // as edited: Send update then leaves it alone unless the coach overwrites it.
+    const fromPlan = planTemplate(initialTemplates);
+    if (fromPlan) templates = stampTemplate(templates, { ...fromPlan, overridden: true });
     const empty = DAYS.some((d) => days[d].type !== "Rest" && days[d].exercises.some((e) => !e.name.trim()));
     if (empty) { toast("Every exercise needs a name. Remove the blank ones or type a name.", "error"); return; }
     setSaving(true);
