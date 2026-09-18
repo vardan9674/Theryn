@@ -5,7 +5,7 @@
 import React from "react";
 import { isoDate } from "../lib/format.js";
 import { manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
-import { generateToken, submissionToMeasurement, submissionToHistory } from "../lib/clientLinks.js";
+import { generateToken, linkClientData } from "../lib/clientLinks.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -180,9 +180,8 @@ export function createMockCoachData() {
       if (mid) {
         const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists.");
         const base = manualClientData(row);
-        const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement);
-        const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
-        return { ...base, history: subs.filter((x) => x.kind === "workout").map(submissionToHistory), measurements, weights, profile: { ...base.profile, unit_system: measurements[0]?.unit === "cm" ? "metric" : "imperial" }, submissions: subs };
+        const linked = linkClientData(subs, { plan: base.routine, coachUnits: "imperial" });
+        return { ...base, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: subs };
       }
       return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs };
     },
@@ -304,7 +303,8 @@ export function createMockCoachData() {
     async getTemplateAssignments(id) { await wait(100); return (st.assignments[id] || []).map((a) => ({ id: "as-" + a, template_id: id, athlete_id: a, coach_id: COACH_ID, athlete_name: st.links.find((l) => l.athlete_id === a)?.athlete_name, assigned_at: daysAgo(10).toISOString(), last_pushed_version: 1, is_overridden: false })); },
     async getActiveAssignmentsForAthletes(ids) { await wait(100); const out = {}; for (const [tid, list] of Object.entries(st.assignments)) for (const a of list) if (ids.includes(a)) out[a] = { template_id: tid, template_name: st.templates.find((t) => t.id === tid)?.name }; return out; },
 
-    async getClientLink(clientId) { await wait(150); const l = st.clientLinks[clientId]; return l ? { link: l, token: l.token } : { link: null, token: null }; },
+    // ?linkElsewhere=1 previews a link made on a device this one can't read the token from.
+    async getClientLink(clientId) { await wait(150); const l = st.clientLinks[clientId]; const elsewhere = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("linkElsewhere"); return l ? { link: l, token: elsewhere ? null : l.token } : { link: null, token: null }; },
     async createClientLink(clientId, { requested } = {}) { await wait(300); const l = { id: "lnk-" + uid(), token: generateToken(), requested: requested || ["chest", "waist", "hips", "arm", "thigh"], opens: 0, submissions: 0, created_at: new Date().toISOString() }; st.clientLinks[clientId] = l; return { link: l, token: l.token }; },
     async revokeClientLink(clientId) { await wait(150); delete st.clientLinks[clientId]; },
     async updateClientLinkRequested(clientId, requested) { await wait(100); if (st.clientLinks[clientId]) st.clientLinks[clientId].requested = requested; },

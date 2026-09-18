@@ -2,6 +2,29 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 — Client link reliability for India, branch `fix/link-reliability` (on top of PR #52)
+
+**Context**
+- The native app is not live. The live product is the website: coaches on the dashboard, clients on `/f/<token>`. Web athletes can't connect to a coach, so every real client is name-only and the link is their only channel. Coaches and clients are in India (UTC+5:30).
+- Constraint from the owner: no database changes. Everything below is client code; no migration, no RPC change.
+
+**Found and fixed**
+- **A coach could kill a client's link by opening the dashboard on another device.** The raw token lived only in the browser that made it, so elsewhere the Share link sheet said "doesn't have a link yet" and "Make a link" revoked the one pinned in the client's WhatsApp. Now the token is also kept in `client_links.label` as `tok:<token>` (coach-only under RLS, never returned by `link_view`, previously write-only). Older links sync up the first time the coach opens the sheet on the device that made them (checked against `token_hash` first). A device that still can't read it shows "X's link is working… made on another phone or computer" and replacing it goes through the existing warning.
+- **Early-morning check-ins landed on the day before.** `link_submit` replaces a date later than its UTC `CURRENT_DATE` with `CURRENT_DATE`, which in India is every submission from midnight to 5:30 am. The page now also sends `local_date` (kept in the stored payload); the coach side reads it via `submissionDate()`, and recovers older rows from `submitted_at` when the stored date is just the UTC day it was sent. Manual fee/payment defaults and the "Done via link" age use local dates too.
+- **Ticks were lost if the page reloaded mid-workout** (WhatsApp's browser drops pages when you switch apps). The workout draft (ticks, weights, skips, note) is saved to the client's localStorage on every change and restored for the same day and plan.
+- **Only today's workout could be sent.** "Missed sending a workout? Log another day" offers the last six planned training days; the page shows that day's plan and sends it with that date.
+- **Accidental double sends.** After sending, the page remembers it: "You sent today's workout to Coach X at 6:12 am. Sending again gives your coach a second entry", and the button reads "Send again".
+- **Units.** Name-only clients defaulted to lb everywhere (editor, link page) because they have no profile, and the dashboard also read `profile.unit_system` while the root stores it as `profile.units`, so every coach looked imperial. The plan editor now stamps `units` on each plan day; the link page labels weights and defaults measurement units from it; the dashboard picks one unit per name-only client (plan, else latest measurements, else the coach's) and converts every entry to it, so the 2-week weight change compares like with like. The Body tab's measurement card skips weight-only check-ins.
+
+**Verified**
+- Link page at 375 (`/f/preview`): tick + note survive a reload; send → receipt → back shows the sent note and "Send again"; log another day shows "Logging Wednesday…", "Wednesday's plan", the real today still marked in the week strip.
+- Coach preview: Ravi (name-only) Body/Workouts in kg, plan editor "Weight (kg)", save shows "50 kg"; Share link sheet normal state and the "made on another device" state (`?coachPreview=1&linkElsewhere=1`).
+- 10 new tests (`linkDates.test.js`, run in Asia/Kolkata). Typecheck, 61 tests, build pass.
+
+**Open**
+- Not exercised against production: token sync (`label`) with a real coach session. Check: open Share link on the laptop that made a link, then on a phone; the phone should show the same URL.
+- The receipt's "Get the app" points at the marketing site while the app isn't published.
+
 ## 2026-09-15 — Workout detail for the coach and a notification centre, branch `feat/coach-workouts-notifications`
 
 **Asked**

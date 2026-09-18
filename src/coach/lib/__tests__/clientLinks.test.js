@@ -58,7 +58,7 @@ describe("measurements validation", () => {
     expect(validateMeasurements({ weight: "150" }, "imperial", []).ok).toBe(true);
   });
   it("builds a payload with numbers and drops blanks", () => {
-    expect(measurementsPayload({ chest: "96.5", waist: "", weight: "70" }, "metric", "2026-09-14")).toEqual({ unit: "metric", date: "2026-09-14", weight: 70, chest: 96.5 });
+    expect(measurementsPayload({ chest: "96.5", waist: "", weight: "70" }, "metric", "2026-09-14")).toEqual({ unit: "metric", date: "2026-09-14", local_date: "2026-09-14", weight: 70, chest: 96.5 });
   });
 });
 

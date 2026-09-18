@@ -35,7 +35,7 @@ export default function CoachApp(props) {
   const supabaseData = React.useMemo(
     () => (props.data ? null : createSupabaseCoachData(props)),
     // Rebuild when identity or profile-level settings change.
-    [props.data, props.authUser?.id, props.profile?.display_name, props.profile?.default_currency, props.profile?.unit_system],
+    [props.data, props.authUser?.id, props.profile?.display_name, props.profile?.default_currency, props.profile?.unit_system, props.profile?.units],
   );
   const data = props.data || supabaseData;
   const initialClients = React.useMemo(() => {

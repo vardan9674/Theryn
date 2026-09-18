@@ -4,11 +4,45 @@ import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 
 const APP_URL = "https://theryn.fit";
-const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const isoToday = () => isoOf(new Date());
+const dateOf = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d, 12); };
+const clock = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+/**
+ * What this phone remembers for this link: the workout being ticked off (a
+ * reload, or WhatsApp's browser dropping the page mid-session, must not lose
+ * it) and which days were already sent. Keyed by a slice of the token so two
+ * links on one phone stay apart. Never leaves the device.
+ */
+function linkStore(token) {
+  const key = `theryn_link_${String(token || "").slice(0, 16)}`;
+  const read = () => { try { return JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch { return {}; } };
+  const write = (next) => { try { localStorage.setItem(key, JSON.stringify(next)); } catch {} };
+  const keepRecent = (o) => Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 10));
+  return {
+    draft: (date) => read().drafts?.[date] || null,
+    saveDraft: (date, draft) => { const s = read(); write({ ...s, drafts: keepRecent({ ...s.drafts, [date]: draft }) }); },
+    sent: (date) => read().sent?.[date] || null,
+    markSent: (date, info) => { const s = read(); const drafts = { ...s.drafts }; delete drafts[date]; write({ ...s, drafts, sent: keepRecent({ ...s.sent, [date]: info }) }); },
+  };
+}
+
+/** Days the client can log: today, then the last six days that had a workout planned. */
+function loggableDays(plan, now = new Date()) {
+  const out = [{ iso: isoOf(now), label: "Today" }];
+  for (let i = 1; i <= 6; i++) {
+    const d = new Date(now); d.setDate(now.getDate() - i); d.setHours(12, 0, 0, 0);
+    const day = plan?.[dayKeyOf(d)];
+    if (!day?.type || day.type === "Rest" || !(day.exercises || []).length) continue;
+    out.push({ iso: isoOf(d), label: i === 1 ? "Yesterday" : `${dayKeyOf(d)} ${d.getDate()}`, type: day.type });
+  }
+  return out;
+}
 const longDate = (d = new Date()) => d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
 const weekRange = (d = new Date()) => {
   const mon = new Date(d); const js = mon.getDay(); mon.setDate(mon.getDate() - (js === 0 ? 6 : js - 1));
@@ -28,6 +62,8 @@ export default function LinkPage({ token, api }) {
   const [state, setState] = React.useState({ loading: true, data: null, error: null });
   const [tab, setTab] = React.useState(() => (new URLSearchParams(window.location.search).get("tab") === "measurements" ? "measurements" : "workout"));
   const [sent, setSent] = React.useState(null); // { kind, summary }
+  const store = React.useMemo(() => linkStore(token), [token]);
+  const [logDate, setLogDate] = React.useState(isoToday); // which day's workout is being logged
 
   React.useEffect(() => {
     let cancelled = false;
@@ -45,10 +81,12 @@ export default function LinkPage({ token, api }) {
 
   if (state.loading) return <div className="lk-page"><div className="lk-center"><div className="cx-spinner" /></div></div>;
   if (state.error || !state.data?.ok) return <Unavailable reason={state.error} />;
-  const d = state.data;
+  // Name-only clients have no profile, so the coach's editor stamps the plan with the units it used.
+  const d = { ...state.data, unit_system: planUnits(state.data.plan) || state.data.unit_system };
   const today = todayFromPlan(d.plan);
+  const logging = logDate === isoToday() ? today : todayFromPlan(d.plan, dateOf(logDate));
 
-  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} onBack={() => { setSent(null); setTab("workout"); window.scrollTo(0, 0); }} />;
+  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} onBack={() => { setSent(null); setTab("workout"); setLogDate(isoToday()); window.scrollTo(0, 0); }} />;
 
   return (
     <div className="lk-page cx-app">
@@ -57,7 +95,7 @@ export default function LinkPage({ token, api }) {
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
       {tab === "workout"
-        ? <WorkoutTab d={d} today={today} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+        ? <WorkoutTab key={logDate} d={d} today={logging} date={logDate} days={loggableDays(d.plan)} onPickDate={setLogDate} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
     </div>
   );
@@ -106,15 +144,26 @@ function Byline({ coach }) {
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, controlledTicks }) {
-  const [ticks, setTicks] = React.useState(initialTicks);      // exerciseIndex → sets done
+function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
+  // A draft only applies to the same day's plan (the coach may have changed it since).
+  const draft = React.useMemo(() => { const x = store?.draft(date); return x && x.day === today.key && x.type === today.type ? x : null; }, [store, date, today.key, today.type]);
+  const [ticks, setTicks] = React.useState(() => draft?.ticks || {});      // exerciseIndex → sets done
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
-  const [weights, setWeights] = React.useState({});  // exerciseIndex → weight used
-  const [openWeight, setOpenWeight] = React.useState({});
-  const [skipped, setSkipped] = React.useState({});
-  const [note, setNote] = React.useState("");
+  const [weights, setWeights] = React.useState(() => draft?.weights || {});  // exerciseIndex → weight used
+  const [openWeight, setOpenWeight] = React.useState(() => Object.fromEntries(Object.keys(draft?.weights || {}).map((k) => [k, true])));
+  const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
+  const [note, setNote] = React.useState(() => draft?.note || "");
+  const [picking, setPicking] = React.useState(false);
+  const isToday = date === isoToday();
+  const realToday = dayKeyOf(new Date());
+  const sentBefore = store?.sent(date) || null;
+  // Save every tick as it happens.
+  React.useEffect(() => {
+    if (!store || controlledTicks) return;
+    store.saveDraft(date, { day: today.key, type: today.type, ticks, weights, skipped, note });
+  }, [store, date, today.key, today.type, ticks, weights, skipped, note, controlledTicks]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -137,9 +186,10 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, weights, note, isoToday());
+      const payload = workoutPayload(today, ticks, weights, note, date);
       const res = await onSubmit(payload);
-      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent this workout a few times today already. Your coach has it." : "Could not send. Try again in a moment.");
+      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
       const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
       const setsDone = payload.exercises.reduce((a, e) => a + e.sets_done, 0);
       onSent(setsPlanned > 0
@@ -154,14 +204,26 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
       <main className="lk-main">
         <Byline coach={d.coach_name} />
         <div className="lk-intro">
-          <div className="lk-eyebrow">{longDate()}</div>
+          <div className="lk-eyebrow">{isToday ? longDate() : `Logging ${longDate(dateOf(date))}`}</div>
           {today.isRest
             ? <h1 className="lk-h1">Rest day.</h1>
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
           <p className="lk-lede">{today.isRest
             ? (today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
-            : `Hi ${first}. Follow your coach's plan and tick off each exercise.`}</p>
+            : isToday ? `Hi ${first}. Follow your coach's plan and tick off each exercise.` : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
         </div>
+
+        {days.length > 1 && (picking || !isToday) ? (
+          <div className="lk-daypick" role="group" aria-label="Which day are you logging?">
+            {days.map((x) => (
+              <button key={x.iso} type="button" className="lk-daychip" aria-pressed={x.iso === date} onClick={() => { onPickDate?.(x.iso); setPicking(false); }}>
+                {x.label}{x.type ? <small>{x.type}</small> : null}
+              </button>
+            ))}
+          </div>
+        ) : days.length > 1 && !today.isRest ? (
+          <button type="button" className="lk-linkbtn" style={{ alignSelf: "flex-start" }} onClick={() => setPicking(true)}>Missed sending a workout? Log another day <Icon.Down size={14} /></button>
+        ) : null}
 
         {d.plan && (
           <section aria-label="This week">
@@ -170,7 +232,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
               {DAY_ORDER.map((k) => {
                 const day = d.plan[k]; const t = day?.type && day.type !== "Rest" && (day.exercises || []).length ? day.type : "Rest";
                 const c = t === "Rest" ? undefined : TYPE_COLORS[t];
-                return <div key={k} className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === today.key ? "today" : ""}`} style={c ? { "--day": c } : undefined}><span>{k}</span><i /><b>{t}</b>{k === today.key && <small>Today</small>}</div>;
+                return <div key={k} className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""}`} style={c ? { "--day": c } : undefined}><span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}</div>;
               })}
             </div>
           </section>
@@ -180,7 +242,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
           <>
             <div className="lk-card" style={{ flexDirection: "row", alignItems: "center" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                <span className="lk-eyebrow">Today's plan</span>
+                <span className="lk-eyebrow">{isToday ? "Today's plan" : `${DAY_LONG[today.key]}'s plan`}</span>
                 <span style={{ fontSize: 17, fontWeight: 700 }}>{total} exercise{total === 1 ? "" : "s"}{(() => { const s = today.exercises.reduce((a, e) => a + (e.sets || 0), 0); return s ? ` · ${s} sets` : ""; })()}</span>
                 <span className="lk-small">Rest 60–90 sec between sets</span>
               </div>
@@ -246,6 +308,7 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
               <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
             </div>
             <div className="lk-small">Your checkmarks tell your coach what you completed. Actual weights are optional.</div>
+            {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}
@@ -254,12 +317,13 @@ function WorkoutTab({ d, today, onSubmit, onSent, onMeasure, initialTicks = {}, 
           <div className="lk-card">
             <span style={{ fontSize: 16, fontWeight: 700 }}>Want to send measurements instead?</span>
             <button type="button" className="lk-send secondary" onClick={onMeasure}>Go to Measurements</button>
+            {days.length > 1 && !picking && <button type="button" className="lk-linkbtn" onClick={() => setPicking(true)}>Missed sending a workout? Log another day</button>}
           </div>
         )}
       </main>
       {!today.isRest && (
         <div className="lk-footer"><div className="lk-footer-inner">
-          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : "Finish workout"}</button>
+          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>
       )}

@@ -1,6 +1,6 @@
 import React from "react";
 import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill } from "../ui/primitives.jsx";
-import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey } from "../lib/format.js";
+import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
 import { routineStreak } from "../lib/clientFacts.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
@@ -224,7 +224,8 @@ function BodyTab({ data }) {
   const delta = current && prior ? Number((current.weight - prior.weight).toFixed(1)) : null;
   const bmi = current ? computeBMI(current.weight, profile?.height_cm, profile?.unit_system) : null;
   const cat = bmiCategory(bmi);
-  const m = measurements?.[0];
+  // Latest entry that has tape measurements (a link check-in can be weight only).
+  const m = measurements?.find((x) => ["chest", "waist", "hips", "lArm", "rArm", "lThigh", "rThigh"].some((k) => x[k] != null));
   const sites = m ? [["Chest", m.chest], ["Waist", m.waist], ["Hips", m.hips], ["Left arm", m.lArm], ["Right arm", m.rArm], ["Left thigh", m.lThigh], ["Right thigh", m.rThigh]].filter(([, v]) => v != null) : [];
 
   if (!current && !m) return <Empty title="No body data yet">Weight and measurements show up once the client logs them in their app or sends them through their link.</Empty>;
@@ -257,7 +258,8 @@ function BodyTab({ data }) {
   );
 }
 function daysDiff(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000); }
-function daysAgoOf(iso) { return daysDiff(iso, new Date().toISOString().slice(0, 10)); }
+// Local today: toISOString() is UTC, which is still yesterday in India until 5:30 am.
+function daysAgoOf(iso) { return daysDiff(iso, isoDate(new Date())); }
 
 // ── Payments ──────────────────────────────────────────────────────────────
 function PaymentsTab({ row, fees, payments, defaultCurrency, actions, payment }) {

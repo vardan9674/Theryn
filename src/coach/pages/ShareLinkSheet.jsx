@@ -34,7 +34,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   async function create(rotate = false) {
     setBusy(true);
     try {
-      const r = await data.createClientLink(client.athlete_id, { requested, label: `${client.athlete_name}'s link` });
+      const r = await data.createClientLink(client.athlete_id, { requested });
       setState({ loading: false, link: r.link, token: r.token, error: null });
       toast(rotate ? "New link made. The old one no longer works." : "Link ready");
     } catch (e) { toast(e.message || "Could not make a link", "error"); }
@@ -74,6 +74,19 @@ export default function ShareLinkSheet({ open, onClose, client }) {
         <div className="cx-spinner" style={{ margin: "24px auto" }} />
       ) : state.error ? (
         <div className="cx-empty"><b>Links need a one-time database update</b>{state.error}</div>
+      ) : !url && state.link ? (
+        // The link is live but was made on a device that never synced it. Never
+        // replace it without saying so: the client may have it pinned in WhatsApp.
+        <div className="cx-form">
+          <div className="cx-card cx-card-pad" style={{ fontSize: 14, color: "var(--cx-tx2)", lineHeight: 1.5 }}>
+            <b style={{ color: "var(--cx-tx)" }}>{first}'s link is working.</b>{" "}
+            {state.link.opens ? `Opened ${state.link.opens} time${state.link.opens === 1 ? "" : "s"}` : "Not opened yet"}
+            {state.link.submissions ? ` · ${state.link.submissions} sent` : ""}.
+            <br />It was made on another phone or computer. Open Theryn there once and the link shows up here too.
+          </div>
+          <Button onClick={() => setConfirm("rotate")} disabled={busy} icon={<Icon.Link />}>Make a new link instead</Button>
+          <div className="cx-small cx-muted">A new link stops the one {first} has now. You'd need to send the new one.</div>
+        </div>
       ) : !url ? (
         <div className="cx-form">
           <div className="cx-small cx-muted">{first} doesn't have a link yet. Making one takes a second, then you can send it.</div>

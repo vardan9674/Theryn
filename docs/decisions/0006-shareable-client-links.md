@@ -43,7 +43,7 @@ Both are `SECURITY DEFINER` with `SET search_path = public, pg_temp`, `REVOKE FR
 RPCs rather than an Edge Function because the project already runs on RPCs, there is nothing to deploy, and no cold start. If abuse appears, the same two calls move behind an Edge Function with rate limiting without changing the page.
 
 ### Token
-32 random bytes, base64url, generated client-side by the coach's app; only the SHA-256 goes to the database. The URL carries the raw token in the path (`/f/<token>`), never a name or id. A leaked link is a bearer credential: the coach can **Regenerate** (new token, old one dead) or **Turn off** from the client page. Links do not expire on their own; measurement submissions are capped at 5 per day per link, workout submissions at 3.
+32 random bytes, base64url, generated client-side by the coach's app; only the SHA-256 goes to the database. (Amended 2026-09-18: the raw token is also kept in the coach-only `client_links.label` column as `tok:<token>`, so the coach can copy the link from any device. `link_view`/`link_submit` still match on the hash, and anon still has no table access.) The URL carries the raw token in the path (`/f/<token>`), never a name or id. A leaked link is a bearer credential: the coach can **Regenerate** (new token, old one dead) or **Turn off** from the client page. Links do not expire on their own; measurement submissions are capped at 5 per day per link, workout submissions at 3.
 
 ### Public page
 - Served by the existing SPA (`vercel.json` already rewrites all paths). `main.jsx` routes `/f/:token` to a lazy, auth-free bundle before the main app loads, the same way `?coachPreview=1` works today. Nothing from the coach or athlete app is loaded.

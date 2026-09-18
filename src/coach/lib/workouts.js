@@ -1,6 +1,7 @@
 // What the coach reads about one workout, whether the client logged it in
 // the app or ticked it off through their link. Pure; no React, no network.
 import { toClientId } from "./manualClients.js";
+import { submissionDate } from "./clientLinks.js";
 
 /** Which dashboard client a submission row belongs to. Mock rows carry clientId; real rows carry the two ids. */
 export function clientIdOfSubmission(sub) {
@@ -25,7 +26,8 @@ export function attachSubmissions(history, submissions) {
     if (h.submission) return h;
     if (byId.has(h.id)) { used.add(h.id); return { ...h, submission: byId.get(h.id) }; }
     if (h.source !== "link") return h;
-    const sameDay = subs.filter((s) => !used.has(s.id) && (s.payload?.date || String(s.submitted_at).slice(0, 10)) === h.date);
+    // The promoted session carries the server's date; the submission may carry the client's (local_date).
+    const sameDay = subs.filter((s) => !used.has(s.id) && ((s.payload?.date || String(s.submitted_at).slice(0, 10)) === h.date || submissionDate(s) === h.date));
     if (sameDay.length === 0) return h;
     const names = new Set(h.exercises.map((e) => e.name.toLowerCase()));
     const best = sameDay

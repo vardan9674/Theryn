@@ -27,7 +27,9 @@ function toEditable(templates) {
   return out;
 }
 
-function toTemplates(days) {
+// `units` is stamped on every day so the client's link page labels target
+// weights the way the coach typed them (name-only clients have no profile).
+function toTemplates(days, units) {
   const out = {};
   for (const d of DAYS) {
     const day = days[d];
@@ -46,6 +48,7 @@ function toTemplates(days) {
         return Object.keys(o).length === 1 ? o.name : o;
       });
     out[d] = { type: day.type === "Rest" ? "Rest" : day.type, exercises: day.type === "Rest" ? [] : exercises };
+    if (units) out[d].units = units;
   }
   return out;
 }
@@ -99,7 +102,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   const reorder = (d, from, to) => update((next) => { next[d].exercises = arrayMove(next[d].exercises, from, to); return next; });
 
   async function save() {
-    const templates = toTemplates(days);
+    const templates = toTemplates(days, unit === "kg" ? "metric" : "imperial");
     const empty = DAYS.some((d) => days[d].type !== "Rest" && days[d].exercises.some((e) => !e.name.trim()));
     if (empty) { toast("Every exercise needs a name. Remove the blank ones or type a name.", "error"); return; }
     setSaving(true);
@@ -124,7 +127,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
       <div className="cx-editor-bar">
         <Button size="sm" icon={<Icon.Back />} onClick={requestClose} aria-label="Cancel editing">{vp === "phone" ? null : "Back"}</Button>
         <div className="title">{firstName}'s plan{dirty && <span className="cx-muted" style={{ fontWeight: 400 }}> · unsaved</span>}</div>
-        {vp !== "phone" && <Button size="sm" onClick={() => onSaved(null, { export: true, templates: toTemplates(days) })} icon={<Icon.Sheet />}>Export to Excel</Button>}
+        {vp !== "phone" && <Button size="sm" onClick={() => onSaved(null, { export: true, templates: toTemplates(days, unit === "kg" ? "metric" : "imperial") })} icon={<Icon.Sheet />}>Export to Excel</Button>}
         <Button variant="primary" size={vp === "phone" ? "sm" : undefined} onClick={save} disabled={saving || !dirty}>{saving ? "Saving…" : vp === "phone" || client.manual ? "Save plan" : `Save and send to ${firstName}`}</Button>
       </div>
 
