@@ -1,7 +1,7 @@
 import React from "react";
 import { Sheet, Button, Icon, Checkbox, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, linkUrl, shareMessage, whatsappUrl } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, requiredFields } from "../lib/clientLinks.js";
 
 /**
  * "Share link" on a client page. One durable link per client; the coach
@@ -23,7 +23,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     setState({ loading: true, link: null, token: null, error: null });
     setRequested(ALL_FIELD_IDS); // each client starts from "ask for everything"; never carry another client's choice over
     data.getClientLink(client.athlete_id)
-      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link?.requested?.length ? r.link.requested : ALL_FIELD_IDS); })
+      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link ? requiredFields(r.link.requested) : ALL_FIELD_IDS); })
       .catch((e) => { if (!cancelled) setState({ loading: false, link: null, token: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [open, client?.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -49,7 +49,8 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   async function saveRequested(next) {
     setRequested(next);
     if (!state.link) return;
-    try { await data.updateClientLinkRequested(client.athlete_id, next); } catch (e) { toast(e.message || "Could not save", "error"); }
+    // The link on the client's phone reads this every time it opens: no new link needed.
+    try { await data.updateClientLinkRequested(client.athlete_id, next); toast(`Saved. ${first} sees it next time they open the link.`); } catch (e) { toast(e.message || "Could not save", "error"); }
   }
   async function copy() {
     try { await navigator.clipboard.writeText(url); toast("Link copied"); }
@@ -64,7 +65,6 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   }
   const toggle = (id) => {
     const next = ALL_FIELD_IDS.filter((x) => (x === id ? !requested.includes(id) : requested.includes(x)));
-    if (next.length === 0) { toast("Keep at least one measurement", "error"); return; }
     saveRequested(next);
   };
 
@@ -107,8 +107,8 @@ export default function ShareLinkSheet({ open, onClose, client }) {
           </div>
 
           <div className="cx-col">
-            <div style={{ fontWeight: 700 }}>Measurements to ask for</div>
-            <div className="cx-small cx-muted">Only these show as required on {first}'s page. Body weight is always optional.</div>
+            <div style={{ fontWeight: 700 }}>Required measurements</div>
+            <div className="cx-small cx-muted">{first} sees all five on their page. Ticked ones are required, the rest optional. Untick all to make everything optional. Body weight is always optional.</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
               {MEASUREMENT_FIELDS.map((f) => <Checkbox key={f.id} checked={requested.includes(f.id)} onChange={() => toggle(f.id)}>{f.label}</Checkbox>)}
             </div>

@@ -26,7 +26,7 @@ export function createPreviewApi() {
   };
   const submissions = [];
   return {
-    async fetchLink() { await new Promise((r) => setTimeout(r, 300)); return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips", "arm", "thigh"], plan }; },
+    async fetchLink() { await new Promise((r) => setTimeout(r, 300)); return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips"], plan }; },
     async submitLink(_t, kind, payload) { await new Promise((r) => setTimeout(r, 500)); submissions.push({ kind, payload }); return { ok: true, id: "preview", date: payload.date }; },
     submissions,
   };

@@ -80,3 +80,17 @@ describe("workout payload and submission shapes", () => {
     expect(h.plannedSets).toBe(6);
   });
 });
+
+describe("required measurements", () => {
+  it("coach's ticks are required; empty means all optional; missing means all required", async () => {
+    const { requiredFields } = await import("../clientLinks.js");
+    expect(requiredFields(["waist", "hips", "bogus"])).toEqual(["waist", "hips"]);
+    expect(requiredFields([])).toEqual([]);
+    expect(requiredFields(null)).toEqual(["chest", "waist", "hips", "arm", "thigh"]);
+  });
+  it("optional fields can be sent alone, but not nothing", () => {
+    expect(validateMeasurements({ arm: "13" }, "imperial", []).ok).toBe(true);
+    expect(validateMeasurements({}, "imperial", []).ok).toBe(false);
+    expect(validateMeasurements({ arm: "13" }, "imperial", ["waist"])).toMatchObject({ ok: false, field: "waist" });
+  });
+});

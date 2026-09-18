@@ -83,9 +83,22 @@ export function todayFromPlan(plan, now = new Date()) {
   };
 }
 
+/**
+ * Which measurements are required on the link page. The coach's ticks, as
+ * link_view returns them: an empty list means none are required (every field
+ * is still on the page, optional); a missing list means the pre-2026-09-18
+ * default of all of them.
+ */
+export function requiredFields(requested) {
+  if (!Array.isArray(requested)) return ALL_FIELD_IDS;
+  return requested.filter((id) => ALL_FIELD_IDS.includes(id));
+}
+
 /** Client-side validation mirroring link_submit. Returns { ok, error, field }. */
 export function validateMeasurements(values, unit, requested) {
   const metric = unit === "metric";
+  const filled = (id) => values[id] != null && String(values[id]).trim() !== "";
+  if (!["weight", ...ALL_FIELD_IDS].some(filled)) return { ok: false, error: "Add at least one measurement to send.", field: requested[0] || ALL_FIELD_IDS[0] };
   for (const id of requested) {
     const v = values[id];
     if (v == null || String(v).trim() === "") return { ok: false, error: "Please add each measurement your coach asked for.", field: id };
