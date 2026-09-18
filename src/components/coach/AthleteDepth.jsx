@@ -802,7 +802,7 @@ export function AthleteSessionDrawer({ session, onClose, unit = "lbs" }) {
           height: expanded ? "94vh" : "70vh",
           display: "flex", flexDirection: "column",
           fontFamily: "inherit",
-          animation: "drawerUp 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          animation: "drawerUpCentered 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)",
           transition: "min-height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)",
           boxShadow: "0 -8px 32px rgba(0,0,0,0.45)",
         }}
