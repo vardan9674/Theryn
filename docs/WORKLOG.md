@@ -2,6 +2,23 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (late night) — Keep every client's history; email for joining later, branch `feat/keep-client-history`
+
+**Decided** (decision 0007): no automatic merge on email. Later, a client brings their history into an account either through their link ("Save my history", with sign-in) or when a verified sign-in email matches, always with their confirmation.
+
+**Built now**
+- Migration `20260918200000_keep_client_history.sql` (additive, idempotent, **not applied yet**): `coach_manual_clients.email` (format-checked, indexed on `lower(email)`), `archived_at`, `linked_athlete_id`. `client_submissions.link_id` is now nullable with `ON DELETE SET NULL`, and `manual_client_id` is `ON DELETE NO ACTION` (blocks deleting a client with check-ins; a coach-account delete still cascades).
+- Remove on a name-only client archives it (and turns off its link) instead of deleting. Before the migration is applied, it refuses when the client has check-ins. The list hides archived clients.
+- The name-only client's page has an optional **Email** (add, change, clear; lower-cased) and no longer has "Connect to account".
+- The dashboard works with or without the migration (falls back to the old columns).
+
+**Verified**
+- Coach preview: Ravi → Add email → "Email ravi@example.com", no Connect button. Typecheck, 82 tests, build pass. The SQL was reviewed by hand; no local Postgres to run it against.
+
+**Open**
+- Apply the migration in the SQL editor, then check the two foreign keys with the query at the bottom of the file.
+- Step 2 (claim flow) when the app is close.
+
 ## 2026-09-18 (late) — Reps and weight per set on the link, branch `feat/link-per-set-reps`
 
 **Asked**
