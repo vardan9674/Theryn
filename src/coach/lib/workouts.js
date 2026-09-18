@@ -38,6 +38,15 @@ export function attachSubmissions(history, submissions) {
   });
 }
 
+const repsLabel = (reps) => (reps ? String(reps) : "");
+/** Did the client's reps fall inside the plan's "8" or "8-12"? */
+function repsWithin(r, planned) {
+  const m = String(planned || "").match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (m) return Number(r) >= Number(m[1]) && Number(r) <= Number(m[2]);
+  const one = String(planned || "").match(/\d+/);
+  return one ? Number(r) === Number(one[0]) : true;
+}
+
 /** One workout, ready to render. `unit` is the client's weight unit label. */
 export function workoutDetail(entry) {
   const sub = entry.submission;
@@ -54,7 +63,19 @@ export function workoutDetail(entry) {
         reps: e.reps || null,
         weight: e.weight_used != null ? e.weight_used : e.weight_target != null ? e.weight_target : null,
         weightChanged: e.weight_used != null && e.weight_target != null && Number(e.weight_used) !== Number(e.weight_target),
-        sets: [],
+        // Set by set, when the client typed reps or weights: done sets only,
+        // with `changed` where they did something other than the plan.
+        sets: Array.isArray(e.sets) && e.sets.length
+          ? e.sets.filter((x) => x && x.done).map((x) => {
+              const w = x.weight ?? e.weight_target ?? e.weight_used ?? null; // blank = the planned weight
+              const r = x.reps ?? null;
+              return {
+                w: w != null ? String(w) : "",
+                r: r != null ? String(r) : repsLabel(e.reps),
+                changed: (x.weight != null && e.weight_target != null && Number(x.weight) !== Number(e.weight_target)) || (r != null && !repsWithin(r, e.reps)),
+              };
+            })
+          : [],
       };
     });
     return {

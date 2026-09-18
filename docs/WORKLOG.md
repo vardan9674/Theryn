@@ -2,6 +2,19 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (late) — Reps and weight per set on the link, branch `feat/link-per-set-reps`
+
+**Asked**
+- "Reps should be more elaborate. Right now it's only a tick. When the coach adds reps and lbs, the client can update them if they didn't do exactly that."
+
+**Done** (no schema change; `sets` is a new optional key inside each workout exercise in the `client_submissions` payload)
+- Link page: tapping the box still means "all done as planned". **Change reps or weight** (replaces "Used a different weight?") opens one row per set with Reps and weight boxes, the coach's reps and weight as placeholders, and a Done tick. Typing into a set ticks it. Blank means as planned. Closed, the card says "You logged: 7×40, 6×37.5 kg". Drafts keep the rows and convert typed weights on a kg/lb switch.
+- Payload: exercises carry `sets: [{ n, done, reps?, weight? }]` only when the client typed something (link_submit caps payloads at 20,000 characters); `weight_used` is the first typed weight, for the promotion path and older readers.
+- Coach: the Workouts tab shows `2/3 sets · kg × reps` then one chip per done set (`45×10`, `40×6`), highlighting sets that differ from the plan (reps outside the range, or a different weight). History, volume, PRs and the plan editor's Last use the per-set numbers; a blank set counts at the planned weight. Per-set weights convert between kg and lb like the rest.
+
+**Verified**
+- Link page at 375: rows with 8-10 / 40 placeholders, typed sets tick, summary when closed. Coach preview: Ravi's Bench Press shows `45×10` and a highlighted `40×6`. 5 new tests (one caught blank sets taking the typed weight instead of the planned one). Typecheck, 76 tests, build pass.
+
 ## 2026-09-18 (evening) — Everyone in their own kg/lb, branch `feat/universal-units`
 
 **Asked**

@@ -134,21 +134,47 @@ export function measurementsPayload(values, unit, date) {
 }
 
 /** `units` is what the client typed weights in (and saw the targets in). */
-export function workoutPayload(today, ticks, weights, note, date, units) {
+const numOrNull = (v) => (v == null || String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/**
+ * `log[i]` is either one weight for the whole exercise (older drafts) or, per
+ * set, `{ [setIndex]: { r, w } }`: the reps and weight the client typed. A
+ * blank box means "as the coach planned". Per-set detail is only sent for
+ * exercises where the client typed something, to keep the payload small
+ * (link_submit caps it at 20,000 characters).
+ */
+export function workoutPayload(today, ticks, log, note, date, units) {
   return {
     ...(units ? { weight_unit: units === "metric" ? "metric" : "imperial" } : {}),
     date,
     local_date: date,
     day: today.key,
     type: today.type,
-    exercises: today.exercises.map((e, i) => ({
-      name: e.name,
-      sets_planned: e.sets,
-      sets_done: Math.min(ticks[i] || 0, e.sets || 20),
-      reps: e.reps,
-      weight_target: e.weight,
-      weight_used: weights[i] != null && String(weights[i]).trim() !== "" ? Number(weights[i]) : null,
-    })),
+    exercises: today.exercises.map((e, i) => {
+      const full = e.sets || 1;
+      const done = Math.min(ticks[i] || 0, e.sets || 20);
+      const entry = log?.[i];
+      const perSet = entry && typeof entry === "object" ? entry : null;
+      const typed = perSet ? Array.from({ length: full }, (_, s) => ({ r: numOrNull(perSet[s]?.r), w: numOrNull(perSet[s]?.w) })) : [];
+      const firstWeight = typed.slice(0, done).find((x) => x.w != null)?.w ?? null;
+      const out = {
+        name: e.name,
+        sets_planned: e.sets,
+        sets_done: done,
+        reps: e.reps,
+        weight_target: e.weight,
+        weight_used: perSet ? firstWeight : numOrNull(entry),
+      };
+      if (typed.some((x) => x.r != null || x.w != null)) {
+        out.sets = typed.map((x, s) => {
+          const one = { n: s + 1, done: s < done };
+          if (x.r != null) one.reps = x.r;
+          if (x.w != null) one.weight = x.w;
+          return one;
+        });
+      }
+      return out;
+    }),
     note: (note || "").trim().slice(0, 500),
   };
 }
@@ -185,12 +211,22 @@ export function submissionToMeasurement(sub) {
 }
 
 /** A workout submission row → the history entry shape the dashboard already uses. */
+/** What one done set weighed and how many reps: what the client typed, else what the coach planned. */
+export function doneSets(e) {
+  const plannedReps = e.reps ? String(e.reps).replace(/[^0-9].*$/, "") : "";
+  const w = (x) => (x != null && x !== "" ? String(x) : "");
+  const fallbackW = e.weight_used ?? e.weight_target;
+  if (Array.isArray(e.sets) && e.sets.length) {
+    // Per set, a blank weight means the planned one (weight_used is just the first typed weight).
+    const planned = e.weight_target ?? e.weight_used;
+    return e.sets.filter((s) => s && s.done).map((s) => ({ w: w(s.weight ?? planned), r: s.reps != null ? String(s.reps) : plannedReps }));
+  }
+  return Array.from({ length: e.sets_done || 0 }, () => ({ w: w(fallbackW), r: plannedReps }));
+}
+
 export function submissionToHistory(sub) {
   const p = sub.payload || {};
-  const exercises = (p.exercises || []).filter((e) => (e.sets_done || 0) > 0).map((e) => ({
-    name: e.name,
-    sets: Array.from({ length: e.sets_done || 0 }, () => ({ w: e.weight_used != null ? String(e.weight_used) : "", r: e.reps ? String(e.reps).replace(/[^0-9].*$/, "") : "" })),
-  }));
+  const exercises = (p.exercises || []).filter((e) => (e.sets_done || 0) > 0).map((e) => ({ name: e.name, sets: doneSets(e) }));
   const totalSets = exercises.reduce((a, e) => a + e.sets.length, 0);
   const totalVolume = exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + (Number(x.w) || 0) * (Number(x.r) || 0), 0), 0);
   return { id: sub.id, date: submissionDate(sub), type: p.type || "Workout", duration: 45 * 60, startedAt: sub.submitted_at, exercises, totalSets, totalVolume, source: "link", note: p.note || "", plannedSets: (p.exercises || []).reduce((a, e) => a + (e.sets_planned || 0), 0) };
