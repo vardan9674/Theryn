@@ -151,6 +151,14 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   </div>;
 }
 
+const firstNum = (reps) => (String(reps || "").match(/\d+/) || [""])[0];
+/** Did the client's reps fall inside the plan's "8" or "8-12"? (No plan: anything counts.) */
+function repsWithin(r, planned) {
+  const m = String(planned || "").match(/(\d+)\s*[-–]\s*(\d+)/);
+  if (m) return Number(r) >= Number(m[1]) && Number(r) <= Number(m[2]);
+  const one = String(planned || "").match(/\d+/);
+  return one ? Number(r) === Number(one[0]) : true;
+}
 /** "Mon 14" from an ISO date. */
 function shortDay(iso) { const x = dateOf(iso); return `${dayKeyOf(x)} ${x.getDate()}`; }
 /** "8×40, 7×40, 6×37.5 kg": what they did last time, in today's units. */
@@ -197,6 +205,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [picking, setPicking] = React.useState(false);
+  // A finished exercise folds to one line; tapping it opens it again until it changes.
+  const [reopened, setReopened] = React.useState({});
   const isToday = date === isoToday();
   const upcoming = date > isoToday(); // a day later this week: show the plan, nothing to tick yet
   const realToday = dayKeyOf(new Date());
@@ -216,6 +226,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   const doneCount = today.exercises.filter((e, i) => (e.sets ? (ticks[i] || 0) >= e.sets : (ticks[i] || 0) > 0)).length;
   const currentIdx = today.exercises.findIndex((e, i) => !skipped[i] && !(e.sets ? (ticks[i] || 0) >= e.sets : (ticks[i] || 0) > 0));
   const anything = Object.values(ticks).some((n) => n > 0);
+  const setsTotal = today.exercises.reduce((a, e) => a + (e.sets || 1), 0);
+  const setsDone = today.exercises.reduce((a, e, i) => a + Math.min(ticks[i] || 0, e.sets || 1), 0);
   const unit = d.unit_system === "metric" ? "kg" : "lb";
 
   // Tap the numbered box: complete the whole exercise; tap again to undo.
@@ -224,8 +236,9 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
     const full = e.sets || 1;
     setTicks((t) => ({ ...t, [i]: (t[i] || 0) >= full ? 0 : full }));
     setSkipped((s) => ({ ...s, [i]: false }));
+    setReopened((o) => ({ ...o, [i]: false }));
   };
-  const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); };
+  const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
   // Typing reps or weight for a set means it was done: tick it (and the ones before it).
   const setSetValue = (i, si, field, raw) => {
     const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
@@ -311,8 +324,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
             </div>
 
             {!upcoming && <div>
-              <div className="lk-row" style={{ marginBottom: 8 }}><span style={{ fontSize: 16, fontWeight: 700 }}>{doneCount} of {total} complete</span><span className="lk-small">Tap the box to tick it off</span></div>
-              <div className="lk-progress"><i style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} /></div>
+              <div className="lk-row" style={{ marginBottom: 8 }}><span style={{ fontSize: 16, fontWeight: 700 }}>{doneCount} of {total} done</span><span className="lk-small">{setsDone} of {setsTotal} sets</span></div>
+              <div className="lk-progress"><i style={{ width: `${setsTotal ? (setsDone / setsTotal) * 100 : 0}%` }} /></div>
             </div>}
 
             {today.exercises.map((e, i) => {
@@ -321,43 +334,68 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               const done = n >= full;
               const isCurrent = i === currentIdx;
               const last = store?.last(e.name);
+              const planReps = firstNum(e.reps);
+              const rows = Array.from({ length: full }, (_, si) => {
+                const x = log[i]?.[si] || {};
+                const isDone = si < n;
+                const rChanged = x.r !== "" && x.r != null && !repsWithin(x.r, e.reps);
+                const wChanged = x.w !== "" && x.w != null && e.weight != null && Number(x.w) !== Number(e.weight);
+                return { si, isDone, r: x.r || "", w: x.w || "", changed: isDone && (rChanged || wChanged) };
+              });
+              const summary = rows.filter((x) => x.isDone).map((x) => ({ text: `${x.r || planReps || "?"}×${x.w || (e.weight ?? "?")}`, changed: x.changed }));
+              const folded = !upcoming && (done || skipped[i]) && !reopened[i];
+
+              if (folded) {
+                return (
+                  <button key={i} type="button" className={`lk-fold ${skipped[i] && !done ? "skipped" : ""}`} onClick={() => setReopened((o) => ({ ...o, [i]: true }))} aria-expanded={false} aria-label={`${e.name}, ${done ? "done" : "skipped"}, tap to open`}>
+                    <span className={`lk-badge ${done ? "on" : ""}`}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</span>
+                    <span className="lk-fold-body">
+                      <span className="lk-fold-name">{e.name}</span>
+                      <span className="lk-fold-sum">{done
+                        ? <>{full} {full === 1 ? "set" : "sets"} · {summary.map((x, k) => <React.Fragment key={k}>{k > 0 && ", "}<span className={x.changed ? "changed" : ""}>{x.text}</span></React.Fragment>)} {unit}</>
+                        : "Skipped · tap to undo"}</span>
+                    </span>
+                    <Icon.Down size={18} />
+                  </button>
+                );
+              }
+
               return (
-                <div key={i} className={`lk-card lk-ex ${done ? "done" : ""}`} style={isCurrent ? { borderColor: "var(--cx-bd2)" } : undefined}>
+                <div key={i} className={`lk-card lk-ex ${done ? "done" : ""} ${isCurrent ? "current" : ""}`}>
                   <div className="lk-ex-head">
-                    <button type="button" className={`lk-tick ${done ? "on" : n > 0 ? "partial" : isCurrent ? "current" : ""}`} aria-pressed={done} aria-label={upcoming ? e.name : `${done ? "Undo" : "Mark done"}: ${e.name}`} disabled={upcoming} onClick={() => toggleExercise(i)}>
-                      {done ? <Icon.Check size={22} /> : n > 0 ? `${n}/${full}` : String(i + 1).padStart(2, "0")}
-                    </button>
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</span>
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{e.name}</div>
-                      <div className="lk-ex-meta">
-                        {e.sets != null && <><b>{e.sets}</b> sets &nbsp; </>}
-                        {e.reps && <><b>{e.reps}</b> reps &nbsp; </>}
-                        {e.weight != null && <><b>{e.weight}</b> {unit} target</>}
-                      </div>
+                      <div className="lk-ex-meta">{full} {full === 1 ? "set" : "sets"}{e.reps ? ` × ${e.reps} reps` : ""}{e.weight != null ? ` · ${e.weight} ${unit}` : ""}</div>
+                      {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
-                      {last && <div className="lk-last">Last time ({shortDay(last.date)}): {lastLine(last, d.unit_system)}</div>}
-                      {skipped[i] && !done && <div className="lk-small">Skipped</div>}
                     </div>
+                    {done && !upcoming
+                      ? <button type="button" className="lk-foldbtn" aria-label="Collapse" onClick={() => setReopened((o) => ({ ...o, [i]: false }))}><span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><Icon.Down size={18} /></span></button>
+                      : n > 0 ? <span className="lk-ex-count">{n}/{full}</span> : null}
                   </div>
-                  {/* Every set, with the coach's reps and weight in grey. Type over them only if you did something different. */}
-                  <div className={`lk-setrows ${upcoming ? "readonly" : ""}`} role="group" aria-label={`Sets for ${e.name}`}>
-                    <div className="lk-setrow head"><span>Set</span><span>Reps</span><span>{unit}</span><span>{upcoming ? "" : "Done"}</span></div>
-                    {Array.from({ length: full }, (_, si) => (
-                      <div key={si} className={`lk-setrow ${si < n ? "on" : ""}`}>
-                        <span className="lk-setno">{si + 1}</span>
-                        <input className="lk-setin" inputMode="numeric" placeholder={e.reps || "—"} value={log[i]?.[si]?.r || ""} disabled={upcoming} onChange={(ev) => setSetValue(i, si, "r", ev.target.value)} aria-label={`Set ${si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
-                        <input className="lk-setin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={log[i]?.[si]?.w || ""} disabled={upcoming} onChange={(ev) => setSetValue(i, si, "w", ev.target.value)} aria-label={`Set ${si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
-                        {upcoming ? <span /> : <button type="button" className={`lk-set ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} done`} onClick={() => setSets(i, si + 1 === n ? si : si + 1)}>{si < n ? <Icon.Check size={14} /> : null}</button>}
-                      </div>
-                    ))}
-                  </div>
+
+                  {rows.map((x) => (
+                    <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""}`}>
+                      {!upcoming && <button type="button" className="lk-srow-hit" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)} />}
+                      <span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span>
+                      <span className="lk-srow-label">Set {x.si + 1}{x.changed && <em>edited</em>}</span>
+                      <span className="lk-srow-nums">
+                        <input className="lk-sin" inputMode="numeric" placeholder={e.reps || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} aria-label={`Set ${x.si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
+                        <span className="lk-srow-unit">reps</span>
+                        <input className="lk-sin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} aria-label={`Set ${x.si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
+                        <span className="lk-srow-unit">{unit}</span>
+                      </span>
+                    </div>
+                  ))}
+
                   {!upcoming && <div className="lk-ex-actions">
-                    <span className="lk-small">{n > 0 && n < full ? `${n} of ${full} sets done` : ""}</span>
+                    <span className="lk-small">{isCurrent && !done ? "Tap a set when it’s done. Tap a number to change it." : "Tap a number to change it."}</span>
                     {done
-                      ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo</button>
+                      ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo all</button>
                       : skipped[i]
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => setSkipped((s) => ({ ...s, [i]: false }))}>Undo skip</button>
-                      : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
+                      : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); setReopened((o) => ({ ...o, [i]: false })); }}>Skip exercise</button>}
                   </div>}
                 </div>
               );
@@ -368,7 +406,6 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               <div className="lk-row" style={{ marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 700 }}>How did it feel?</span><span className="lk-small">Optional</span></div>
               <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
             </div>
-            <div className="lk-small">Grey numbers are your coach's plan. Tick each set you did, and type over the numbers only if you did something different.</div>
             </>}
             {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
