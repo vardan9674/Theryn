@@ -13,7 +13,7 @@ Two problems with what existed:
 ## Decision
 **Step 1 (now), migration `20260918200000_keep_client_history.sql`:**
 - Name-only clients are archived (`archived_at`), never deleted. Archived ones leave the list, their link is turned off, and their history stays.
-- The database refuses to delete a name-only client who has check-ins (`ON DELETE RESTRICT`). A check-in outlives its link (`SET NULL`).
+- The database refuses to delete a name-only client who has check-ins (`ON DELETE NO ACTION`, checked at the end of the statement so a coach-account delete still cascades). A check-in outlives its link (`SET NULL`).
 - Optional `email` on a name-only client, which the coach can add or change. `linked_athlete_id` is reserved for step 2.
 - The "Connect to account" button is off the client page.
 

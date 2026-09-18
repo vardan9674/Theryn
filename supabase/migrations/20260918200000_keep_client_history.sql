@@ -9,7 +9,9 @@
 --   * Name-only clients are archived, never deleted, by the app
 --     (archived_at). The list hides archived ones.
 --   * The database refuses to delete a name-only client who has check-ins
---     (ON DELETE RESTRICT), as a backstop.
+--     (ON DELETE NO ACTION), as a backstop. NO ACTION, not RESTRICT: it is
+--     checked at the end of the statement, so deleting a whole coach account
+--     (which cascades to both the client and its check-ins) still works.
 --   * A check-in survives its link being deleted (link_id SET NULL).
 --   * Optional email per name-only client, so that later, when they sign in
 --     with that same (verified) email, they can be offered their history.
@@ -52,7 +54,8 @@ BEGIN
   ALTER TABLE client_submissions ADD CONSTRAINT client_submissions_link_id_fkey
     FOREIGN KEY (link_id) REFERENCES client_links(id) ON DELETE SET NULL;
 
-  -- manual_client_id: CASCADE -> RESTRICT
+  -- manual_client_id: CASCADE -> NO ACTION (blocks deleting a client with check-ins;
+  -- a coach-account delete still cascades to both in one statement)
   c := NULL;
   SELECT con.conname INTO c
     FROM pg_constraint con
@@ -60,10 +63,10 @@ BEGIN
    WHERE con.conrelid = 'public.client_submissions'::regclass AND con.contype = 'f' AND att.attname = 'manual_client_id';
   IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE client_submissions DROP CONSTRAINT %I', c); END IF;
   ALTER TABLE client_submissions ADD CONSTRAINT client_submissions_manual_client_id_fkey
-    FOREIGN KEY (manual_client_id) REFERENCES coach_manual_clients(id) ON DELETE RESTRICT;
+    FOREIGN KEY (manual_client_id) REFERENCES coach_manual_clients(id) ON DELETE NO ACTION;
 END $$;
 
 -- Check (read-only), after applying:
 --   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
 --    WHERE conrelid = 'public.client_submissions'::regclass AND contype = 'f';
---   -> link_id ... ON DELETE SET NULL, manual_client_id ... ON DELETE RESTRICT
+--   -> link_id ... ON DELETE SET NULL; manual_client_id ... (no ON DELETE clause = NO ACTION)
