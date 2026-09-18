@@ -6,6 +6,7 @@ import React from "react";
 import { isoDate } from "../lib/format.js";
 import { manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
 import { generateToken, linkClientData } from "../lib/clientLinks.js";
+import { convertPlan } from "../lib/units.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -121,7 +122,7 @@ function makeState() {
     { id: "sub-1", kind: "workout", submitted_at: daysAgo(1, 18).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(1)), day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][daysAgo(1).getDay()], type: "Full Body", exercises: [{ name: "Squat", sets_planned: 3, sets_done: 3, reps: "8-12", weight_used: 60 }, { name: "Bench Press", sets_planned: 3, sets_done: 2, reps: "8-12", weight_used: 45 }, { name: "Barbell Row", sets_planned: 3, sets_done: 0, reps: "8-12", weight_used: null }], note: "Shoulder felt tight, skipped the last one." } },
     { id: "sub-2", kind: "measurements", submitted_at: daysAgo(3, 9).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(3)), unit: "metric", weight: 74, chest: 96, waist: 82, hips: 97, arm: 33, thigh: 56 } },
   ];
-  return { links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, clientLinks, submissions, listeners: new Set() };
+  return { units: "imperial", links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, clientLinks, submissions, listeners: new Set() };
 }
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -169,7 +170,8 @@ export function createMockCoachData() {
     coachName: "Coach Vardan",
     coachEmail: "coach@example.com",
     defaultCurrency: "USD",
-    unitSystem: "imperial",
+    get unitSystem() { return st.units; },
+    async updateUnits(u) { await wait(100); st.units = u === "metric" ? "metric" : "imperial"; },
 
     manualClientsAvailable: true,
     async loadClients() { await wait(150); return [...st.links, ...st.manual.map(manualToClient)]; },
@@ -180,8 +182,9 @@ export function createMockCoachData() {
       if (mid) {
         const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists.");
         const base = manualClientData(row);
-        const linked = linkClientData(subs, { plan: base.routine, coachUnits: "imperial" });
-        return { ...base, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: subs };
+        const linked = linkClientData(subs, { plan: row.plan, coachUnits: st.units });
+        const routine = row.plan ? convertPlan(row.plan, st.units, { assumeFrom: st.units }) : base.routine;
+        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
       }
       return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs };
     },

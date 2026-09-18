@@ -122,8 +122,9 @@ export function LinkClientSheet({ open, onClose, client, candidates, onLinked })
 }
 
 // ── Profile & account ─────────────────────────────────────────────────────
-export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour }) {
+export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, units: unitsProp, onUnitsChanged }) {
   const data = useCoachData();
+  const units = unitsProp || data.unitSystem;
   const toast = useToast();
   const [name, setName] = React.useState(data.coachName);
   const [editing, setEditing] = React.useState(false);
@@ -143,6 +144,11 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour })
   async function changeCurrency(code) {
     setCurrency(code);
     try { await data.updateCurrency(code); toast(`Currency set to ${code}`); }
+    catch (e) { toast(e.message || "Could not save", "error"); }
+  }
+  async function changeUnits(u) {
+    if (u === units) return;
+    try { await data.updateUnits(u); onUnitsChanged?.(u); toast(u === "metric" ? "Showing kg and cm everywhere" : "Showing lb and inches everywhere"); }
     catch (e) { toast(e.message || "Could not save", "error"); }
   }
   async function confirmRemove() {
@@ -169,6 +175,14 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour })
           </div>
         </div>
 
+        <Field label="Weights and measurements">
+          <select className="cx-select" value={units} onChange={(e) => changeUnits(e.target.value)} aria-label="Units">
+            <option value="metric">Kilograms and centimetres (kg, cm)</option>
+            <option value="imperial">Pounds and inches (lb, in)</option>
+          </select>
+          <span className="cx-small cx-muted">What you see and type in. Clients who use the other unit see their own, converted.</span>
+        </Field>
+
         <Field label="Currency for fees and payments">
           <select className="cx-select" value={currency} onChange={(e) => changeCurrency(e.target.value)}>
             {SUPPORTED_CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} {c.code} · {c.label}</option>)}
@@ -194,6 +208,47 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour })
         </div>
       </div>
       <Confirm open={Boolean(removing)} title={`Remove ${removing?.athlete_name}?`} body="They keep their app and data. You stop seeing them here and can't message them until you connect again." confirmLabel="Remove" danger busy={busy} onConfirm={confirmRemove} onClose={() => setRemoving(null)} />
+    </Sheet>
+  );
+}
+
+// ── Kilograms or pounds (asked once) ─────────────────────────────────────
+// profiles.unit_system defaults to imperial, so a coach may never have picked.
+// Everything in the dashboard follows this choice, so ask once, suggesting kg
+// when the browser is on Indian time.
+const unitsAskedKey = (coachId) => `theryn_coach_units_confirmed_${coachId}`;
+export function unitsConfirmed(coachId) { try { return localStorage.getItem(unitsAskedKey(coachId)) === "1"; } catch { return true; } }
+export function markUnitsConfirmed(coachId) { try { localStorage.setItem(unitsAskedKey(coachId), "1"); } catch {} }
+function suggestedUnits(current) {
+  let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
+  return /^Asia\/(Kolkata|Calcutta)$/.test(tz) ? "metric" : current;
+}
+
+export function UnitsPromptSheet({ open, onClose, onChosen }) {
+  const data = useCoachData();
+  const toast = useToast();
+  const [busy, setBusy] = React.useState(false);
+  const suggested = suggestedUnits(data.unitSystem);
+  async function choose(u) {
+    setBusy(true);
+    try { if (u !== data.unitSystem) await data.updateUnits(u); markUnitsConfirmed(data.coachId); onChosen?.(u); onClose(); }
+    catch (e) { toast(e.message || "Could not save", "error"); }
+    finally { setBusy(false); }
+  }
+  const later = () => { markUnitsConfirmed(data.coachId); onClose(); };
+  const options = [
+    { id: "metric", title: "Kilograms", sub: "kg and cm" },
+    { id: "imperial", title: "Pounds", sub: "lb and inches" },
+  ].sort((a, b) => (a.id === suggested ? -1 : b.id === suggested ? 1 : 0));
+  return (
+    <Sheet open={open} onClose={later} title="Kilograms or pounds?" subtitle="Plans, workouts and body measurements will all show in this. Clients who use the other one see theirs, converted. You can change it any time under your profile picture.">
+      <div className="cx-form">
+        {options.map((o, i) => (
+          <Button key={o.id} block variant={i === 0 ? "primary" : "default"} disabled={busy} onClick={() => choose(o.id)}>
+            {o.title} · {o.sub}{o.id === data.unitSystem ? " (current)" : ""}
+          </Button>
+        ))}
+      </div>
     </Sheet>
   );
 }

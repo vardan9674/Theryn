@@ -126,3 +126,8 @@
 /* Week strip days are buttons: tap one to see or log that day */
 button.lk-day { padding: 0; font: inherit; font-size: 12px; min-width: 0; }
 .lk-day.selected { border-color: var(--cx-a); background: var(--cx-s2); box-shadow: 0 0 0 1px var(--cx-a) inset; }
+
+/* kg / lb switch in the byline: the client's own units for the whole page */
+.lk-units { display: inline-flex; border: 1px solid var(--cx-bd2); border-radius: 10px; overflow: hidden; flex: 0 0 auto; }
+.lk-units button { min-width: 44px; height: 40px; border: none; background: none; color: var(--cx-mu); font-size: 14px; font-weight: 600; }
+.lk-units button[aria-pressed="true"] { background: var(--cx-s2); color: var(--cx-tx); box-shadow: inset 0 -2px 0 var(--cx-a); }

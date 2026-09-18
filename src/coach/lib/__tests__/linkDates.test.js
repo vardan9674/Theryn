@@ -41,13 +41,13 @@ describe("linkClientData", () => {
     { id: "m1", kind: "measurements", submitted_at: "2026-09-01T04:00:00.000Z", payload: { date: "2026-09-01", unit: "metric", weight: 72, waist: 80 } },
     { id: "w1", kind: "workout", submitted_at: EARLY, payload: { date: "2026-09-18", type: "Push", exercises: [{ name: "Bench Press", sets_planned: 3, sets_done: 3, reps: "8" }] } },
   ];
-  it("puts every entry in one unit, the plan's first", () => {
-    const d = linkClientData(subs, { plan: { Mon: { type: "Push", exercises: [], units: "metric" } } });
+  it("puts every entry in the coach's units", () => {
+    const d = linkClientData(subs, { plan: { Mon: { type: "Push", exercises: [], units: "imperial" } }, coachUnits: "metric" });
     expect(d.unitSystem).toBe("metric");
     expect(d.measurements.map((m) => [m.weight, m.waist, m.unit])).toEqual([[69.9, 76.2, "cm"], [72, 80, "cm"]]);
     expect(d.weights.map((w) => w.weight)).toEqual([69.9, 72]);
   });
-  it("falls back to the latest measurements, then the coach's units", () => {
+  it("defaults to imperial when the coach's units are unknown", () => {
     expect(linkClientData(subs).unitSystem).toBe("imperial");
     expect(linkClientData([], { coachUnits: "metric" }).unitSystem).toBe("metric");
   });

@@ -2,6 +2,24 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (evening) — Everyone in their own kg/lb, branch `feat/universal-units`
+
+**Asked**
+- "Universal lb/kg in the profile: the coach in India types kg, a US client sees lb; the client logs lb, the coach sees kg."
+
+**Done** (no schema change; the coach's choice goes in the existing `profiles.unit_system`)
+- `src/coach/lib/units.js`: `convertWeight` (gym weights to the nearest 0.5, body weight to 0.1), `convertLength`, `convertPlan` (targets converted, every day stamped with `units`), `convertSubmission` (measurements by their `unit`, workouts by a new `weight_unit`; older workouts are taken to be in the plan's units, which is what the page showed). Stored numbers keep the unit they were typed in and say which; conversion happens on read.
+- **Coach:** a "Weights and measurements" choice in the profile sheet (kg + cm or lb + inches), saved to `profiles.unit_system`. Name-only clients' plan, workouts, weigh-ins, measurements, the plan editor's Last column, the Excel export and the notification centre all show in it; switching reloads the loaded clients. Because the column defaults to imperial and many coaches never chose, the dashboard asks once, "Kilograms or pounds?", suggesting kg when the browser is on Indian time (`theryn_coach_units_confirmed_<id>` in localStorage). The first-visit tour waits for it.
+- **Client:** a kg | lb switch next to the coach's name on the link page, remembered on the phone. Targets are converted into it, "weight used" is typed in it, the Measurements tab's unit follows it, and each workout is sent with `weight_unit`. A half-ticked workout's typed weights are converted if the switch changes mid-session.
+- Also fixed on the way: the root keeps the column as `profile.units`, so the dashboard now reads that first.
+
+**Verified**
+- Link page at 375: 40 kg target → 88 lb after switching; the Measurements tab follows; the choice persists. Coach preview: asked once, then no tour clash; Ravi 74 kg ↔ 163.1 lb, chest 96 cm ↔ 37.8 in; a 100 lb target saved in lb reads 45.5 kg after switching. No console errors. 8 new tests in `units.test.js` (including a US client + Indian coach round trip). Typecheck, 71 tests, build pass.
+
+**Open**
+- App clients (the native app, not live) still show in the athlete's own units on the coach side.
+- A plan saved before 2026-09-18 carries no `units` stamp and is read as the coach's current units. Opening and saving it in the editor stamps it.
+
 ## 2026-09-18 (later) — Week strip opens any day; optional measurements, branch `fix/link-week-and-optional-measurements`
 
 **Asked**

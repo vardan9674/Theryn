@@ -11,7 +11,7 @@ import PaymentsPage, { RecordPaymentSheet, FeeSheet } from "./pages/PaymentsPage
 import MessagesPage from "./pages/MessagesPage.jsx";
 import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
-import { AddClientSheet, ProfileSheet, LinkClientSheet } from "./pages/Sheets.jsx";
+import { AddClientSheet, ProfileSheet, LinkClientSheet, UnitsPromptSheet, unitsConfirmed, markUnitsConfirmed } from "./pages/Sheets.jsx";
 import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
 import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
 import CoachTour, { isTourDone, markTourDone } from "./pages/CoachTour.jsx";
@@ -123,7 +123,11 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
   // First visit: show the coach around once the list is in. "Show me around" in the profile sheet replays it.
   const [tourOpen, setTourOpen] = React.useState(false);
-  React.useEffect(() => { if (loadedClients && !isTourDone(data.coachId)) setTourOpen(true); }, [loadedClients, data.coachId]);
+  // Ask kg or lb once, before the tour (the tour waits for it).
+  const [unitsAsk, setUnitsAsk] = React.useState(false);
+  const needsUnits = () => (data.mode === "supabase" || new URLSearchParams(window.location.search).has("askUnits")) && !unitsConfirmed(data.coachId);
+  React.useEffect(() => { if (loadedClients && needsUnits()) setUnitsAsk(true); }, [loadedClients, data.coachId, data.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (loadedClients && !unitsAsk && !needsUnits() && !isTourDone(data.coachId)) setTourOpen(true); }, [loadedClients, unitsAsk, data.coachId]); // eslint-disable-line react-hooks/exhaustive-deps
   const startTour = React.useCallback(() => { setSheet(null); setTab("clients"); setMsgOpen(null); setTourOpen(true); }, []);
   const endTour = React.useCallback(() => { setTourOpen(false); markTourDone(data.coachId); }, [data.coachId]);
 
@@ -146,7 +150,11 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   // Two watermarks: the badge clears the moment the centre opens; the rows keep
   // their unread highlight until it closes, so the coach can see what is new.
   const [badgeSeenAt, setBadgeSeenAt] = React.useState(null);
-  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt, clearedAt: notifClearedAt, dismissed: notifDismissed }), [notifFeed, clients, notifSeenAt, notifClearedAt, notifDismissed]);
+  // kg/lb for the whole dashboard. Name-only clients' data is converted on load, so a switch reloads it.
+  const [units, setUnits] = React.useState(data.unitSystem);
+  React.useEffect(() => { setUnits(data.unitSystem); }, [data]);
+  const onUnitsChanged = React.useCallback((u) => { setUnits(u); cache.reset(); markUnitsConfirmed(data.coachId); }, [cache, data.coachId]);
+  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt, clearedAt: notifClearedAt, dismissed: notifDismissed, units }), [notifFeed, clients, notifSeenAt, notifClearedAt, notifDismissed, units]);
   const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null, clearedAt: notifClearedAt, dismissed: notifDismissed })), [notifFeed, clients, badgeSeenAt, notifSeenAt, notifClearedAt, notifDismissed]);
   const clearNotifications = () => {
     const iso = new Date().toISOString();
@@ -341,7 +349,8 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
-      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} onTour={startTour} />
+      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} units={units} onUnitsChanged={onUnitsChanged} onRemoveClient={() => { refreshClients(); reloadPayments(); }} onTour={startTour} />
+      <UnitsPromptSheet open={unitsAsk} onClose={() => setUnitsAsk(false)} onChosen={onUnitsChanged} />
       <CoachTour open={tourOpen && !editor} onClose={endTour} firstName={(data.coachName || "").replace(/^coach\s+/i, "").split(" ")[0]} hasClients={clients.length > 0}
         onStep={(id) => {
           // Laptop and tablet keep the nav visible with a client open, so show the real Share link button.
