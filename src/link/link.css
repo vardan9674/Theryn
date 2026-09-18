@@ -114,3 +114,11 @@
   .lk-main { padding-top: 32px; }
   .lk-h1 { font-size: 38px; }
 }
+
+/* Log another day */
+.lk-daypick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.lk-daychip { flex: 0 0 auto; min-height: 44px; padding: 6px 14px; border-radius: 22px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); color: var(--cx-tx2); font-size: 14px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; }
+.lk-daychip small { font-size: 12px; color: var(--cx-mu); }
+.lk-daychip[aria-pressed="true"] { border-color: var(--cx-a); color: var(--cx-tx); font-weight: 700; }
+.lk-sentnote { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.45; color: var(--cx-tx2); background: var(--cx-s1); border: 1px solid var(--cx-bd); border-radius: 10px; padding: 10px 12px; }
+.lk-sentnote svg { color: var(--cx-a); flex: 0 0 auto; margin-top: 2px; }

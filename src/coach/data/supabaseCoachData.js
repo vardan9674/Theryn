@@ -15,7 +15,8 @@ import {
   isManualId, manualIdOf, toClientId, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
-import { generateToken, hashToken, submissionToMeasurement, submissionToHistory } from "../lib/clientLinks.js";
+import { generateToken, hashToken, linkClientData } from "../lib/clientLinks.js";
+import { isoDate } from "../lib/format.js";
 
 const MANUAL_COLS = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
 const SETUP_MSG = "Name-only clients need a one-time database update. Run supabase/migrations/20260909120000_coach_manual_clients.sql in the Supabase SQL editor.";
@@ -30,6 +31,8 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   const email = authUser?.email || "";
   const coachName = profile?.display_name || email.split("@")[0] || "Coach";
   const defaultCurrency = profile?.default_currency || "USD";
+  // The root keeps the profiles.unit_system column as `units`.
+  const unitSystem = (profile?.unit_system || profile?.units) === "metric" ? "metric" : "imperial";
   let manualAvailable = true;
 
   // ── Manual client rows ────────────────────────────────────────────────
@@ -65,6 +68,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     return mid ? { manual_client_id: mid, athlete_id: null } : { athlete_id: clientId, manual_client_id: null };
   }
   const tokenKey = (linkId) => `theryn_link_token_${linkId}`;
+  const TOKEN_LABEL = "tok:";
   async function loadSubmissions(where) {
     let q = supabase.from("client_submissions").select("id, kind, payload, submitted_at").eq("coach_id", coachId).order("submitted_at", { ascending: false }).limit(200);
     q = where.athlete_id ? q.eq("athlete_id", where.athlete_id) : q.eq("manual_client_id", where.manual_client_id);
@@ -80,7 +84,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     coachName,
     coachEmail: email,
     defaultCurrency,
-    unitSystem: profile?.unit_system || "imperial",
+    unitSystem,
     get manualClientsAvailable() { return manualAvailable; },
 
     // Clients: app accounts first, then name-only clients
@@ -94,11 +98,8 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         // Name-only clients have no app data; link submissions are their only history.
         const [row, subs] = await Promise.all([getManualRow(mid), loadSubmissions({ manual_client_id: mid })]);
         const base = manualClientData(row);
-        const history = subs.filter((x) => x.kind === "workout").map(submissionToHistory);
-        const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement);
-        const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
-        const unit = measurements[0]?.unit === "cm" ? "metric" : "imperial";
-        return { ...base, history, measurements, weights, profile: { ...base.profile, unit_system: unit }, submissions: subs };
+        const linked = linkClientData(subs, { plan: row.plan, coachUnits: unitSystem });
+        return { ...base, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: subs };
       }
       const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
       // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.
@@ -182,7 +183,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     async upsertFee(clientId, input) {
       const mid = manualIdOf(clientId);
       if (mid) {
-        const fee = { amount: Number(input.amount), currency: input.currency || defaultCurrency, cadence: input.cadence || "monthly", start_date: input.start_date || new Date().toISOString().slice(0, 10), active: input.active !== false, notes: input.notes ?? null };
+        const fee = { amount: Number(input.amount), currency: input.currency || defaultCurrency, cadence: input.cadence || "monthly", start_date: input.start_date || isoDate(), active: input.active !== false, notes: input.notes ?? null };
         const row = await patchManualRow(mid, { fee });
         return manualFeeRow(row, defaultCurrency);
       }
@@ -197,7 +198,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const mid = manualIdOf(clientId);
       if (mid) {
         const row = await getManualRow(mid);
-        const entry = { id: randomId(), amount: Number(input.amount), currency: input.currency || defaultCurrency, received_date: input.received_date || new Date().toISOString().slice(0, 10), notes: input.notes ?? null, created_at: new Date().toISOString() };
+        const entry = { id: randomId(), amount: Number(input.amount), currency: input.currency || defaultCurrency, received_date: input.received_date || isoDate(), notes: input.notes ?? null, created_at: new Date().toISOString() };
         const updated = await patchManualRow(mid, { payments: [...(Array.isArray(row.payments) ? row.payments : []), entry] });
         return manualPaymentRows(updated).find((p) => p.id.endsWith(":" + entry.id));
       }
@@ -271,25 +272,40 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     getTemplateAssignments,
     getActiveAssignmentsForAthletes,
 
-    // Client links. The raw token is kept in localStorage on the coach's
-    // device (the database only has its hash), so "Copy" works again later.
+    // Client links. link_view/link_submit only ever see the hash. So the coach
+    // can copy the link on any device, the raw token is also kept in the row's
+    // `label` column as "tok:<token>": coach-only under RLS, never returned to
+    // the public page, and unused otherwise. Links made before this carry only
+    // the device's localStorage copy; the first device that has it syncs it up.
     async getClientLink(clientId) {
       const t = linkTarget(clientId);
-      let q = supabase.from("client_links").select("id, requested, opens, last_opened_at, submissions, created_at").eq("coach_id", coachId).is("revoked_at", null);
+      let q = supabase.from("client_links").select("id, requested, opens, last_opened_at, submissions, created_at, label, token_hash").eq("coach_id", coachId).is("revoked_at", null);
       q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
       const { data, error } = await q.maybeSingle();
       if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
       if (!data) return { link: null, token: null };
-      let token = null;
-      try { token = localStorage.getItem(tokenKey(data.id)); } catch {}
-      // A link exists but this device doesn't know its token: treat as "make a new link".
-      return { link: data, token };
+      const { label, token_hash, ...link } = data;
+      const matches = async (tok) => Boolean(tok) && (await hashToken(tok)) === token_hash;
+      const synced = typeof label === "string" && label.startsWith(TOKEN_LABEL) ? label.slice(TOKEN_LABEL.length) : null;
+      let local = null;
+      try { local = localStorage.getItem(tokenKey(link.id)); } catch {}
+      if (await matches(synced)) {
+        if (local !== synced) { try { localStorage.setItem(tokenKey(link.id), synced); } catch {} }
+        return { link, token: synced };
+      }
+      if (await matches(local)) {
+        await supabase.from("client_links").update({ label: TOKEN_LABEL + local }).eq("id", link.id).eq("coach_id", coachId);
+        return { link, token: local };
+      }
+      // Made on a device we can't read the token from. The sheet says so and
+      // only replaces the link after a warning.
+      return { link, token: null };
     },
-    async createClientLink(clientId, { requested, label } = {}) {
+    async createClientLink(clientId, { requested } = {}) {
       const t = linkTarget(clientId);
       const token = generateToken();
       const token_hash = await hashToken(token);
-      const { data, error } = await supabase.rpc("client_link_upsert", { p_athlete_id: t.athlete_id, p_manual_client_id: t.manual_client_id, p_token_hash: token_hash, p_label: label || null, p_requested: requested || null });
+      const { data, error } = await supabase.rpc("client_link_upsert", { p_athlete_id: t.athlete_id, p_manual_client_id: t.manual_client_id, p_token_hash: token_hash, p_label: TOKEN_LABEL + token, p_requested: requested || null });
       if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
       try { localStorage.setItem(tokenKey(data.id), token); } catch {}
       return { link: data, token };
@@ -308,11 +324,61 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const { error } = await q;
       if (error) throw new Error(error.message);
     },
-    /** Latest link submissions across all clients, for the "what to do" line and a future inbox. */
+    /** Latest link submissions across all clients, for the "what to do" line and the notification centre. */
     async loadRecentSubmissions(limit = 50) {
       const { data, error } = await supabase.from("client_submissions").select("id, kind, payload, submitted_at, athlete_id, manual_client_id").eq("coach_id", coachId).order("submitted_at", { ascending: false }).limit(limit);
       if (error) { if (isMissingLinks(error)) return []; throw new Error(error.message); }
       return data || [];
+    },
+
+    // ── Notification centre ────────────────────────────────────────────────
+    // Built from rows that already exist: link submissions (all clients) and
+    // workouts app clients logged themselves. Link workouts are not read from
+    // workout_sessions here, or they would appear twice.
+    async loadNotificationFeed(clients, { days = 30 } = {}) {
+      const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
+      const ids = (clients || []).filter((c) => !c.manual).map((c) => c.athlete_id);
+      const [submissions, sessionsRes] = await Promise.all([
+        this.loadRecentSubmissions(60),
+        ids.length === 0 ? Promise.resolve({ data: [] }) : supabase.from("workout_sessions").select("id, user_id, workout_type, started_at, completed_at, notes, source").in("user_id", ids).not("completed_at", "is", null).neq("source", "link").gte("completed_at", sinceIso).order("completed_at", { ascending: false }).limit(60),
+      ]);
+      if (sessionsRes.error) throw new Error(sessionsRes.error.message);
+      const sessions = (sessionsRes.data || []).map((s) => {
+        let n = {}; try { n = s.notes ? JSON.parse(s.notes) : {}; } catch {}
+        const mins = s.started_at && s.completed_at ? Math.round((new Date(s.completed_at) - new Date(s.started_at)) / 60000) : null;
+        return { id: s.id, athlete_id: s.user_id, type: s.workout_type, completed_at: s.completed_at, totalSets: n.totalSets || null, durationMin: mins && mins > 0 && mins < 600 ? mins : null };
+      });
+      return { submissions: submissions.filter((x) => x.submitted_at >= sinceIso), sessions };
+    },
+    // Seen and cleared watermarks live on the profile (so phone and laptop agree)
+    // with a localStorage mirror, in case the column is missing or the network is out.
+    // Whichever is later wins. Single dismissals are per device only.
+    async getNotificationsState() {
+      const { data } = await supabase.from("profiles").select("coach_notifications_seen_at, coach_notifications_cleared_at").eq("id", coachId).maybeSingle();
+      const later = (remote, key) => { let local = null; try { local = localStorage.getItem(key); } catch {} return [remote || null, local].filter(Boolean).sort().pop() || null; };
+      let dismissed = []; try { dismissed = JSON.parse(localStorage.getItem(`theryn_coach_notif_dismissed_${coachId}`) || "[]"); } catch {}
+      return {
+        seenAt: later(data?.coach_notifications_seen_at, `theryn_coach_notif_seen_${coachId}`),
+        clearedAt: later(data?.coach_notifications_cleared_at, `theryn_coach_notif_cleared_${coachId}`),
+        dismissed: Array.isArray(dismissed) ? dismissed : [],
+      };
+    },
+    async markNotificationsSeen(iso = new Date().toISOString()) {
+      try { localStorage.setItem(`theryn_coach_notif_seen_${coachId}`, iso); } catch {}
+      await supabase.from("profiles").update({ coach_notifications_seen_at: iso }).eq("id", coachId);
+      return iso;
+    },
+    async clearNotifications(iso = new Date().toISOString()) {
+      try { localStorage.setItem(`theryn_coach_notif_cleared_${coachId}`, iso); localStorage.removeItem(`theryn_coach_notif_dismissed_${coachId}`); } catch {}
+      await supabase.from("profiles").update({ coach_notifications_cleared_at: iso, coach_notifications_seen_at: iso }).eq("id", coachId);
+      return iso;
+    },
+    async dismissNotification(id) {
+      let list = []; try { list = JSON.parse(localStorage.getItem(`theryn_coach_notif_dismissed_${coachId}`) || "[]"); } catch {}
+      if (!Array.isArray(list)) list = [];
+      if (!list.includes(id)) list.push(id);
+      try { localStorage.setItem(`theryn_coach_notif_dismissed_${coachId}`, JSON.stringify(list.slice(-300))); } catch {}
+      return list;
     },
 
     // Profile & account

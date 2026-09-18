@@ -13,6 +13,9 @@ import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
 import { AddClientSheet, ProfileSheet, LinkClientSheet } from "./pages/Sheets.jsx";
 import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
+import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
+import CoachTour, { isTourDone, markTourDone } from "./pages/CoachTour.jsx";
+import { buildNotifications, unreadCount } from "./lib/notifications.js";
 import { consumeBackPress } from "../lib/backStack.ts";
 import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
@@ -32,7 +35,7 @@ export default function CoachApp(props) {
   const supabaseData = React.useMemo(
     () => (props.data ? null : createSupabaseCoachData(props)),
     // Rebuild when identity or profile-level settings change.
-    [props.data, props.authUser?.id, props.profile?.display_name, props.profile?.default_currency, props.profile?.unit_system],
+    [props.data, props.authUser?.id, props.profile?.display_name, props.profile?.default_currency, props.profile?.unit_system, props.profile?.units],
   );
   const data = props.data || supabaseData;
   const initialClients = React.useMemo(() => {
@@ -118,18 +121,64 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   React.useEffect(() => data.subscribeMessages(realClients, () => refreshPreviews()), [data, realClients, refreshPreviews]);
   const unread = Object.values(previews).reduce((s, p) => s + (p.unread || 0), 0);
 
+  // First visit: show the coach around once the list is in. "Show me around" in the profile sheet replays it.
+  const [tourOpen, setTourOpen] = React.useState(false);
+  React.useEffect(() => { if (loadedClients && !isTourDone(data.coachId)) setTourOpen(true); }, [loadedClients, data.coachId]);
+  const startTour = React.useCallback(() => { setSheet(null); setTab("clients"); setMsgOpen(null); setTourOpen(true); }, []);
+  const endTour = React.useCallback(() => { setTourOpen(false); markTourDone(data.coachId); }, [data.coachId]);
+
+  // Notification centre: link submissions + app workouts, unread against the coach's seen watermark.
+  const [notifFeed, setNotifFeed] = React.useState({ submissions: [], sessions: [] });
+  const [notifSeenAt, setNotifSeenAt] = React.useState(null);
+  const [notifClearedAt, setNotifClearedAt] = React.useState(null);
+  const [notifDismissed, setNotifDismissed] = React.useState([]);
+  const [notifLoading, setNotifLoading] = React.useState(true);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const refreshNotifications = React.useCallback(() => {
+    if (!loadedClients || typeof data.loadNotificationFeed !== "function") return;
+    data.loadNotificationFeed(clients).then((f) => { setNotifFeed(f); setNotifLoading(false); }).catch(() => setNotifLoading(false));
+  }, [data, clients, loadedClients]);
+  React.useEffect(() => { refreshNotifications(); }, [refreshNotifications]);
+  React.useEffect(() => {
+    if (typeof data.getNotificationsState !== "function") return;
+    data.getNotificationsState().then((st) => { setNotifSeenAt(st.seenAt); setNotifClearedAt(st.clearedAt); setNotifDismissed(st.dismissed || []); }).catch(() => {});
+  }, [data]);
+  // Two watermarks: the badge clears the moment the centre opens; the rows keep
+  // their unread highlight until it closes, so the coach can see what is new.
+  const [badgeSeenAt, setBadgeSeenAt] = React.useState(null);
+  const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt, clearedAt: notifClearedAt, dismissed: notifDismissed }), [notifFeed, clients, notifSeenAt, notifClearedAt, notifDismissed]);
+  const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null, clearedAt: notifClearedAt, dismissed: notifDismissed })), [notifFeed, clients, badgeSeenAt, notifSeenAt, notifClearedAt, notifDismissed]);
+  const clearNotifications = () => {
+    const iso = new Date().toISOString();
+    setNotifClearedAt(iso); setNotifSeenAt(iso); setBadgeSeenAt(iso); setNotifDismissed([]);
+    Promise.resolve(data.clearNotifications?.(iso)).catch(() => {});
+    toast("Notifications cleared");
+  };
+  const dismissNotification = (id) => {
+    setNotifDismissed((d) => (d.includes(id) ? d : [...d, id]));
+    Promise.resolve(data.dismissNotification?.(id)).catch(() => {});
+  };
+  const openNotifications = () => {
+    const iso = new Date().toISOString();
+    setNotifOpen(true);
+    setBadgeSeenAt(iso);
+    refreshNotifications();
+    Promise.resolve(data.markNotificationsSeen?.(iso)).catch(() => {});
+  };
+  const closeNotifications = () => { setNotifOpen(false); if (badgeSeenAt) setNotifSeenAt((cur) => (cur && cur > badgeSeenAt ? cur : badgeSeenAt)); };
+
   // Live data: a client logs a workout, body data or a link submission → refresh their facts.
   // Depend on the stable callbacks, not `cache` (its identity changes on every version bump).
   const { load: loadClient, reloadAll: reloadLoadedClients } = cache;
-  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) loadClient(athleteId, { force: true }).catch(() => {}); }), [data, clients, loadClient]);
+  React.useEffect(() => data.subscribeLiveData(clients, (athleteId) => { if (athleteId) loadClient(athleteId, { force: true }).catch(() => {}); refreshNotifications(); }), [data, clients, loadClient, refreshNotifications]);
   // Safety net when realtime was disconnected (phone in the background): refresh on return, at most every 20s.
   React.useEffect(() => {
     let last = Date.now();
-    const onBack = () => { if (document.visibilityState !== "visible" || Date.now() - last < 20000) return; last = Date.now(); reloadLoadedClients(); };
+    const onBack = () => { if (document.visibilityState !== "visible" || Date.now() - last < 20000) return; last = Date.now(); reloadLoadedClients(); refreshNotifications(); };
     document.addEventListener("visibilitychange", onBack);
     window.addEventListener("focus", onBack);
     return () => { document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); };
-  }, [reloadLoadedClients]);
+  }, [reloadLoadedClients, refreshNotifications]);
 
   // Native: catch-up notification on resume, Android back, deep links, foreground toasts
   React.useEffect(() => {
@@ -230,15 +279,16 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         <div className="cx-brand"><img src="/theryn-logo.svg" alt="" /> Theryn</div>
         <nav className="cx-navlinks" aria-label="Main">
           {TABS.map((t) => (
-            <button key={t.id} type="button" className="cx-navlink" aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
+            <button key={t.id} type="button" className="cx-navlink" data-tour={`nav-${t.id}`} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
               {t.label}{t.id === "messages" && unread > 0 && <span className="cx-badge">{unread > 99 ? "99+" : unread}</span>}
             </button>
           ))}
         </nav>
         <div className="cx-spacer" />
         {tab === "clients" && <div className="cx-search"><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>}
-        <Button variant="primary" size="sm" icon={<Icon.Plus />} onClick={actions.addClient} aria-label="Add client"><span>Add client</span></Button>
-        <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} size="sm" /></button>
+        <NotificationsButton unread={notifUnread} onClick={openNotifications} />
+        <Button variant="primary" size="sm" icon={<Icon.Plus />} onClick={actions.addClient} aria-label="Add client" data-tour="add-client"><span>Add client</span></Button>
+        <button type="button" className="cx-avatar-btn" data-tour="profile" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} size="sm" /></button>
       </header>
 
       {vp === "tablet" && tab === "clients" && (
@@ -246,9 +296,10 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       )}
       {vp === "phone" && tab === "clients" && !selectedClient && (
         <div className="cx-row" style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 4px", gap: 8 }}>
-          <button type="button" className="cx-avatar-btn" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} /></button>
+          <button type="button" className="cx-avatar-btn" data-tour="profile" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} /></button>
           <div className="cx-search" style={{ flex: 1, maxWidth: "none", width: "auto", height: 44 }}><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>
-          <Button variant="primary" icon={<Icon.Plus />} aria-label="Add client" onClick={actions.addClient} />
+          <NotificationsButton unread={notifUnread} onClick={openNotifications} />
+          <Button variant="primary" icon={<Icon.Plus />} aria-label="Add client" onClick={actions.addClient} data-tour="add-client" />
         </div>
       )}
 
@@ -269,7 +320,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       {!(vp === "phone" && tab === "messages" && msgOpen) && !(vp === "phone" && tab === "clients" && selectedClient) && (
         <nav className="cx-tabbar" aria-label="Main">
           {TABS.map((t) => (
-            <button key={t.id} type="button" className="cx-tab" aria-current={tab === t.id ? "page" : undefined} onClick={() => { setTab(t.id); if (t.id !== "messages") setMsgOpen(null); }}>
+            <button key={t.id} type="button" className="cx-tab" data-tour={`nav-${t.id}`} aria-current={tab === t.id ? "page" : undefined} onClick={() => { setTab(t.id); if (t.id !== "messages") setMsgOpen(null); }}>
               <t.Icon />{t.label}{t.id === "messages" && unread > 0 && <span className="cx-badge">{unread > 99 ? "99+" : unread}</span>}
             </button>
           ))}
@@ -286,9 +337,17 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
+      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
+        onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
-      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} />
+      <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} onRemoveClient={() => { refreshClients(); reloadPayments(); }} onTour={startTour} />
+      <CoachTour open={tourOpen && !editor} onClose={endTour} firstName={(data.coachName || "").replace(/^coach\s+/i, "").split(" ")[0]} hasClients={clients.length > 0}
+        onStep={(id) => {
+          // Laptop and tablet keep the nav visible with a client open, so show the real Share link button.
+          // On the phone an open client hides the tab bar the later steps point at, so stay on the list.
+          if (id === "link" && vp !== "phone" && !selectedId && clients.length > 0) { setSelectedId(clients[0].athlete_id); setDetailTab("plan"); }
+        }} />
       <ExportExcelDialog open={Boolean(exportReq)} onClose={() => setExportReq(null)} {...(exportReq || {})} />
     </div>
   );

@@ -440,3 +440,42 @@
 @media (prefers-reduced-motion: reduce) {
   .cx-app *, .cx-app *::before, .cx-app *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ── Workouts tab: one row per session, expandable ── */
+.cx-workout-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: none; color: inherit; font: inherit; cursor: pointer; min-height: 56px; }
+.cx-workout-hd:hover { background: var(--cx-s2); }
+.cx-setchips { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 220px; }
+.cx-setchip { font-size: 12px; padding: 2px 6px; border-radius: 6px; background: var(--cx-s2); border: 1px solid var(--cx-bd); white-space: nowrap; }
+
+/* ── Notification centre ── */
+.cx-bell { position: relative; width: 44px; height: 44px; border-radius: 50%; border: none; background: none; color: var(--cx-tx2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.cx-bell:hover { background: var(--cx-s2); color: var(--cx-tx); }
+.cx-bell .cx-badge { position: absolute; top: 4px; right: 2px; }
+.cx-notif { display: flex; align-items: stretch; border-bottom: 1px solid var(--cx-bd); }
+.cx-notif:last-child { border-bottom: none; }
+.cx-notif:hover { background: var(--cx-s2); }
+.cx-notif-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 10px 4px 10px 12px; background: none; border: none; color: inherit; font: inherit; cursor: pointer; text-align: left; min-height: 56px; }
+.cx-notif-x { width: 44px; flex-shrink: 0; background: none; border: none; color: var(--cx-mu); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.cx-notif-x:hover { color: var(--cx-tx); }
+.cx-notif.unread { background: rgba(200, 255, 0, 0.04); }
+.cx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cx-a); flex-shrink: 0; }
+
+/* ── Show me around (first-visit tour) ── */
+.cx-tour { position: fixed; inset: 0; z-index: 300; }
+.cx-tour-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.72); }
+.cx-tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72), 0 0 0 2px var(--cx-a); transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease; pointer-events: none; }
+.cx-tour-card { position: fixed; background: var(--cx-s1); border: 1px solid var(--cx-bd2); border-radius: 14px; padding: 16px 18px 14px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); animation: cx-tour-in 0.2s ease; }
+@keyframes cx-tour-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.cx-tour-card[style*="translate"] { animation: none; }
+.cx-tour-arrow { position: absolute; width: 14px; height: 14px; background: var(--cx-s1); border-left: 1px solid var(--cx-bd2); border-top: 1px solid var(--cx-bd2); transform: translateX(-50%) rotate(45deg); }
+.cx-tour-arrow.top { top: -8px; }
+.cx-tour-arrow.bottom { bottom: -8px; transform: translateX(-50%) rotate(225deg); }
+.cx-tour-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cx-a); }
+.cx-tour-skip { background: none; border: none; color: var(--cx-mu); font-size: 13px; padding: 0; cursor: pointer; min-height: 24px; }
+.cx-tour-skip:hover { color: var(--cx-tx); }
+.cx-tour-title { font-size: 18px; font-weight: 700; margin-top: 6px; line-height: 1.25; }
+.cx-tour-body { font-size: 14px; color: var(--cx-tx2); margin-top: 6px; line-height: 1.5; }
+.cx-tour-dots { display: inline-flex; gap: 5px; align-items: center; }
+.cx-tour-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--cx-bd2); display: block; }
+.cx-tour-dots i.done { background: var(--cx-mu); }
+.cx-tour-dots i.on { background: var(--cx-a); width: 16px; border-radius: 3px; }

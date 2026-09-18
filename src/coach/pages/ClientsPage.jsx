@@ -114,10 +114,10 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
             <div className="cx-thead" aria-hidden="true">
               <div>Client</div><div>Last workout</div><div className="cx-col-week">This week</div><div className="cx-col-pay">Payment</div><div>What to do</div><div />
             </div>
-            {visible.map((r) => <TableRow key={r.link.athlete_id} row={r} selected={r.link.athlete_id === selectedId} onClick={() => onSelect(r.link.athlete_id)} />)}
+            {visible.map((r, i) => <TableRow key={r.link.athlete_id} row={r} selected={r.link.athlete_id === selectedId} onClick={() => onSelect(r.link.athlete_id)} tour={i === 0 ? "client-row" : undefined} />)}
           </div>
           <div className="cx-cards">
-            {visible.map((r) => <CardRow key={r.link.athlete_id} row={r} onClick={() => onSelect(r.link.athlete_id)} />)}
+            {visible.map((r, i) => <CardRow key={r.link.athlete_id} row={r} onClick={() => onSelect(r.link.athlete_id)} tour={i === 0 ? "client-row" : undefined} />)}
           </div>
         </>
       )}
@@ -166,10 +166,10 @@ function WeekSquares({ week }) {
 
 function Skeleton({ w = 80 }) { return <span className="cx-skel" style={{ display: "inline-block", width: w, height: 14 }} />; }
 
-function TableRow({ row, selected, onClick }) {
+function TableRow({ row, selected, onClick, tour }) {
   const pay = row.payment;
   return (
-    <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick}>
+    <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick} data-tour={tour}>
       <div className="name"><Avatar name={row.name} size="sm" /><div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><span>{row.name}</span>{row.manual && <span className="cx-tag" style={{ alignSelf: "flex-start" }} title="Added by name; they haven't joined the app">Not on app</span>}</div></div>
       <div>{row.loading ? <Skeleton w={70} /> : row.last == null ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
       <div className="cx-col-week">{row.loading ? <Skeleton w={90} /> : <WeekSquares week={row.week} />}</div>
@@ -180,10 +180,10 @@ function TableRow({ row, selected, onClick }) {
   );
 }
 
-function CardRow({ row, onClick }) {
+function CardRow({ row, onClick, tour }) {
   const pay = row.payment;
   return (
-    <button type="button" className="cx-client-card" onClick={onClick}>
+    <button type="button" className="cx-client-card" onClick={onClick} data-tour={tour}>
       <div className="row">
         <Avatar name={row.name} />
         <div className="name">{row.name}</div>

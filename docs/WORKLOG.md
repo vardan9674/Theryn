@@ -2,6 +2,61 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 — Client link reliability for India, branch `fix/link-reliability` (on top of PR #52)
+
+**Context**
+- The native app is not live. The live product is the website: coaches on the dashboard, clients on `/f/<token>`. Web athletes can't connect to a coach, so every real client is name-only and the link is their only channel. Coaches and clients are in India (UTC+5:30).
+- Constraint from the owner: no database changes. Everything below is client code; no migration, no RPC change.
+
+**Found and fixed**
+- **A coach could kill a client's link by opening the dashboard on another device.** The raw token lived only in the browser that made it, so elsewhere the Share link sheet said "doesn't have a link yet" and "Make a link" revoked the one pinned in the client's WhatsApp. Now the token is also kept in `client_links.label` as `tok:<token>` (coach-only under RLS, never returned by `link_view`, previously write-only). Older links sync up the first time the coach opens the sheet on the device that made them (checked against `token_hash` first). A device that still can't read it shows "X's link is working… made on another phone or computer" and replacing it goes through the existing warning.
+- **Early-morning check-ins landed on the day before.** `link_submit` replaces a date later than its UTC `CURRENT_DATE` with `CURRENT_DATE`, which in India is every submission from midnight to 5:30 am. The page now also sends `local_date` (kept in the stored payload); the coach side reads it via `submissionDate()`, and recovers older rows from `submitted_at` when the stored date is just the UTC day it was sent. Manual fee/payment defaults and the "Done via link" age use local dates too.
+- **Ticks were lost if the page reloaded mid-workout** (WhatsApp's browser drops pages when you switch apps). The workout draft (ticks, weights, skips, note) is saved to the client's localStorage on every change and restored for the same day and plan.
+- **Only today's workout could be sent.** "Missed sending a workout? Log another day" offers the last six planned training days; the page shows that day's plan and sends it with that date.
+- **Accidental double sends.** After sending, the page remembers it: "You sent today's workout to Coach X at 6:12 am. Sending again gives your coach a second entry", and the button reads "Send again".
+- **Units.** Name-only clients defaulted to lb everywhere (editor, link page) because they have no profile, and the dashboard also read `profile.unit_system` while the root stores it as `profile.units`, so every coach looked imperial. The plan editor now stamps `units` on each plan day; the link page labels weights and defaults measurement units from it; the dashboard picks one unit per name-only client (plan, else latest measurements, else the coach's) and converts every entry to it, so the 2-week weight change compares like with like. The Body tab's measurement card skips weight-only check-ins.
+
+**Verified**
+- Link page at 375 (`/f/preview`): tick + note survive a reload; send → receipt → back shows the sent note and "Send again"; log another day shows "Logging Wednesday…", "Wednesday's plan", the real today still marked in the week strip.
+- Coach preview: Ravi (name-only) Body/Workouts in kg, plan editor "Weight (kg)", save shows "50 kg"; Share link sheet normal state and the "made on another device" state (`?coachPreview=1&linkElsewhere=1`).
+- 10 new tests (`linkDates.test.js`, run in Asia/Kolkata). Typecheck, 61 tests, build pass.
+
+**Open**
+- Not exercised against production: token sync (`label`) with a real coach session. Check: open Share link on the laptop that made a link, then on a phone; the phone should show the same URL.
+- The receipt's "Get the app" points at the marketing site while the app isn't published.
+
+## 2026-09-15 — Workout detail for the coach and a notification centre, branch `feat/coach-workouts-notifications`
+
+**Asked**
+- "Once the client ticks the workout and sends it, the coach should be able to see the workout and details." And: "a notification centre within the coach dashboard."
+
+**Found**
+- A link workout only surfaced as a one-line "8 of 9 sets done · weights: …" under the day on the Plan tab, and for app clients not even that: `loadWorkoutHistory` never read the `source` column, so promoted link sessions looked like app sessions and the "Done via link" tag never showed. Nowhere could the coach open a workout and see what was actually done.
+
+**Done**
+- `loadWorkoutHistory` selects `source` and parses `viaLink`/`note` out of the session notes; entries carry `source` and `note`.
+- `src/coach/lib/workouts.js`: `attachSubmissions` pairs each link session with the submission that produced it (same id for name-only clients; date + best exercise overlap for app clients, since `link_submit` promotes without a back-reference), `workoutDetail` gives one shape for both (done/planned sets, reps, weight used vs target, skipped, note, duration), `workoutSummary`. 5 tests.
+- Progress tab renamed **Workouts**: stats, then "Recent workouts" (one expandable row per session: date, type, via link / in app, "5 of 9 sets · 1 skipped"; open → per-exercise `3/3 sets × 8-12 · 60 kg`, skipped rows dimmed, "(changed)" when the client used a different weight than prescribed, app sessions as set chips `205×6 225×5`, and the client's note), then the existing charts.
+- Notification centre: bell in the top nav (laptop/tablet) and the phone clients header with an unread badge; sheet grouped Today / Yesterday / Earlier; items are link workouts ("Vaishnavi finished Full Body via their link · 5 of 6 sets · 'note'"), measurements sent ("168 lb · chest 36, waist 28 in") and workouts logged in the app ("12 sets · 48 min"). Tap → that client on the Workouts or Body tab. Built from rows that already exist (`client_submissions` + app-sourced `workout_sessions`, last 30 days) by `src/coach/lib/notifications.js` (2 tests). Refreshes on the realtime events and on focus.
+- Seen watermark: `20260915120000_coach_notifications_seen.sql` adds `profiles.coach_notifications_seen_at` (applied to production) so the badge agrees across devices; localStorage mirror as fallback. The badge clears when the centre opens; rows keep their unread highlight until it closes.
+- Clearing (asked for after the first pass): **Clear all** at the top of the sheet hides everything up to now (`profiles.coach_notifications_cleared_at`, same migration, applied; also resets seen) and an **×** on each row dismisses that one (ids kept in localStorage, per device, capped at 300). Empty state reads "You're all caught up". Verified from a scratch worktree on port 5199 because another session's in-progress landing-page edit broke the main dev bundle at the time: badge 8 → open → dismiss one (20 → 19 rows) → Clear all → 0 rows, toast, badge gone.
+
+**Verified**
+- Coach preview (1280 and 375): bell shows 8 unread → sheet grouped by day → tap → client opens on Workouts; Ravi (name-only) shows the link workout with planned/done, weights, skipped and note; Marcus (app) shows set chips. No console errors. Typecheck, 50 tests, build pass.
+
+**Also done: "Show me around", a first-visit tour for coaches who aren't technical**
+- The old `CoachTourOverlay` in App.jsx describes the previous dashboard (Athletes / Templates / Routines tabs) and is never mounted by Direction B. New `src/coach/pages/CoachTour.jsx`: 11 short steps, each spotlighting a real element found by `data-tour="…"` (Clients tab, first client row, Add client, Share link, Plans, Payments, Messages, bell, profile picture) with a plain-language card (no jargon: "Your people, one row each", "Every client gets their own private link. They open it on their phone, no app and no password…"). Steps adapt: no clients → "Add your first client" instead of the row step; on laptop/tablet the Share link step opens the first client so the green button is really on screen (on the phone an open client hides the tab bar, so the card sits in the middle instead). Card goes under the target when there is room, else above; Back / Next / Skip, arrow keys, Escape, Android back. Progress dots.
+- Shown once per coach per device (`theryn_coach_tour_done_<coachId>` in localStorage) after the client list loads; **Show me around** in the profile sheet replays it any time.
+- Verified at 1280 and 375: all 11 steps spotlight the right element (or fall back cleanly), Done marks it seen, replay from the profile sheet works, Back works. Typecheck, 51 tests, build pass.
+
+**Note on the working tree**
+- Another session was editing the landing page (`LandingPage.jsx`, `landing-motion.jsx`, `landing-motion.css`) in this checkout at the same time. A temporary stash of mine briefly reset those files while it was writing; everything was restored from the stash and verified identical to its work-in-progress, but if that session sees something odd, the three files as of 21:07 are also in this session's scratchpad.
+
+**Open**
+- Realtime delivery to a signed-in coach still unexercised (needs a coach session).
+- Push notification on submission (roadmap 1.12) would complete this: the centre is in-app only.
+- Tour "seen" flag is per device; a coach who signs in on a second device sees it once more (one tap on Skip).
+
 ## 2026-09-12 (evening) — Links did not open, name-only clients vanished after add, branch `fix/client-list-sync` (PR #43); target weight and coach data freshness, branch `fix/coach-submissions-target-weight`
 
 **Found**
