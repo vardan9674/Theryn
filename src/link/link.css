@@ -141,3 +141,6 @@ button.lk-day { padding: 0; font: inherit; font-size: 12px; min-width: 0; }
 .lk-setin { width: 100%; min-width: 0; height: 44px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); color: var(--cx-tx); font-size: 16px; text-align: center; padding: 0 6px; }
 .lk-setin::placeholder { color: var(--cx-mu); }
 .lk-setrow .lk-set { width: 44px; height: 44px; }
+.lk-setrows.readonly .lk-setin { opacity: 0.8; }
+.lk-setin::placeholder { color: var(--cx-tx2); opacity: 0.55; }
+.lk-last { font-size: 13px; color: var(--cx-tx2); background: var(--cx-s2); border-radius: 8px; padding: 6px 10px; align-self: flex-start; }

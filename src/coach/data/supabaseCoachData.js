@@ -148,6 +148,11 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const mid = manualIdOf(clientId);
       if (!mid || isManualId(athleteId)) throw new Error("Pick a client who is on the app.");
       const row = await getManualRow(mid);
+      // Their link check-ins belong to the name-only row and are deleted with it
+      // (client_submissions.manual_client_id ON DELETE CASCADE). Until they can be
+      // moved onto the account, don't connect anyone who has sent something.
+      const sent = await loadSubmissions({ manual_client_id: mid });
+      if (sent.length) throw new Error(`${row.first_name || "This client"} has ${sent.length} check-in${sent.length === 1 ? "" : "s"} from their link. Connecting now would delete them, so it's switched off until their history can be moved onto the account. Keep them as a name-only client for now.`);
       if (row.plan && Object.keys(row.plan).length) await saveRoutineAsCoach(athleteId, row.plan, coachId);
       const fee = manualFeeRow(row, defaultCurrency);
       if (fee) await upsertClientFee(coachId, athleteId, { amount: fee.amount, currency: fee.currency, cadence: fee.cadence, start_date: fee.start_date, active: fee.active, notes: fee.notes });

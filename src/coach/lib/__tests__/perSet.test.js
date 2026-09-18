@@ -42,3 +42,19 @@ describe("per-set reps and weight from the link page", () => {
     expect(workoutPayload(mon, { 0: 3 }, { 0: "62.5" }, "", "2026-09-14").exercises[0].weight_used).toBe(62.5);
   });
 });
+
+import { lastSetsFor, setsLine } from "../workouts.js";
+describe("last time", () => {
+  const history = [
+    { date: "2026-09-10", exercises: [{ name: "Bench Press", sets: [{ w: "40", r: "8" }] }] },
+    { date: "2026-09-17", exercises: [{ name: "bench press", sets: [{ w: "45", r: "10" }, { w: "40", r: "6" }] }, { name: "Dips", sets: [{ w: "", r: "12" }] }] },
+  ];
+  it("finds the newest session with the exercise, any case", () => {
+    expect(lastSetsFor(history, "Bench Press")).toEqual({ date: "2026-09-17", sets: [{ w: "45", r: "10" }, { w: "40", r: "6" }] });
+    expect(lastSetsFor(history, "Squat")).toBe(null);
+  });
+  it("reads as reps × weight", () => {
+    expect(setsLine(lastSetsFor(history, "Bench Press").sets)).toBe("10×45, 6×40");
+    expect(setsLine(lastSetsFor(history, "Dips").sets)).toBe("12");
+  });
+});

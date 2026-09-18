@@ -6,7 +6,7 @@ import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
-import { attachSubmissions, workoutDetail, workoutSummary } from "../lib/workouts.js";
+import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 
 const TABS = [
   { id: "plan", label: "Plan" },
@@ -132,6 +132,7 @@ function PlanTab({ data, row, actions }) {
                 return (
                   <div key={i}>
                     <div className="cx-exrow"><span>{exerciseName(ex)}</span><span>{setsReps(ex, unit)}</span></div>
+                    {(() => { const last = lastSetsFor(data.history, exerciseName(ex)); return last ? <div className="cx-small cx-muted" style={{ marginTop: 2 }}>Last time ({shortDate(last.date)}): {setsLine(last.sets)}{last.sets.some((x) => x.w) ? ` ${unit}` : " reps"}</div> : null; })()}
                     {o.coachNote && <div className="cx-note">Note: {o.coachNote}</div>}
                   </div>
                 );

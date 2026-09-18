@@ -107,3 +107,23 @@ export function workoutSummary(d) {
   const sets = d.plannedSets > 0 ? `${d.totalSets} of ${d.plannedSets} sets` : `${d.totalSets} ${d.totalSets === 1 ? "set" : "sets"}`;
   return d.durationMin ? `${sets} · ${d.durationMin} min` : sets;
 }
+
+/**
+ * The most recent session with this exercise: { date, sets: [{ w, r }] }, or
+ * null. History entries are newest first or not; this sorts by date.
+ */
+export function lastSetsFor(history, name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) return null;
+  const sorted = [...(history || [])].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  for (const h of sorted) {
+    const ex = (h.exercises || []).find((e) => String(e.name || "").trim().toLowerCase() === key);
+    if (ex && ex.sets?.length) return { date: h.date, sets: ex.sets.map((x) => ({ w: x.w ?? "", r: x.r ?? "" })) };
+  }
+  return null;
+}
+
+/** "8×60, 6×55" (reps × weight). */
+export function setsLine(sets) {
+  return (sets || []).map((x) => `${x.r || "?"}${x.w !== "" && x.w != null ? `×${x.w}` : ""}`).join(", ");
+}
