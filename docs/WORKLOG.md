@@ -2,12 +2,26 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-19 — Link exercise card, Direction A, branch `feat/link-card-a`
+
+**Asked**
+- "Make this UI look good, simple but efficient; once they tick, collapse the card; people should feel like ticking." Three directions were mocked on the canvas "Theryn Link Exercise Card" (A tap-the-row, B set pills, C one set at a time, plus lifecycle boards for A and B). Owner chose A.
+
+**Done** (client code only; the submission payload is unchanged)
+- Each set is one full-width tappable row: circle, "Set 1", then the coach's reps and weight as editable numbers (dashed underline until done). Tap the row = done as planned; tap a number to change it, which also ticks the set. A changed set shows its numbers in green with EDITED under the label.
+- When every set is ticked (or the exercise is skipped) the card folds to one 66px line: green check, name, "3 sets · 8×40, 6×37.5, 8×40 kg" with changed sets in green. Tap to reopen; the arrow folds it again. The next exercise becomes current and gets the "Tap a set when it's done" hint.
+- Header progress reads "1 of 5 done · 3 of 15 sets"; the bar tracks sets.
+- Set rows are 301px wide on a 375 phone (inside the card padding), so numerals are 17px tabular and the marker sits under the label rather than after the numbers; nothing clips at "10-12" or "37.5".
+
+**Verified**
+- Preview at 375: tick, edit (6 × 37.5 → EDITED), tick last → folds; tap → reopens with all rows filled; collapse; Skip exercise → "Skipped · tap to undo"; send → receipt. `workoutPayload` output identical to before (per-set detail only where typed). Typecheck, 82 tests, build pass.
+
 ## 2026-09-18 (late night) — Keep every client's history; email for joining later, branch `feat/keep-client-history`
 
 **Decided** (decision 0007): no automatic merge on email. Later, a client brings their history into an account either through their link ("Save my history", with sign-in) or when a verified sign-in email matches, always with their confirmation.
 
 **Built now**
-- Migration `20260918200000_keep_client_history.sql` (additive, idempotent, **not applied yet**): `coach_manual_clients.email` (format-checked, indexed on `lower(email)`), `archived_at`, `linked_athlete_id`. `client_submissions.link_id` is now nullable with `ON DELETE SET NULL`, and `manual_client_id` is `ON DELETE NO ACTION` (blocks deleting a client with check-ins; a coach-account delete still cascades).
+- Migration `20260918200000_keep_client_history.sql` (additive, idempotent; **applied to production 2026-09-18** via the SQL editor, foreign keys verified): `coach_manual_clients.email` (format-checked, indexed on `lower(email)`), `archived_at`, `linked_athlete_id`. `client_submissions.link_id` is now nullable with `ON DELETE SET NULL`, and `manual_client_id` is `ON DELETE NO ACTION` (blocks deleting a client with check-ins; a coach-account delete still cascades).
 - Remove on a name-only client archives it (and turns off its link) instead of deleting. Before the migration is applied, it refuses when the client has check-ins. The list hides archived clients.
 - The name-only client's page has an optional **Email** (add, change, clear; lower-cased) and no longer has "Connect to account".
 - The dashboard works with or without the migration (falls back to the old columns).
