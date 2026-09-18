@@ -20,7 +20,12 @@ import { convertPlan, normUnits } from "../lib/units.js";
 import { planTemplate, stampTemplate, manualPlanFromTemplate } from "../lib/manualTemplates.js";
 import { isoDate } from "../lib/format.js";
 
-const MANUAL_COLS = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
+const MANUAL_COLS_V1 = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
+// email + archived_at come with 20260918200000_keep_client_history.sql; until it is
+// applied the dashboard falls back to V1 (and cannot archive, only refuse to delete).
+const MANUAL_COLS_V2 = MANUAL_COLS_V1 + ", email, archived_at";
+const HISTORY_SETUP_MSG = "This needs a one-time database update: run supabase/migrations/20260918200000_keep_client_history.sql in the Supabase SQL editor.";
+const isMissingColumn = (error) => error?.code === "42703" || error?.code === "PGRST204" || /column .* does not exist|could not find .* column/i.test(String(error?.message || ""));
 const SETUP_MSG = "Name-only clients need a one-time database update. Run supabase/migrations/20260909120000_coach_manual_clients.sql in the Supabase SQL editor.";
 
 function isMissingTable(error) {
@@ -37,25 +42,35 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   // The whole dashboard reads in it; name-only clients' data is converted on load.
   let unitSystem = (profile?.units || profile?.unit_system) === "metric" ? "metric" : "imperial";
   let manualAvailable = true;
+  let historyV2 = true; // email + archived_at columns present
+  const cols = () => (historyV2 ? MANUAL_COLS_V2 : MANUAL_COLS_V1);
 
   // ── Manual client rows ────────────────────────────────────────────────
   async function listManualRows() {
     if (!manualAvailable) return [];
-    const { data, error } = await supabase.from("coach_manual_clients").select(MANUAL_COLS).eq("coach_id", coachId).order("created_at", { ascending: true });
+    let q = supabase.from("coach_manual_clients").select(cols()).eq("coach_id", coachId);
+    if (historyV2) q = q.is("archived_at", null); // archived clients keep their history but leave the list
+    const { data, error } = await q.order("created_at", { ascending: true });
     if (error) {
       if (isMissingTable(error)) { manualAvailable = false; return []; }
+      if (historyV2 && isMissingColumn(error)) { historyV2 = false; return listManualRows(); }
       throw new Error(error.message);
     }
     return data || [];
   }
   async function getManualRow(manualId) {
-    const { data, error } = await supabase.from("coach_manual_clients").select(MANUAL_COLS).eq("id", manualId).eq("coach_id", coachId).maybeSingle();
+    const { data, error } = await supabase.from("coach_manual_clients").select(cols()).eq("id", manualId).eq("coach_id", coachId).maybeSingle();
+    if (error && historyV2 && isMissingColumn(error)) { historyV2 = false; return getManualRow(manualId); }
     if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
     if (!data) throw new Error("This client no longer exists.");
     return data;
   }
   async function patchManualRow(manualId, patch) {
-    const { data, error } = await supabase.from("coach_manual_clients").update(patch).eq("id", manualId).eq("coach_id", coachId).select(MANUAL_COLS).single();
+    const { data, error } = await supabase.from("coach_manual_clients").update(patch).eq("id", manualId).eq("coach_id", coachId).select(cols()).single();
+    if (error && isMissingColumn(error)) {
+      if (historyV2 && !("email" in patch) && !("archived_at" in patch)) { historyV2 = false; return patchManualRow(manualId, patch); }
+      throw new Error(HISTORY_SETUP_MSG);
+    }
     if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
     return data;
   }
@@ -118,6 +133,16 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     async removeClient(linkId) {
       const mid = manualIdOf(linkId);
       if (mid) {
+        // Archive, never delete: their check-ins, plan and payments stay for
+        // reports and for moving onto an account later. Their link stops working.
+        const revoke = () => supabase.from("client_links").update({ revoked_at: new Date().toISOString() }).eq("coach_id", coachId).eq("manual_client_id", mid).is("revoked_at", null);
+        if (historyV2) {
+          try { await patchManualRow(mid, { archived_at: new Date().toISOString() }); await revoke(); return; }
+          catch (e) { if (e.message !== HISTORY_SETUP_MSG) throw e; historyV2 = false; }
+        }
+        // Before the migration: only a client with no check-ins can go (deleting takes their check-ins with it).
+        const sent = await loadSubmissions({ manual_client_id: mid });
+        if (sent.length) throw new Error(`Can't remove yet: that would delete their ${sent.length} check-in${sent.length === 1 ? "" : "s"}. ${HISTORY_SETUP_MSG}`);
         const { error } = await supabase.from("coach_manual_clients").delete().eq("id", mid).eq("coach_id", coachId);
         if (error) throw new Error(error.message);
         return;
@@ -133,11 +158,21 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       await sendCoachRequest(coachId, p.id);
       return p;
     },
+    /** Optional email for a name-only client: later, signing in with it offers them their history. */
+    async updateManualEmail(clientId, email) {
+      const mid = manualIdOf(clientId);
+      if (!mid) throw new Error("Only for clients added by name.");
+      const e = String(email || "").trim().toLowerCase();
+      if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right.");
+      const row = await patchManualRow(mid, { email: e || null });
+      return row.email || null;
+    },
+    get historyKept() { return historyV2; },
     async createManualClient({ firstName, lastName }) {
       const name = cleanName(firstName, lastName);
       if (!name.first_name) throw new Error("A first name is needed.");
       if (!manualAvailable) throw new Error(SETUP_MSG);
-      const { data, error } = await supabase.from("coach_manual_clients").insert({ coach_id: coachId, ...name, payments: [] }).select(MANUAL_COLS).single();
+      const { data, error } = await supabase.from("coach_manual_clients").insert({ coach_id: coachId, ...name, payments: [] }).select(cols()).single();
       if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
       return manualToClient(data);
     },

@@ -32,6 +32,7 @@ export function manualToClient(row) {
     created_at: row.created_at,
     manual: true,
     manualId: row.id,
+    email: row.email || null,
   };
 }
 

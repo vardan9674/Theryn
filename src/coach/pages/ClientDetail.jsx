@@ -1,5 +1,6 @@
 import React from "react";
-import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill } from "../ui/primitives.jsx";
+import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, useToast } from "../ui/primitives.jsx";
+import { useCoachData } from "../data/CoachDataContext.jsx";
 import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
 import { routineStreak } from "../lib/clientFacts.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
@@ -57,9 +58,9 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
       </div>
       {manual && (
-        <div className="cx-row" style={{ justifyContent: "space-between" }}>
+        <div className="cx-col" style={{ gap: 6 }}>
           <span className="cx-small cx-muted">Added by name. They send workouts and measurements through their link.</span>
-          <Button size="sm" onClick={() => actions.linkClient(athleteId)}>Connect to account</Button>
+          <ClientEmail clientId={athleteId} initial={link.email} firstName={row.name.split(" ")[0]} />
         </div>
       )}
 
@@ -76,6 +77,43 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       ) : (
         <PaymentsTab row={row} fees={fees} payments={payments} defaultCurrency={defaultCurrency} actions={actions} payment={payment} />
       )}
+    </div>
+  );
+}
+
+// ── Email (name-only clients) ─────────────────────────────────────────────
+// Optional. Nothing is merged on it: when this person later signs in with the
+// same email, they're offered their history and choose (decision 0007).
+function ClientEmail({ clientId, initial, firstName }) {
+  const data = useCoachData();
+  const toast = useToast();
+  const [email, setEmail] = React.useState(initial || "");
+  const [draft, setDraft] = React.useState(initial || "");
+  const [editing, setEditing] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { setEmail(initial || ""); setDraft(initial || ""); setEditing(false); }, [clientId, initial]);
+  if (typeof data.updateManualEmail !== "function") return null;
+  async function save() {
+    setBusy(true);
+    try { const saved = await data.updateManualEmail(clientId, draft); setEmail(saved || ""); setEditing(false); toast(saved ? "Email saved" : "Email removed"); }
+    catch (e) { toast(e.message || "Could not save", "error"); }
+    finally { setBusy(false); }
+  }
+  if (editing) {
+    return (
+      <div className="cx-row" style={{ gap: 6 }}>
+        <input className="cx-input" type="email" inputMode="email" autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`${firstName}'s email`} aria-label={`${firstName}'s email`} style={{ flex: 1, minWidth: 0 }} autoFocus />
+        <Button size="sm" variant="primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+        <Button size="sm" onClick={() => { setDraft(email); setEditing(false); }} disabled={busy}>Cancel</Button>
+      </div>
+    );
+  }
+  return (
+    <div className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
+      <span className="cx-small" style={{ minWidth: 0 }}>
+        {email ? <><span className="cx-muted">Email </span>{email}</> : <span className="cx-muted">No email yet. Add it so their history can follow them into the app later.</span>}
+      </span>
+      <Button size="sm" onClick={() => setEditing(true)}>{email ? "Change" : "Add email"}</Button>
     </div>
   );
 }

@@ -201,6 +201,8 @@ export function createMockCoachData() {
       if (mid) { st.manual = st.manual.filter((m) => m.id !== mid); return; }
       st.links = st.links.filter((l) => l.id !== linkId);
     },
+    async updateManualEmail(clientId, email) { await wait(150); const m = st.manual.find((r) => r.id === manualIdOf(clientId)); const e = String(email || "").trim().toLowerCase(); if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right."); if (m) m.email = e || null; return m?.email || null; },
+    historyKept: true,
     async createManualClient({ firstName, lastName }) {
       await wait(250);
       const name = cleanName(firstName, lastName);
