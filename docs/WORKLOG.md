@@ -2,6 +2,23 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (night) — Saved plans for name-only clients, branch `feat/plans-for-name-only-clients`
+
+**Asked**
+- "Adding users to a plan doesn't show the clients the coach added by full name." The Plans page was given only app clients (`realClients`), because `routine_template_assignments` references profiles.
+
+**Done** (no schema change)
+- `src/coach/lib/manualTemplates.js`: a name-only client "has" a saved plan when the plan JSON on their `coach_manual_clients` row carries a `template` stamp on its days (`{ id, name, version, overridden }`). `templateDaysToPlan` moved here from PlansPage.
+- `supabaseCoachData` routes every template call by client kind: **Give to a client** copies the saved week into the client's plan (stamped, in the coach's units); **taking it away** removes the stamp and keeps the week; **Send update** copies it again, skipping weeks the coach has since edited unless forced; **Who has it** / counts / "Assigned to …" locks include them. Mock data does the same.
+- The plan editor keeps the stamp on a name-only client's week and marks it `overridden` (like `is_overridden` for app clients). The client's Plan tab says `from your plan "PPL Intermediate"` (and "edited for them").
+- The template editor still gets app clients only: it calls the assignment RPCs directly.
+
+**Verified**
+- Coach preview: Ravi (name-only) listed in Give to a client with "Not on app, gets it through their link"; give → count 3 → 4, "Plan sent to 1 client"; Ravi's Plan tab shows the PPL week "from your plan"; Send update lists all 4 and "Update sent to 4 clients". 4 new tests. Typecheck, 75 tests, build pass.
+
+**Open**
+- Saving a plan inside the template editor offers to push only to app clients; name-only clients get it from Send update on the Plans list.
+
 ## 2026-09-18 (evening) — Everyone in their own kg/lb, branch `feat/universal-units`
 
 **Asked**

@@ -6,22 +6,9 @@ import TemplateEditor from "../../components/templates/TemplateEditor.jsx";
 import AssignAthletesSheet from "../../components/templates/AssignAthletesSheet.jsx";
 import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 
-const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-/** Template days → the weekly plan shape used by the client plan and the export. */
-export function templateDaysToPlan(days) {
-  const out = {};
-  for (const d of DAY_ORDER) out[d] = { type: "Rest", exercises: [] };
-  for (const d of days || []) {
-    const key = DAY_ORDER[d.day_index] || d.label;
-    if (!key) continue;
-    out[key] = {
-      type: d.workout_type || "Rest",
-      exercises: (d.exercises || []).map((e) => ({ name: e.exercise_name, sets: e.target_sets, reps: e.target_reps, coachNote: e.notes || undefined })),
-    };
-  }
-  return out;
-}
+// Moved to lib so the data layer can build name-only clients' weeks from a saved plan.
+export { templateDaysToPlan } from "../lib/manualTemplates.js";
+import { templateDaysToPlan } from "../lib/manualTemplates.js";
 
 /**
  * The coach's saved plans. Each row: Edit · Export to Excel · Send update ·
@@ -145,7 +132,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       <TemplateEditor
         template={editing.template}
         initialDays={editing.days}
-        myAthletes={clients}
+        myAthletes={clients.filter((c) => !c.manual)}
         authUserId={data.coachId}
         onAthletesCacheInvalidate={(ids) => onClientsChanged?.(ids)}
         onBack={async () => { setEditing(null); await reload(); }}

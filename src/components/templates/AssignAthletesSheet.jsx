@@ -162,6 +162,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:14, fontWeight:700, color:TX, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                       {link.athlete_name || "Athlete"}
+                      {link.manual && <span style={{ fontSize:11, fontWeight:600, color:SB, marginLeft:8 }}>· Not on app, gets it through their link</span>}
                     </div>
                     {locked ? (
                       <div style={{ fontSize:11, color:SB, marginTop:1, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
