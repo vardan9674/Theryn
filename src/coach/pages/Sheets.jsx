@@ -207,7 +207,9 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, u
           <Button variant="danger" onClick={() => { onClose(); data.signOut(); }}>Sign out</Button>
         </div>
       </div>
-      <Confirm open={Boolean(removing)} title={`Remove ${removing?.athlete_name}?`} body="They keep their app and data. You stop seeing them here and can't message them until you connect again." confirmLabel="Remove" danger busy={busy} onConfirm={confirmRemove} onClose={() => setRemoving(null)} />
+      <Confirm open={Boolean(removing)} title={`Remove ${removing?.athlete_name}?`} body={removing?.manual
+        ? `This permanently deletes ${removing.athlete_name.split(" ")[0]}'s plan, payments and every workout and measurement they sent through their link. It can't be undone.`
+        : "They keep their app and data. You stop seeing them here and can't message them until you connect again."} confirmLabel="Remove" danger busy={busy} onConfirm={confirmRemove} onClose={() => setRemoving(null)} />
     </Sheet>
   );
 }

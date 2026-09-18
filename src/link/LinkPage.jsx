@@ -5,7 +5,7 @@ import BodyFigure from "./BodyFigure.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 
 const APP_URL = "https://theryn.fit";
@@ -31,6 +31,9 @@ function linkStore(token) {
     sent: (date) => read().sent?.[date] || null,
     units: () => { const u = read().units; return u === "metric" || u === "imperial" ? u : null; },
     setUnits: (u) => write({ ...read(), units: u }),
+    // What they did last time, per exercise, so the page can show it. Kept on this phone.
+    last: (name) => read().last?.[String(name || "").toLowerCase()] || null,
+    saveLast: (entries) => { const s = read(); const last = { ...(s.last || {}) }; for (const [k, v] of Object.entries(entries)) last[k] = v; const keep = Object.entries(last).sort(([, a], [, b]) => (a.date < b.date ? 1 : -1)).slice(0, 80); write({ ...s, last: Object.fromEntries(keep) }); },
     markSent: (date, info) => { const s = read(); const drafts = { ...s.drafts }; delete drafts[date]; write({ ...s, drafts, sent: keepRecent({ ...s.sent, [date]: info }) }); },
   };
 }
@@ -148,6 +151,18 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   </div>;
 }
 
+/** "Mon 14" from an ISO date. */
+function shortDay(iso) { const x = dateOf(iso); return `${dayKeyOf(x)} ${x.getDate()}`; }
+/** "8×40, 7×40, 6×37.5 kg": what they did last time, in today's units. */
+function lastLine(last, units) {
+  const sets = (last.sets || []).map((x) => {
+    const w = x.w !== "" && x.w != null ? convertWeight(x.w, last.units || units, units) : null;
+    return `${x.r || "?"}${w != null ? `×${w}` : ""}`;
+  });
+  const any = (last.sets || []).some((x) => x.w !== "" && x.w != null);
+  return `${sets.join(", ")}${any ? ` ${units === "metric" ? "kg" : "lb"}` : " reps"}`;
+}
+
 function Byline({ coach, units, onUnits }) {
   return (
     <div className="lk-byline">
@@ -170,14 +185,15 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
     if (!x || x.day !== today.key || x.type !== today.type) return null;
     // Weights typed before a kg/lb switch are converted, not reread in the new unit.
     if (!x.units || x.units === d.unit_system) return x;
-    return { ...x, weights: Object.fromEntries(Object.entries(x.weights || {}).map(([k, v]) => [k, v === "" || v == null ? v : String(convertWeight(v, x.units, d.unit_system) ?? "")])) };
+    const conv = (v) => (v === "" || v == null ? v : String(convertWeight(v, x.units, d.unit_system) ?? ""));
+    return { ...x, log: Object.fromEntries(Object.entries(x.log || {}).map(([i, sets]) => [i, Object.fromEntries(Object.entries(sets || {}).map(([k, v]) => [k, { ...v, w: conv(v?.w) }]))])) };
   }, [store, date, today.key, today.type, d.unit_system]);
   const [ticks, setTicks] = React.useState(() => draft?.ticks || {});      // exerciseIndex → sets done
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
-  const [weights, setWeights] = React.useState(() => draft?.weights || {});  // exerciseIndex → weight used
-  const [openWeight, setOpenWeight] = React.useState(() => Object.fromEntries(Object.keys(draft?.weights || {}).map((k) => [k, true])));
+  // exerciseIndex → setIndex → { r, w }: reps and weight the client typed (blank = as planned)
+  const [log, setLog] = React.useState(() => draft?.log || {});
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [picking, setPicking] = React.useState(false);
@@ -190,8 +206,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   // Save every tick as it happens.
   React.useEffect(() => {
     if (!store || controlledTicks || upcoming) return;
-    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, weights, skipped, note });
-  }, [store, date, today.key, today.type, d.unit_system, ticks, weights, skipped, note, controlledTicks, upcoming]);
+    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, log, skipped, note });
+  }, [store, date, today.key, today.type, d.unit_system, ticks, log, skipped, note, controlledTicks, upcoming]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -210,14 +226,21 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
     setSkipped((s) => ({ ...s, [i]: false }));
   };
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); };
+  // Typing reps or weight for a set means it was done: tick it (and the ones before it).
+  const setSetValue = (i, si, field, raw) => {
+    const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [field]: v } } }));
+    if (v !== "") { setTicks((t) => ({ ...t, [i]: Math.max(t[i] || 0, si + 1) })); setSkipped((s) => ({ ...s, [i]: false })); }
+  };
 
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, weights, note, date, d.unit_system);
+      const payload = workoutPayload(today, ticks, log, note, date, d.unit_system);
       const res = await onSubmit(payload);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
       store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
+      store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
       const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
       const setsDone = payload.exercises.reduce((a, e) => a + e.sets_done, 0);
       onSent(setsPlanned > 0
@@ -297,6 +320,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               const n = ticks[i] || 0;
               const done = n >= full;
               const isCurrent = i === currentIdx;
+              const last = store?.last(e.name);
               return (
                 <div key={i} className={`lk-card lk-ex ${done ? "done" : ""}`} style={isCurrent ? { borderColor: "var(--cx-bd2)" } : undefined}>
                   <div className="lk-ex-head">
@@ -311,32 +335,30 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                         {e.weight != null && <><b>{e.weight}</b> {unit} target</>}
                       </div>
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
+                      {last && <div className="lk-last">Last time ({shortDay(last.date)}): {lastLine(last, d.unit_system)}</div>}
                       {skipped[i] && !done && <div className="lk-small">Skipped</div>}
                     </div>
                   </div>
-                  {e.sets > 1 && !done && !upcoming && (
-                    <div className="lk-sets" aria-label="Sets done">
-                      {Array.from({ length: e.sets }, (_, s) => (
-                        <button key={s} type="button" className={`lk-set ${s < n ? "on" : ""}`} aria-pressed={s < n} aria-label={`Set ${s + 1}`} onClick={() => setSets(i, s + 1 === n ? s : s + 1)}>{s < n ? <Icon.Check size={14} /> : s + 1}</button>
-                      ))}
-                    </div>
-                  )}
+                  {/* Every set, with the coach's reps and weight in grey. Type over them only if you did something different. */}
+                  <div className={`lk-setrows ${upcoming ? "readonly" : ""}`} role="group" aria-label={`Sets for ${e.name}`}>
+                    <div className="lk-setrow head"><span>Set</span><span>Reps</span><span>{unit}</span><span>{upcoming ? "" : "Done"}</span></div>
+                    {Array.from({ length: full }, (_, si) => (
+                      <div key={si} className={`lk-setrow ${si < n ? "on" : ""}`}>
+                        <span className="lk-setno">{si + 1}</span>
+                        <input className="lk-setin" inputMode="numeric" placeholder={e.reps || "—"} value={log[i]?.[si]?.r || ""} disabled={upcoming} onChange={(ev) => setSetValue(i, si, "r", ev.target.value)} aria-label={`Set ${si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
+                        <input className="lk-setin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={log[i]?.[si]?.w || ""} disabled={upcoming} onChange={(ev) => setSetValue(i, si, "w", ev.target.value)} aria-label={`Set ${si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
+                        {upcoming ? <span /> : <button type="button" className={`lk-set ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} done`} onClick={() => setSets(i, si + 1 === n ? si : si + 1)}>{si < n ? <Icon.Check size={14} /> : null}</button>}
+                      </div>
+                    ))}
+                  </div>
                   {!upcoming && <div className="lk-ex-actions">
-                    <button type="button" className="lk-linkbtn" onClick={() => setOpenWeight((o) => ({ ...o, [i]: !o[i] }))} aria-expanded={Boolean(openWeight[i])}>
-                      Used a different weight? <Icon.Down size={14} />
-                    </button>
+                    <span className="lk-small">{n > 0 && n < full ? `${n} of ${full} sets done` : ""}</span>
                     {done
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo</button>
                       : skipped[i]
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => setSkipped((s) => ({ ...s, [i]: false }))}>Undo skip</button>
                       : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); }}>Skip</button>}
                   </div>}
-                  {openWeight[i] && !upcoming && (
-                    <div className="lk-row" style={{ justifyContent: "flex-start" }}>
-                      <input className="lk-weight" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "0"} value={weights[i] || ""} onChange={(ev) => setWeights((w) => ({ ...w, [i]: ev.target.value.replace(/[^0-9.]/g, "").slice(0, 6) }))} aria-label={`Weight used for ${e.name}`} />
-                      <span className="lk-small">{unit} used</span>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -346,7 +368,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               <div className="lk-row" style={{ marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 700 }}>How did it feel?</span><span className="lk-small">Optional</span></div>
               <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
             </div>
-            <div className="lk-small">Your checkmarks tell your coach what you completed. Actual weights are optional.</div>
+            <div className="lk-small">Grey numbers are your coach's plan. Tick each set you did, and type over the numbers only if you did something different.</div>
             </>}
             {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}

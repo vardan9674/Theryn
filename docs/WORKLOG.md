@@ -2,6 +2,24 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-18 (late) — Reps and weight per set on the link, branch `feat/link-per-set-reps`
+
+**Asked**
+- "Reps should be more elaborate. Right now it's only a tick. When the coach adds reps and lbs, the client can update them if they didn't do exactly that."
+
+**Done** (no schema change; `sets` is a new optional key inside each workout exercise in the `client_submissions` payload)
+- Link page: tapping the box still means "all done as planned". **Change reps or weight** (replaces "Used a different weight?") opens one row per set with Reps and weight boxes, the coach's reps and weight as placeholders, and a Done tick. Typing into a set ticks it. Blank means as planned. Closed, the card says "You logged: 7×40, 6×37.5 kg". Drafts keep the rows and convert typed weights on a kg/lb switch.
+- Payload: exercises carry `sets: [{ n, done, reps?, weight? }]` only when the client typed something (link_submit caps payloads at 20,000 characters); `weight_used` is the first typed weight, for the promotion path and older readers.
+- Coach: the Workouts tab shows `2/3 sets · kg × reps` then one chip per done set (`45×10`, `40×6`), highlighting sets that differ from the plan (reps outside the range, or a different weight). History, volume, PRs and the plan editor's Last use the per-set numbers; a blank set counts at the planned weight. Per-set weights convert between kg and lb like the rest.
+
+**Then, asked:** "Remove 1, 2, 3; let the weight and reps show so they know what to do; show the previous weights for both client and coach; make sure everything is stored."
+- The squares are gone. Every exercise always shows its set rows (reps, weight, done) with the coach's numbers in grey; later days show them read-only.
+- **Last time**: the link page shows "Last time (Mon 14): 8×40, 8×40, 6×37.5 kg" per exercise, remembered on the client's phone when they send (the link page has no server history by design, see decision 0006). The coach's Plan tab shows "Last time (Sep 17): 10×45, 6×40 kg" under each exercise from the client's history.
+- **Found: check-ins are deleted with the name-only client.** `client_submissions.manual_client_id` is `ON DELETE CASCADE`, so Remove and "Connect to account" (which deletes the name-only row) wipe every link check-in. Until a migration fixes it: Connect to account refuses when the client has check-ins, and Remove says plainly what gets deleted. Proposed fix (needs approval, it changes the database): keep submissions when the row goes, move them onto the account on connect, and have `link_view` return last-time sets so they show on any phone.
+
+**Verified**
+- Link page at 375: rows with 8-10 / 40 placeholders, typed sets tick, summary when closed. Coach preview: Ravi's Bench Press shows `45×10` and a highlighted `40×6`. 5 new tests (one caught blank sets taking the typed weight instead of the planned one). Typecheck, 76 tests, build pass.
+
 ## 2026-09-18 (night) — Saved plans for name-only clients, branch `feat/plans-for-name-only-clients`
 
 **Asked**

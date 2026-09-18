@@ -479,3 +479,5 @@
 .cx-tour-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--cx-bd2); display: block; }
 .cx-tour-dots i.done { background: var(--cx-mu); }
 .cx-tour-dots i.on { background: var(--cx-a); width: 16px; border-radius: 3px; }
+/* A set the client did differently from the plan (link check-ins with per-set reps/weight) */
+.cx-setchip.changed { border-color: rgba(200, 255, 0, 0.45); color: var(--cx-tx); }

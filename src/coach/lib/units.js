@@ -89,6 +89,7 @@ export function convertSubmission(sub, to, { workoutFrom = to } = {}) {
       ...e,
       weight_used: e.weight_used != null ? convertWeight(e.weight_used, from, target) : e.weight_used,
       weight_target: e.weight_target != null ? convertWeight(e.weight_target, from, target) : e.weight_target,
+      ...(Array.isArray(e.sets) ? { sets: e.sets.map((x) => (x && x.weight != null ? { ...x, weight: convertWeight(x.weight, from, target) } : x)) } : {}),
     }));
     return { ...sub, payload: { ...p, exercises, weight_unit: target } };
   }
