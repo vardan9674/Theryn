@@ -317,7 +317,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         ) : tab === "clients" ? (
           <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} detailTab={detailTab} onDetailTab={setDetailTab} />
         ) : tab === "plans" ? (
-          <PlansPage clients={realClients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
+          <PlansPage clients={clients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
         ) : tab === "payments" ? (
           <PaymentsPage clients={clients} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} actions={actions} />
         ) : (

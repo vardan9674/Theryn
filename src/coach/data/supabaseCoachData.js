@@ -17,6 +17,7 @@ import {
 } from "../lib/manualClients.js";
 import { generateToken, hashToken, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan, normUnits } from "../lib/units.js";
+import { planTemplate, stampTemplate, manualPlanFromTemplate } from "../lib/manualTemplates.js";
 import { isoDate } from "../lib/format.js";
 
 const MANUAL_COLS = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
@@ -262,19 +263,73 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       return () => { supabase.removeChannel(channel); };
     },
 
-    // Plans (templates)
-    listTemplates: () => listTemplates(coachId),
+    // Plans (templates). Name-only clients can't be in routine_template_assignments,
+    // so for them "has this plan" is a `template` stamp on their plan JSON
+    // (see lib/manualTemplates.js). Every call below splits the two kinds.
+    async listTemplates() {
+      const [list, manual] = await Promise.all([listTemplates(coachId), listManualRows()]);
+      const extra = {};
+      for (const r of manual) { const t = planTemplate(r.plan); if (t) extra[t.id] = (extra[t.id] || 0) + 1; }
+      return list.map((t) => ({ ...t, assignment_count: (t.assignment_count || 0) + (extra[t.id] || 0) }));
+    },
     createTemplate: (name) => createTemplate(coachId, name),
     getTemplateWithTree,
     updateTemplateName,
     saveTemplateTree,
     duplicateTemplate: (id, name) => duplicateTemplate(id, name, coachId),
     softDeleteTemplate,
-    assignTemplate,
-    pushTemplateUpdate: (id, athleteIds, force, skipMidWeek) => pushTemplateUpdate(id, athleteIds, { force: Boolean(force), skipMidWeek: skipMidWeek !== false }),
-    unassignTemplate,
-    getTemplateAssignments,
-    getActiveAssignmentsForAthletes,
+    async assignTemplate(templateId, clientIds) {
+      const manualIds = clientIds.filter(isManualId), appIds = clientIds.filter((id) => !isManualId(id));
+      const res = appIds.length ? await assignTemplate(templateId, appIds) : { succeeded: [], failed: [], archived: [] };
+      if (manualIds.length) {
+        const { template, days } = await getTemplateWithTree(templateId);
+        for (const id of manualIds) {
+          try { await patchManualRow(manualIdOf(id), { plan: manualPlanFromTemplate(template, days, unitSystem) }); res.succeeded = [...(res.succeeded || []), id]; }
+          catch (e) { res.failed = [...(res.failed || []), { athlete_id: id, reason: e.message }]; }
+        }
+      }
+      return res;
+    },
+    async pushTemplateUpdate(templateId, clientIds, force, skipMidWeek) {
+      const ids = clientIds || null;
+      const appIds = ids ? ids.filter((id) => !isManualId(id)) : null;
+      const res = !ids || appIds.length ? await pushTemplateUpdate(templateId, appIds, { force: Boolean(force), skipMidWeek: skipMidWeek !== false }) : { succeeded: [], skipped_overridden: [], skipped_mid_week: [], active_session_conflicts: [], failed: [] };
+      const rows = (await listManualRows()).filter((r) => planTemplate(r.plan)?.id === templateId && (!ids || ids.includes(toClientId(r.id))));
+      if (rows.length) {
+        const { template, days } = await getTemplateWithTree(templateId);
+        for (const r of rows) {
+          const id = toClientId(r.id);
+          // The coach edited this client's week since: keep it unless they chose to overwrite.
+          if (planTemplate(r.plan)?.overridden && !force) { res.skipped_overridden = [...(res.skipped_overridden || []), id]; continue; }
+          try { await patchManualRow(r.id, { plan: manualPlanFromTemplate(template, days, unitSystem) }); res.succeeded = [...(res.succeeded || []), id]; }
+          catch (e) { res.failed = [...(res.failed || []), { athlete_id: id, reason: e.message }]; }
+        }
+      }
+      return res;
+    },
+    async unassignTemplate(templateId, clientIds) {
+      const manualIds = clientIds.filter(isManualId), appIds = clientIds.filter((id) => !isManualId(id));
+      if (appIds.length) await unassignTemplate(templateId, appIds);
+      // Their week stays; it just stops following the saved plan.
+      for (const id of manualIds) {
+        const row = await getManualRow(manualIdOf(id));
+        if (planTemplate(row.plan)?.id === templateId) await patchManualRow(row.id, { plan: stampTemplate(row.plan, null) });
+      }
+    },
+    async getTemplateAssignments(templateId) {
+      const [rows, manual] = await Promise.all([getTemplateAssignments(templateId), listManualRows()]);
+      const extra = manual.filter((r) => planTemplate(r.plan)?.id === templateId).map((r) => {
+        const t = planTemplate(r.plan);
+        return { id: "manual-as:" + r.id, template_id: templateId, athlete_id: toClientId(r.id), coach_id: coachId, athlete_name: manualToClient(r).athlete_name, assigned_at: r.updated_at, last_pushed_version: t.version, is_overridden: Boolean(t.overridden), unassigned_at: null };
+      });
+      return [...rows, ...extra];
+    },
+    async getActiveAssignmentsForAthletes(clientIds) {
+      const appIds = clientIds.filter((id) => !isManualId(id));
+      const [out, manual] = await Promise.all([appIds.length ? getActiveAssignmentsForAthletes(appIds) : {}, clientIds.some(isManualId) ? listManualRows() : []]);
+      for (const r of manual) { const t = planTemplate(r.plan); if (t && clientIds.includes(toClientId(r.id))) out[toClientId(r.id)] = { template_id: t.id, template_name: t.name }; }
+      return out;
+    },
 
     // Client links. link_view/link_submit only ever see the hash. So the coach
     // can copy the link on any device, the raw token is also kept in the row's

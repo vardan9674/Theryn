@@ -7,6 +7,7 @@ import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.j
 import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary } from "../lib/workouts.js";
+import { planTemplate } from "../lib/manualTemplates.js";
 
 const TABS = [
   { id: "plan", label: "Plan" },
@@ -84,6 +85,7 @@ function PlanTab({ data, row, actions }) {
   const unit = data.profile?.unit_system === "metric" ? "kg" : "lb";
   const routine = data.routine;
   const athleteId = row.link.athlete_id;
+  const fromPlan = planTemplate(routine);
   const trainingDays = routine ? DAYS.filter((d) => routine[d]?.type && routine[d].type !== "Rest") : [];
   const types = [...new Set(trainingDays.map((d) => routine[d].type))];
   const [open, setOpen] = React.useState(null);
@@ -97,8 +99,8 @@ function PlanTab({ data, row, actions }) {
     return (
       <Empty title="No plan yet" action={<Button variant="primary" icon={<Icon.Edit />} onClick={() => actions.editPlan(athleteId)}>Build a plan</Button>}>
         {row.link.manual
-          ? `Give ${row.name.split(" ")[0]} a week of workouts. They tick it off through their link, or you can export it to Excel.`
-          : `Give ${row.name.split(" ")[0]} a week of workouts, or assign one of your saved plans from the Plans page.`}
+          ? `Build ${row.name.split(" ")[0]} a week of workouts, or add them to one of your saved plans on the Plans page. They tick it off through their link.`
+          : `Build ${row.name.split(" ")[0]} a week of workouts, or add them to one of your saved plans on the Plans page.`}
       </Empty>
     );
   }
@@ -107,7 +109,7 @@ function PlanTab({ data, row, actions }) {
     <>
       <div>
         <div style={{ fontSize: 16, fontWeight: 700 }}>{types.join(" / ")}</div>
-        <div className="cx-small cx-muted">{plural(trainingDays.length, "day")} a week</div>
+        <div className="cx-small cx-muted">{plural(trainingDays.length, "day")} a week{fromPlan ? ` · from your plan "${fromPlan.name}"${fromPlan.overridden ? " (edited for them)" : ""}` : ""}</div>
       </div>
       <div className="cx-col">
         {trainingDays.map((d) => {

@@ -5945,7 +5945,7 @@ function CoachApp({ authUser, profile, setProfile, coachLinks, setCoachLinks, co
               width: "100%", maxWidth: 430,
               background: S1, borderRadius: "20px 20px 0 0",
               padding: "28px 20px 40px",
-              animation: "drawerUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+              animation: "drawerUpCentered 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -7194,7 +7194,7 @@ function BottomSheet({ children, onClose, title }) {
           width: "100%", maxWidth: 480,
           background: S1, borderRadius: "20px 20px 0 0",
           padding: "22px 20px 32px",
-          animation: "drawerUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          animation: "drawerUpCentered 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)",
           maxHeight: "85vh", overflowY: "auto",
         }}
       >
