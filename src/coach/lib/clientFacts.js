@@ -3,6 +3,7 @@
 import { detectSignals, summarizeForRow, SEVERITY_COLORS } from "../../lib/coachInsights.js";
 import { athletePaymentStatus } from "../../hooks/usePayments.ts";
 import { DAYS, dayKey, isoDate, startOfWeek, daysBetween, plural } from "./format.js";
+import { streakStats } from "./streak.js";
 
 /** Days since the most recent completed workout, or null if none. */
 export function daysSinceLastWorkout(history, now = new Date()) {
@@ -57,21 +58,7 @@ export function weekProgress(history, routine, now = new Date()) {
 /** Routine streak in days: worked out or rested-on-rest-day, walking back from today. */
 export function routineStreak(history, routine, now = new Date()) {
   if (!history || history.length === 0 || !routine) return 0;
-  const worked = new Set(history.map((w) => w.date));
-  let first = history[0].date;
-  for (const w of history) if (w.date < first) first = w.date;
-  const check = new Date(now);
-  check.setHours(0, 0, 0, 0);
-  const todayIso = isoDate(now);
-  let streak = 0;
-  while (isoDate(check) >= first) {
-    const iso = isoDate(check);
-    const rest = routine[dayKey(check)]?.type === "Rest";
-    if (worked.has(iso) || rest) streak++;
-    else if (iso !== todayIso) break;
-    check.setDate(check.getDate() - 1);
-  }
-  return streak;
+  return streakStats(history.map((w) => w.date), routine, now).current;
 }
 
 /**

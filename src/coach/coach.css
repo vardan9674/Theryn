@@ -147,6 +147,7 @@
 .cx-stat { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; }
 .cx-stat .k { font-size: 12px; color: var(--cx-mu); }
 .cx-stat .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cx-stat .s { font-size: 11px; color: var(--cx-mu); min-height: 14px; }
 .cx-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .cx-avatar {
   width: 40px; height: 40px; border-radius: 50%; background: var(--cx-s2); color: var(--cx-a);
@@ -197,7 +198,7 @@
 
 .cx-trow, .cx-thead {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) 130px 150px 120px minmax(160px, 2fr) 32px;
+  grid-template-columns: minmax(170px, 1.2fr) 120px 92px 140px 110px minmax(150px, 2fr) 32px;
   gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--cx-bd);
 }
 .cx-thead { font-size: 11px; font-weight: 600; color: var(--cx-mu); text-transform: uppercase; letter-spacing: 0.06em; background: var(--cx-s2); padding-top: 10px; padding-bottom: 10px; }
@@ -389,7 +390,7 @@
   .cx-table { display: block; }
   .cx-cards { display: none; }
   .cx-col-week { display: none; }
-  .cx-trow, .cx-thead { grid-template-columns: minmax(170px, 1.2fr) 120px 110px minmax(160px, 2fr) 32px; }
+  .cx-trow, .cx-thead { grid-template-columns: minmax(160px, 1.2fr) 112px 84px 104px minmax(150px, 2fr) 32px; }
   .cx-overlay { align-items: center; padding: 24px; }
   .cx-sheet { max-width: 640px; border-radius: 16px; border-bottom: 1px solid var(--cx-bd2); padding: 20px 24px 24px; }
   .cx-sheet-grip { display: none; }
@@ -421,7 +422,7 @@
   .cx-panel .cx-detail { padding: 24px 20px; }
   .cx-split .cx-page { padding: 0; }
   .cx-col-week { display: block; }
-  .cx-trow, .cx-thead { grid-template-columns: minmax(180px, 1.2fr) 130px 150px 120px minmax(160px, 2fr) 32px; }
+  .cx-trow, .cx-thead { grid-template-columns: minmax(170px, 1.2fr) 120px 92px 140px 110px minmax(150px, 2fr) 32px; }
   .cx-drawer, .cx-drawer-backdrop { display: none; }
   .cx-daycols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .cx-daycol { min-height: 320px; }
@@ -481,3 +482,17 @@
 .cx-tour-dots i.on { background: var(--cx-a); width: 16px; border-radius: 3px; }
 /* A set the client did differently from the plan (link check-ins with per-set reps/weight) */
 .cx-setchip.changed { border-color: rgba(200, 255, 0, 0.45); color: var(--cx-tx); }
+
+/* Streak: days in a row (workouts plus planned rest days) */
+.cx-streak { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--cx-a); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cx-streak small { font-size: 11px; font-weight: 600; margin-left: 2px; }
+.cx-streak.risk { color: #F5A742; }
+.cx-streak.off { color: var(--cx-mu); font-weight: 700; }
+.cx-streak.chip { align-self: flex-start; height: 22px; padding: 0 9px 0 6px; border-radius: 11px; background: #1E2A00; font-size: 12px; margin-top: 4px; }
+.cx-streak.chip.risk { background: #2A1E00; }
+.cx-strip { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+.cx-strip i { display: block; height: 22px; border-radius: 5px; background: var(--cx-bd2); box-sizing: border-box; }
+.cx-strip i.done { background: var(--cx-a); }
+.cx-strip i.rest { background: var(--cx-s2); border: 1px dashed #3A3A3A; }
+.cx-strip i.before { background: transparent; border: 1px solid var(--cx-bd); }
+.cx-strip i.today { background: transparent; border: 1.5px solid var(--cx-a); }

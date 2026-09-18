@@ -1,0 +1,69 @@
+// One streak rule for the coach dashboard and the client's link page.
+// A day keeps the streak going if a workout was done on it, or the plan says
+// Rest. A planned day with no workout ends it. Today never ends it (the day
+// isn't over), and a run made only of rest days doesn't count as a streak.
+// Pure; dates are local "YYYY-MM-DD" strings.
+import { isoDate, dayKey } from "./format.js";
+
+const MAX_DAYS = 400;
+const at = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d, 12); };
+
+/**
+ * @param doneDates ISO dates with a workout (array or Set; duplicates fine)
+ * @param plan      weekly plan { Mon: { type }, ... }; no plan = every day is a training day
+ * @returns { current, best, atRisk, brokeAt, doneToday, thisMonth, days }
+ *   brokeAt: length of a streak of 3+ that ended in the last 7 days (when current is 0)
+ *   days: the last 14 days, oldest first: { iso, state: "done" | "rest" | "missed" | "today" | "before" }
+ */
+export function streakStats(doneDates, plan, now = new Date()) {
+  const done = new Set([...(doneDates || [])].filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x))));
+  const todayIso = isoDate(now);
+  const isRest = (d) => plan?.[dayKey(d)]?.type === "Rest";
+  const empty = { current: 0, best: 0, atRisk: false, brokeAt: 0, doneToday: done.has(todayIso), thisMonth: 0, days: [] };
+
+  let first = null;
+  for (const x of done) if (!first || x < first) first = x;
+  const today = at(todayIso);
+  const floor = new Date(today); floor.setDate(today.getDate() - MAX_DAYS);
+  const start = first ? (at(first) < floor ? floor : at(first)) : null;
+
+  let run = 0, workouts = 0, best = 0, broke = null;
+  if (start) {
+    for (const d = new Date(start); isoDate(d) <= todayIso; d.setDate(d.getDate() + 1)) {
+      const iso = isoDate(d);
+      if (done.has(iso)) { run++; workouts++; }
+      else if (isRest(d)) { if (run > 0) run++; }
+      else if (iso === todayIso) { /* still time today */ }
+      else { if (workouts > 0) broke = { length: run, endedOn: iso }; run = 0; workouts = 0; }
+      if (workouts > 0 && run > best) best = run;
+    }
+  }
+  const current = workouts > 0 ? run : 0;
+
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    const iso = isoDate(d);
+    const state = done.has(iso) ? "done" : !first || iso < first ? "before" : isRest(d) ? "rest" : iso === todayIso ? "today" : "missed";
+    days.push({ iso, state });
+  }
+
+  const month = todayIso.slice(0, 7);
+  let thisMonth = 0;
+  for (const x of done) if (x.startsWith(month)) thisMonth++;
+
+  const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+  const brokeAt = current === 0 && broke && broke.length >= 3 && broke.endedOn >= isoDate(weekAgo) ? broke.length : 0;
+  const doneToday = done.has(todayIso);
+  const atRisk = current > 0 && !doneToday && !isRest(today) && now.getHours() >= 18;
+
+  return { ...empty, current, best, atRisk, brokeAt, doneToday, thisMonth, days };
+}
+
+/** What the streak becomes if `iso` is also done (the receipt, right after sending). */
+export function streakWith(doneDates, iso, plan, now = new Date()) {
+  return streakStats([...(doneDates || []), iso], plan, now);
+}
+
+/** "6-day streak" */
+export const streakLabel = (n) => `${n}-day streak`;

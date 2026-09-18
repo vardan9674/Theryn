@@ -2,7 +2,7 @@ import React from "react";
 import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
-import { routineStreak } from "../lib/clientFacts.js";
+import { streakStats, streakLabel } from "../lib/streak.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
@@ -47,6 +47,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="name">{row.name}</div>
           <div className="status">{loading ? <span className="cx-muted">Loading…</span> : statusLine}</div>
+          {!loading && row.streak?.current >= 2 && !/streak/i.test(todo?.text || "") && <span className={`cx-streak chip ${row.streak.atRisk ? "risk" : ""}`}><Icon.Flame size={12} />{streakLabel(row.streak.current)}{row.streak.atRisk ? " · at risk today" : row.streak.best > row.streak.current ? ` · best ${row.streak.best}` : ""}</span>}
         </div>
         {onClose && <Button icon={<Icon.Close />} size="sm" aria-label="Close" onClick={onClose} />}
       </div>
@@ -195,7 +196,7 @@ function ProgressTab({ data, row }) {
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
   const stats = React.useMemo(() => computeStats(data), [data]);
-  const streak = routineStreak(history, routine);
+  const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine), [history, routine]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
   const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
   const [openId, setOpenId] = React.useState(null);
@@ -204,11 +205,18 @@ function ProgressTab({ data, row }) {
   return (
     <>
       <div className="cx-stats" style={{ marginBottom: 0 }}>
-        <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v">{streak}d</span></div>
+        <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
         <div className="cx-card cx-stat"><span className="k">Last 28 days</span><span className="v">{stats.adherencePct == null ? "—" : `${stats.adherencePct}%`}</span></div>
         <div className="cx-card cx-stat"><span className="k">Avg session</span><span className="v">{stats.sessionAvgMin == null ? "—" : `${stats.sessionAvgMin}m`}</span></div>
       </div>
       <div className="cx-small cx-muted">"Last 28 days" is the share of planned workouts that were done.</div>
+      <div className="cx-card cx-card-pad cx-col" style={{ gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }} className="cx-muted">Last 14 days</span>
+        <div className="cx-strip" role="img" aria-label={`Last 14 days: ${st.days.filter((x) => x.state === "done").length} workouts`}>
+          {st.days.map((x) => <i key={x.iso} className={x.state} title={`${shortDate(x.iso)}: ${x.state === "done" ? "workout" : x.state === "rest" ? "rest day" : x.state === "missed" ? "missed" : x.state === "today" ? "today" : "before they started"}`} />)}
+        </div>
+        <span className="cx-small cx-muted">Green = workout · dashed = rest day · grey = missed</span>
+      </div>
 
       <div className="cx-card">
         <div className="cx-card-pad" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600 }}>Recent workouts</div>

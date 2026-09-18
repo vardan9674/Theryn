@@ -2,6 +2,20 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-19 (later) — Streaks for clients and coaches, branch `feat/streaks`
+
+**Asked**
+- "Add the streak next to the date in a subtle way, with an animation so the user has some motivation; the coach should see their client's streak too." Mocked on the "Theryn Link Exercise Card" canvas (bottom row), then built.
+
+**Done**
+- `src/coach/lib/streak.js`: one rule for both sides. A day keeps the streak if a workout was done or the plan says Rest; a missed planned day ends it; today never ends it; a run of only rest days is not a streak. Returns current, best, atRisk (planned, not done, after 6 pm), brokeAt (a 3+ streak that ended in the last 7 days), thisMonth, and the last 14 days. `routineStreak` now delegates to it, so existing numbers and insights agree. 7 tests.
+- **Link page:** a chip by the date from 2 days ("5-day streak"; amber "5 · tick today to keep it"; solid with one pulse after sending; "10 · new best"); one line of copy ("Tick today and that's 6 days in a row. Your best is 9."); last-7-days dots under the week strip. The receipt shows a ring that fills toward their best with the number counting up, Streak / Best / This month tiles, and "Tomorrow is Pull; tick it to make 7." Motion is off under prefers-reduced-motion.
+- **Coach:** a Streak column in the clients table (flame + days, amber "at risk", grey "0 · was 9" for a week after one ends), the chip on phone cards and under the client's name (hidden when the status line already talks about the streak), the Workouts tile with "best N", and a 14-day strip (workout / rest / missed).
+- **Data:** the link page counts from `done_dates` returned by `link_view` plus what this phone has sent. Migration `20260919100000_link_view_done_dates.sql` adds `done_dates` (dates only, last 400 days) to `link_view`; **not applied yet**. Without it the page still works and counts from this phone only. Decision 0006 amended.
+
+**Verified**
+- Preview at 375: chip (at-risk state, since it was after 6 pm), copy, dots; send → ring 3, "4 more days to match your best of 7", tiles, tomorrow nudge; back → solid "3-day streak". Coach preview at 1024: column values 28 / 26 / "0 was 18", chip, tile, strip. Typecheck, 89 tests, build pass.
+
 ## 2026-09-19 — Link exercise card, Direction A, branch `feat/link-card-a`
 
 **Asked**

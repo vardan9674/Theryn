@@ -20,6 +20,7 @@ export const Icon = {
   Send: (p) => <svg width={p.size || 18} height={p.size || 18} {...svgProps}><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>,
   Grip: (p) => <svg width={p.size || 18} height={p.size || 18} {...svgProps}><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01" /></svg>,
   Trash: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>,
+  Flame: (p) => <svg width={p.size || 14} height={p.size || 14} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" /></svg>,
   Check: (p) => <svg width={p.size || 12} height={p.size || 12} {...svgProps} strokeWidth={3}><path d="M5 12l5 5 9-10" /></svg>,
   Down: (p) => <svg width={p.size || 12} height={p.size || 12} {...svgProps} strokeWidth={2.5}><path d="M6 9l6 6 6-6" /></svg>,
   Share: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13" /></svg>,

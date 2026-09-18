@@ -50,7 +50,7 @@ RPCs rather than an Edge Function because the project already runs on RPCs, ther
 - Mobile-first, works in any browser and inside the WhatsApp in-app browser.
 - **Body measurements tab:** front body figure (inline SVG, the drawing from `mockups/share-links/`) with callout labels on chest, waist, hips, arm, thigh. No back view. Only the measurements the coach asked for are marked required; body weight is always optional. Tapping a region highlights it and focuses its field. Unit toggle (in/cm, lb/kg) defaulting to the client's unit. Weight field. Save sends everything; a plain "Sent to <Coach name>" confirmation.
 - **Today's workout tab:** the day's type and exercises with sets, reps and the coach's target weight, one checkbox per set (tap to tick), an optional "weight I used" per exercise, a note field, and **Mark complete**. Rest days say so and show the next training day.
-- Shows the client's first name and the coach's name so they know it's theirs. No history is shown (a bearer of the link should not see past data). Footer: "Want your plan on your phone? Get the app" — a nudge, never a block.
+- Shows the client's first name and the coach's name so they know it's theirs. No history is shown (a bearer of the link should not see past data). (Amended 2026-09-19: `link_view` also returns the dates the client trained, last 400 days, dates only, so their streak is right on any phone. Still no exercises, weights, notes or measurements.) Footer: "Want your plan on your phone? Get the app" — a nudge, never a block.
 - Link preview (Open Graph) is generic: "Your coach sent you a form from Theryn". No name in the preview.
 
 ### Coach side
