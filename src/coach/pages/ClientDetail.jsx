@@ -99,8 +99,8 @@ function PlanTab({ data, row, actions }) {
     return (
       <Empty title="No plan yet" action={<Button variant="primary" icon={<Icon.Edit />} onClick={() => actions.editPlan(athleteId)}>Build a plan</Button>}>
         {row.link.manual
-          ? `Give ${row.name.split(" ")[0]} a week of workouts. They tick it off through their link, or you can export it to Excel.`
-          : `Give ${row.name.split(" ")[0]} a week of workouts, or assign one of your saved plans from the Plans page.`}
+          ? `Build ${row.name.split(" ")[0]} a week of workouts, or add them to one of your saved plans on the Plans page. They tick it off through their link.`
+          : `Build ${row.name.split(" ")[0]} a week of workouts, or add them to one of your saved plans on the Plans page.`}
       </Empty>
     );
   }
