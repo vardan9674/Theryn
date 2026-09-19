@@ -67,3 +67,31 @@ export function streakWith(doneDates, iso, plan, now = new Date()) {
 
 /** "6-day streak" */
 export const streakLabel = (n) => `${n}-day streak`;
+
+/**
+ * Consistency since the client joined: planned workout days they trained on,
+ * out of planned workout days so far. Rest days don't count. Today counts
+ * only once it's done (there's still time). A workout on a rest day makes up
+ * for a missed one, never past 100%.
+ *   1 of 1 → 100%, 1 of 2 → 50%.
+ * startIso: the day they were added (earlier workouts move it back).
+ */
+export function consistencyStats(doneDates, plan, startIso, now = new Date()) {
+  const done = new Set([...(doneDates || [])].filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x))));
+  const todayIso = isoDate(now);
+  const isPlanned = (d) => { const day = plan?.[dayKey(d)]; return Boolean(day?.type && day.type !== "Rest" && (day.exercises || []).length); };
+  let first = /^\d{4}-\d{2}-\d{2}/.test(String(startIso || "")) ? String(startIso).slice(0, 10) : null;
+  for (const x of done) if (!first || x < first) first = x;
+  if (!first || first > todayIso) return { planned: 0, done: 0, pct: null, since: first };
+  let planned = 0, hit = 0, extra = 0;
+  for (const d = at(first); isoDate(d) <= todayIso; d.setDate(d.getDate() + 1)) {
+    const iso = isoDate(d);
+    if (isPlanned(d)) {
+      if (iso === todayIso && !done.has(iso)) continue;
+      planned++;
+      if (done.has(iso)) hit++;
+    } else if (done.has(iso)) extra++;
+  }
+  const got = Math.min(planned, hit + extra);
+  return { planned, done: got, pct: planned ? Math.round((got / planned) * 100) : null, since: first };
+}

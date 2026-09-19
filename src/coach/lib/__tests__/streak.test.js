@@ -47,3 +47,27 @@ describe("streakStats", () => {
     expect(streakWith(["2026-09-14", "2026-09-15", "2026-09-16"], "2026-09-18", plan, fri()).current).toBe(5);
   });
 });
+
+import { consistencyStats } from "../streak.js";
+describe("consistency since they joined", () => {
+  // Mon/Wed/Fri training, the rest are rest days. 2026-09-14 is a Monday.
+  const plan = { Mon: { type: "Push", exercises: ["Bench"] }, Tue: { type: "Rest" }, Wed: { type: "Pull", exercises: ["Row"] }, Thu: { type: "Rest" }, Fri: { type: "Legs", exercises: ["Squat"] }, Sat: { type: "Rest" }, Sun: { type: "Rest" } };
+  const at = (iso, h = 20) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d, h); };
+  it("1 of 1 is 100%, 1 of 2 is 50%", () => {
+    expect(consistencyStats(["2026-09-14"], plan, "2026-09-14", at("2026-09-14"))).toMatchObject({ planned: 1, done: 1, pct: 100 });
+    // Wed was missed; it is Thursday now.
+    expect(consistencyStats(["2026-09-14"], plan, "2026-09-14", at("2026-09-17"))).toMatchObject({ planned: 2, done: 1, pct: 50 });
+  });
+  it("ignores rest days, and today until it's done", () => {
+    // Joined Mon, trained Mon; it's Tue (rest) → still 1 of 1.
+    expect(consistencyStats(["2026-09-14"], plan, "2026-09-14", at("2026-09-15"))).toMatchObject({ planned: 1, pct: 100 });
+    // Wed is today and not done yet → not counted.
+    expect(consistencyStats(["2026-09-14"], plan, "2026-09-14", at("2026-09-16", 9))).toMatchObject({ planned: 1, done: 1, pct: 100 });
+    // Once Wednesday is done it counts: 2 of 2.
+    expect(consistencyStats(["2026-09-14", "2026-09-16"], plan, "2026-09-14", at("2026-09-16"))).toMatchObject({ planned: 2, done: 2, pct: 100 });
+  });
+  it("starts the day they joined; a rest-day workout makes up a missed one", () => {
+    expect(consistencyStats([], plan, "2026-09-16", at("2026-09-16", 9)).pct).toBe(null);
+    expect(consistencyStats(["2026-09-15"], plan, "2026-09-14", at("2026-09-15")).pct).toBe(100);
+  });
+});
