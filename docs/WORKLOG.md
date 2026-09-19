@@ -3,6 +3,24 @@
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
 
+## 2026-09-19 (night) — Saved plans use the new plan editor, branch `feat/saved-plan-editor` (on top of `feat/plan-editor-v2`)
+
+**Asked**
+- "get it matched": the saved-plans editor (Plans page) should work like the new per-set plan editor.
+
+**Done**
+- The Plans page's "Edit plan" now opens `PlanEditor` (day strip, one-line cards, per-set reps and weight, Same for all, Add sheet, Copy day, sticky Save, laptop preview). It takes `title`, `status`, `onTitleChange` and `onSave` for a saved plan; no client, no history. Tap the name to rename. After saving, if the plan has clients, the existing "Update clients' plans" sheet opens.
+- `lib/manualTemplates.js`: `planToTemplateDays` (editor week → template rows, keeping library links by name) and `templateDaysToPlan(days, units)` now carry `target_weight`, `set_list` and `weight_unit`, converting to the coach's units. Name-only clients given a saved plan get the per-set week; Excel export of a saved plan includes weights.
+- **Migration `20260919120000_template_set_targets.sql`** (additive: three nullable columns on `routine_template_exercises`). Until it is run, saving still works: `saveTemplateTree` retries without the new columns and the editor says weights need the database update. `saveTemplateTree` also now throws when exercises fail to insert (it used to log and carry on after deleting the old days).
+- Add sheet on a rest or custom day (a new saved plan starts all rest) offers popular lifts instead of nothing.
+- The old `components/templates/TemplateEditor.jsx` is still used by the legacy app's `CoachTemplatesTab`; untouched.
+
+**Not covered**
+- App-account clients: `assign_template` / `push_template_update` copy into `routine_exercises`, which has no weight or per-set columns, so they get sets and reps ("12/10/8") only. The app isn't live.
+
+**Verified**
+- Coach preview at 375: open PPL Intermediate, Bench set 1 → 135 fills all, set 4 → 155, Save → v4 and the Update sheet → Update all 3 → Aisha's Plan tab reads "4 × 8 · 135–155 lb". Reopen keeps 135–155. Rename in the header. New plan → rest day → Popular → Add 3 → Save → v2. No overflow at 320; laptop shows the week, day and preview. 5 new tests; typecheck, 109 tests, build pass.
+
 ## 2026-09-19 (evening) — Plan editor rebuilt, per-set targets, branch `feat/plan-editor-v2`
 
 **Asked**

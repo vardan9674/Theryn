@@ -7,7 +7,7 @@ import { isoDate } from "../lib/format.js";
 import { isManualId, toClientId, manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
 import { generateToken, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan } from "../lib/units.js";
-import { planTemplate, stampTemplate, manualPlanFromTemplate } from "../lib/manualTemplates.js";
+import { planTemplate, stampTemplate, manualPlanFromTemplate, templateDaysToPlan } from "../lib/manualTemplates.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -345,10 +345,5 @@ export function createMockCoachData() {
 }
 
 function fromTemplateDays(days) {
-  const out = {};
-  for (const label of DAY_ORDER) out[label] = { type: "Rest", exercises: [] };
-  for (const d of days || []) {
-    out[d.label] = { type: d.workout_type, exercises: (d.exercises || []).map((e) => ({ name: e.exercise_name, sets: e.target_sets, reps: e.target_reps, coachNote: e.notes || undefined })) };
-  }
-  return out;
+  return templateDaysToPlan(days);
 }

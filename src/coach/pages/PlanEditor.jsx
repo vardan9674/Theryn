@@ -67,8 +67,12 @@ const dayCount = (day) => ({ ex: day.exercises.length, sets: day.exercises.reduc
  * Edit one client's week. Phone: a day strip, one day at a time, one
  * exercise open at a time. Tablet and laptop: the week on the left, the day
  * in the middle; laptop adds a live preview of what the client sees.
+ *
+ * A saved plan (no client) uses the same editor: pass `title`, `status`,
+ * `onTitleChange` and `onSave(templates)` (returns the toast to show), and
+ * no `client` or `history`.
  */
-export default function PlanEditor({ client, initialTemplates, history, unit = "lb", onCancel, onSaved }) {
+export default function PlanEditor({ client, initialTemplates, history, unit = "lb", onCancel, onSaved, title, status, onTitleChange, onSave }) {
   const data = useCoachData();
   const toast = useToast();
   const vp = useViewport();
@@ -81,7 +85,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   const [saving, setSaving] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState(false);
   const dirty = changes > 0;
-  const firstName = (client.athlete_name || "client").split(" ")[0];
+  const firstName = client ? (client.athlete_name || "client").split(" ")[0] : "your client";
 
   const requestClose = React.useCallback(() => { if (dirty) setConfirmLeave(true); else onCancel(); }, [dirty, onCancel]);
   useBackHandler(!adding && !copying, requestClose);
@@ -145,6 +149,20 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     const empty = DAYS.some((d) => days[d].type !== "Rest" && days[d].exercises.some((e) => !e.name.trim()));
     if (empty) { toast("Every exercise needs a name. Remove the blank ones or type a name.", "error"); return; }
     let templates = toTemplates(days, unit === "kg" ? "metric" : "imperial");
+    if (onSave) {
+      setSaving(true);
+      try {
+        const msg = await onSave(templates);
+        setChanges(0);
+        if (msg) toast(msg);
+        onSaved(templates);
+      } catch (e) {
+        toast(`Could not save: ${e.message || e}`, "error");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     // A name-only client's week that came from a saved plan keeps saying so, marked
     // as edited: Send update then leaves it alone unless the coach overwrites it.
     const fromPlan = planTemplate(initialTemplates);
@@ -177,8 +195,8 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
       <div className="pe-bar">
         <button type="button" className="pe-iconbtn" onClick={requestClose} aria-label="Back"><Icon.Back /></button>
         <div className="pe-title">
-          <b>{firstName}'s plan</b>
-          <span className={dirty ? "dirty" : ""}>{dirty ? `${changes} change${changes === 1 ? "" : "s"} not saved` : `Weights in ${unit}`}</span>
+          {onTitleChange ? <TitleEdit value={title} onChange={onTitleChange} /> : <b>{title || `${firstName}'s plan`}</b>}
+          <span className={dirty ? "dirty" : ""}>{dirty ? `${changes} change${changes === 1 ? "" : "s"} not saved` : status || `Weights in ${unit}`}</span>
         </div>
         {wide && <Button size="sm" icon={<Icon.Sheet />} onClick={() => onSaved(null, { export: true, templates: toTemplates(days, unit === "kg" ? "metric" : "imperial") })}>Export to Excel</Button>}
         {wide && <button type="button" className={`pe-save ${dirty ? "dirty" : ""}`} onClick={save} disabled={saving || !dirty}>{saveLabel}</button>}
@@ -188,7 +206,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
         <div className={`pe-grid ${vp === "laptop" ? "with-preview" : ""}`}>
           <WeekList days={days} active={activeDay} onPick={(d) => { setActiveDay(d); setOpenKey(null); }} />
           <div className="pe-center">{dayEditor}</div>
-          {vp === "laptop" && <ClientPreview dayKey={activeDay} day={day} unit={unit} firstName={firstName} />}
+          {vp === "laptop" && <ClientPreview dayKey={activeDay} day={day} unit={unit} firstName={firstName} forClient={Boolean(client)} />}
         </div>
       ) : (
         <>
@@ -206,6 +224,22 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
         onCopy={(targets) => { act.copyDay(activeDay, targets); setCopying(false); toast(`${DAY_LONG[activeDay]} copied to ${targets.map((t) => DAY_LONG[t]).join(", ")}`); }} />
       <Confirm open={confirmLeave} title="Leave without saving?" body={`Your changes to ${firstName}'s plan will be lost.`} confirmLabel="Leave" danger onConfirm={onCancel} onClose={() => setConfirmLeave(false)} />
     </div>
+  );
+}
+
+/** The saved plan's name in the header; tap to rename. */
+function TitleEdit({ value, onChange }) {
+  const [editing, setEditing] = React.useState(false);
+  const [v, setV] = React.useState(value || "");
+  const done = () => { setEditing(false); const t = v.trim(); if (t && t !== value) onChange(t); else setV(value || ""); };
+  if (editing) {
+    return <input className="pe-titlein" autoFocus value={v} maxLength={80} onChange={(e) => setV(e.target.value)} onBlur={done}
+      onKeyDown={(e) => { if (e.key === "Enter") done(); if (e.key === "Escape") { setV(value || ""); setEditing(false); } }} aria-label="Plan name" />;
+  }
+  return (
+    <button type="button" className="pe-titlebtn" onClick={() => { setV(value || ""); setEditing(true); }} aria-label={`Rename ${value || "plan"}`}>
+      <b>{value || "Untitled plan"}</b><Icon.Edit size={14} />
+    </button>
   );
 }
 
@@ -295,7 +329,7 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, onToggle, onR
   const style = { transform: CSS.Transform.toString(transform), transition };
   const list = ex.rows.map((r) => ({ reps: r.reps, weight: r.weight }));
   const noWeight = ex.rows.every((r) => !r.weight);
-  const last = React.useMemo(() => (ex.name ? lastSetsFor(history, ex.name) : null), [history, ex.name]);
+  const last = React.useMemo(() => (history && ex.name ? lastSetsFor(history, ex.name) : null), [history, ex.name]);
   const grip = <span className="pe-grip" {...attributes} {...listeners} aria-label={`Drag ${ex.name || "exercise"} to reorder`}><Icon.Grip /></span>;
 
   if (!open) {
@@ -343,7 +377,7 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, onToggle, onR
       <input className={`pe-note ${ex.coachNote ? "has" : ""}`} value={ex.coachNote} placeholder={`Note for ${firstName} (optional)`} onChange={(e) => onNote(e.target.value.slice(0, 200))} aria-label="Coach note" />
 
       <div className="pe-cardfoot">
-        <span>{last ? `${firstName} last did: ${historyLine(last.sets)}` : ex.name ? `${firstName} hasn't done this yet` : ""}</span>
+        <span>{last ? `${firstName} last did: ${historyLine(last.sets)}` : history && ex.name ? `${firstName} hasn't done this yet` : ""}</span>
         <button type="button" className="pe-remove" onClick={onRemove}>Remove</button>
       </div>
     </div>
@@ -371,7 +405,10 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
 
   const has = (n) => picked.some((p) => p.toLowerCase() === n.toLowerCase());
   const toggle = (n) => setPicked((p) => (has(n) ? p.filter((x) => x.toLowerCase() !== n.toLowerCase()) : [...p, n]));
-  const suggestions = (TYPE_DEFAULTS[type] || TYPE_DEFAULTS.Push || []).filter((n) => !existing.includes(n.toLowerCase()));
+  // A rest or custom day has no defaults of its own (a new saved plan starts all rest), so offer the common lifts.
+  const typed = TYPE_DEFAULTS[type]?.length > 0;
+  const base = typed ? TYPE_DEFAULTS[type] : [...new Set([...TYPE_DEFAULTS["Full Body"], ...TYPE_DEFAULTS.Push, ...TYPE_DEFAULTS.Pull, ...TYPE_DEFAULTS.Legs])];
+  const suggestions = base.filter((n) => !existing.includes(n.toLowerCase()));
   const used = (n) => (history || []).filter((h) => (h.exercises || []).some((e) => (e.name || "").toLowerCase() === n.toLowerCase())).length;
   const exact = results.some((r) => r.name.toLowerCase() === q.trim().toLowerCase());
 
@@ -384,7 +421,7 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
         </label>
         {suggestions.length > 0 && q.trim().length < 2 && (
           <div className="pe-sugs">
-            <span className="pe-label">Good for a {type === "Rest" || type === "Custom" ? "workout" : `${type} day`}</span>
+            <span className="pe-label">{typed ? `Good for a ${type} day` : "Popular"}</span>
             <div className="pe-chips">{suggestions.map((n) => <button key={n} type="button" className={`pe-chip ${has(n) ? "on" : ""}`} aria-pressed={has(n)} onClick={() => toggle(n)}>{has(n) ? <Icon.Check size={12} /> : <Icon.Plus size={12} />}{n}</button>)}</div>
           </div>
         )}
@@ -438,7 +475,7 @@ function CopySheet({ open, from, days, onClose, onCopy }) {
 }
 
 // ── What the client sees (laptop) ──────────────────────────────────────────
-function ClientPreview({ dayKey, day, unit, firstName }) {
+function ClientPreview({ dayKey, day, unit, firstName, forClient }) {
   const color = TYPE_COLORS[day.type] || "var(--cx-tx2)";
   return (
     <aside className="pe-preview" aria-label={`What ${firstName} sees`}>
@@ -458,7 +495,7 @@ function ClientPreview({ dayKey, day, unit, firstName }) {
           </div>
         ))}
       </div>
-      <span className="pe-pv-foot">Updates as you type. {firstName} gets it when you save.</span>
+      <span className="pe-pv-foot">{forClient ? `Updates as you type. ${firstName} gets it when you save.` : "Updates as you type. Clients on this plan get it when you update them."}</span>
     </aside>
   );
 }
