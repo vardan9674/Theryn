@@ -317,7 +317,16 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     updateTemplateName,
     saveTemplateTree,
     duplicateTemplate: (id, name) => duplicateTemplate(id, name, coachId),
-    softDeleteTemplate,
+    // Deleting a plan takes app clients off it (in the RPC). Name-only clients carry
+    // the plan as a stamp on their week, so take that off too; the week stays.
+    async softDeleteTemplate(templateId) {
+      await softDeleteTemplate(templateId);
+      for (const r of await listManualRows()) {
+        if (planTemplate(r.plan)?.id === templateId) {
+          try { await patchManualRow(r.id, { plan: stampTemplate(r.plan, null) }); } catch { /* the lock check below ignores it anyway */ }
+        }
+      }
+    },
     async assignTemplate(templateId, clientIds) {
       const manualIds = clientIds.filter(isManualId), appIds = clientIds.filter((id) => !isManualId(id));
       // Giving an empty plan would replace each client's week with rest days.
@@ -369,8 +378,21 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     },
     async getActiveAssignmentsForAthletes(clientIds) {
       const appIds = clientIds.filter((id) => !isManualId(id));
-      const [out, manual] = await Promise.all([appIds.length ? getActiveAssignmentsForAthletes(appIds) : {}, clientIds.some(isManualId) ? listManualRows() : []]);
-      for (const r of manual) { const t = planTemplate(r.plan); if (t && clientIds.includes(toClientId(r.id))) out[toClientId(r.id)] = { template_id: t.id, template_name: t.name }; }
+      const hasManual = clientIds.some(isManualId);
+      const [out, manual, live] = await Promise.all([
+        appIds.length ? getActiveAssignmentsForAthletes(appIds) : {},
+        hasManual ? listManualRows() : [],
+        hasManual ? listTemplates(coachId) : [],
+      ]);
+      // A stamp for a plan that was deleted doesn't count (plans deleted before the
+      // cleanup above left them behind); tidy it off so it stops showing anywhere.
+      const liveIds = new Set(live.map((t) => t.id));
+      for (const r of manual) {
+        const t = planTemplate(r.plan);
+        if (!t || !clientIds.includes(toClientId(r.id))) continue;
+        if (!liveIds.has(t.id)) { patchManualRow(r.id, { plan: stampTemplate(r.plan, null) }).catch(() => {}); continue; }
+        out[toClientId(r.id)] = { template_id: t.id, template_name: t.name };
+      }
       return out;
     },
 
