@@ -174,7 +174,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
             : isToday
               ? `1.5px solid ${MT}`
               : "1.5px solid transparent",
-          width: size, height: size,
+          width: "100%", maxWidth: size, aspectRatio: "1 / 1", height: "auto", justifySelf: "center",
           borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: tappable ? "pointer" : "default",
@@ -284,7 +284,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
       </div>
 
       {/* Day header labels */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: "6px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginBottom: "6px" }}>
         {DAY_LABELS.map((l, i) => (
           <div key={i} style={{
             textAlign: "center", fontSize: "9px", color: SB,
@@ -302,7 +302,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
             </div>
           )}
           {m.days.map((week, wi) => (
-            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", marginBottom: "4px" }}>
+            <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "4px", marginBottom: "4px" }}>
               {week.map((d, di) => (
                 <div key={di} style={{ display: "flex", justifyContent: "center" }}>
                   {d ? (
@@ -312,7 +312,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
                       compact={compactCells}
                     />
                   ) : (
-                    <div style={{ width: compactCells ? 26 : 32, height: compactCells ? 26 : 32 }}/>
+                    <div style={{ width: "100%", maxWidth: compactCells ? 26 : 32, aspectRatio: "1 / 1" }}/>
                   )}
                 </div>
               ))}
@@ -419,7 +419,7 @@ function Sparkline({ values, color, width = 120, height = 32, onPointHover }) {
   const gradId = `spark-${color.replace("#", "")}`;
 
   return (
-    <svg width={width} height={height} style={{ display: "block", overflow: "visible" }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", overflow: "visible", maxWidth: "100%" }}>
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.35"/>
@@ -580,7 +580,7 @@ export function AthleteVolumeChart({ history, unit = "lbs" }) {
             <div
               key={r.type}
               style={{
-                display: "grid", gridTemplateColumns: "80px 1fr 70px",
+                display: "grid", gridTemplateColumns: "minmax(64px, 80px) minmax(0, 1fr) minmax(58px, 70px)",
                 gap: "10px",
                 alignItems: "center",
                 padding: "10px 0",
@@ -601,7 +601,7 @@ export function AthleteVolumeChart({ history, unit = "lbs" }) {
               </div>
 
               {/* Sparkline */}
-              <div style={{ display: "flex", justifyContent: "center" }}>
+              <div style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
                 <Sparkline
                   values={r.series}
                   color={color}

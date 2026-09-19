@@ -143,8 +143,9 @@ const numOrNull = (v) => (v == null || String(v).trim() === "" || !Number.isFini
  * exercises where the client typed something, to keep the payload small
  * (link_submit caps it at 20,000 characters).
  */
-export function workoutPayload(today, ticks, log, note, date, units) {
+export function workoutPayload(today, ticks, log, note, date, units, feel) {
   return {
+    ...(["easy", "medium", "hard"].includes(feel) ? { feel } : {}),
     ...(units ? { weight_unit: units === "metric" ? "metric" : "imperial" } : {}),
     date,
     local_date: date,
@@ -229,7 +230,7 @@ export function submissionToHistory(sub) {
   const exercises = (p.exercises || []).filter((e) => (e.sets_done || 0) > 0).map((e) => ({ name: e.name, sets: doneSets(e) }));
   const totalSets = exercises.reduce((a, e) => a + e.sets.length, 0);
   const totalVolume = exercises.reduce((a, e) => a + e.sets.reduce((s, x) => s + (Number(x.w) || 0) * (Number(x.r) || 0), 0), 0);
-  return { id: sub.id, date: submissionDate(sub), type: p.type || "Workout", duration: 45 * 60, startedAt: sub.submitted_at, exercises, totalSets, totalVolume, source: "link", note: p.note || "", plannedSets: (p.exercises || []).reduce((a, e) => a + (e.sets_planned || 0), 0) };
+  return { id: sub.id, date: submissionDate(sub), type: p.type || "Workout", duration: 45 * 60, startedAt: sub.submitted_at, exercises, totalSets, totalVolume, source: "link", note: p.note || "", feel: p.feel || null, plannedSets: (p.exercises || []).reduce((a, e) => a + (e.sets_planned || 0), 0) };
 }
 
 /**

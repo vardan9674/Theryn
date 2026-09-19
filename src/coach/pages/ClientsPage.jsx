@@ -1,5 +1,6 @@
 import React from "react";
 import { Avatar, Chip, Icon, Tone, Empty, Button, useViewport } from "../ui/primitives.jsx";
+import { streakStats } from "../lib/streak.js";
 import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients, daysSinceLastWorkout as daysSinceLast } from "../lib/clientFacts.js";
 import { plural, isoDate, daysBetween } from "../lib/format.js";
 import ClientDetail from "./ClientDetail.jsx";
@@ -42,7 +43,8 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
           : { text: hasPlan ? "Not on the app yet. Share their link so they can tick off workouts." : "Not on the app yet. Build their plan, then share their link.", severity: null, tab: "plan", color: null };
         const row = { link, name: link.athlete_name, loading: false, data,
           last: hasHistory ? lastWorkoutLabel(data.history, now) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, now) : "muted",
-          week: hasHistory ? weekProgress(data.history, data.routine, now) : null, todo, payment, manual: true };
+          week: hasHistory ? weekProgress(data.history, data.routine, now) : null, todo, payment, manual: true,
+          streak: streakStats((data.history || []).map((h) => h.date), data.routine, now) };
         row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
         return row;
       }
@@ -51,6 +53,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         link, name: link.athlete_name, loading: false, data,
         last: lastWorkoutLabel(data.history, now), lastTone: lastWorkoutTone(data.history, now),
         week: weekProgress(data.history, data.routine, now), todo, payment,
+        streak: streakStats((data.history || []).map((h) => h.date), data.routine, now),
       };
       row.bucket = attentionBucket(row, now);
       return row;
@@ -112,7 +115,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         <>
           <div className="cx-card cx-table">
             <div className="cx-thead" aria-hidden="true">
-              <div>Client</div><div>Last workout</div><div className="cx-col-week">This week</div><div className="cx-col-pay">Payment</div><div>What to do</div><div />
+              <div>Client</div><div>Last workout</div><div>Streak</div><div className="cx-col-week">This week</div><div className="cx-col-pay">Payment</div><div>What to do</div><div />
             </div>
             {visible.map((r, i) => <TableRow key={r.link.athlete_id} row={r} selected={r.link.athlete_id === selectedId} onClick={() => onSelect(r.link.athlete_id)} tour={i === 0 ? "client-row" : undefined} />)}
           </div>
@@ -164,6 +167,14 @@ function WeekSquares({ week }) {
   );
 }
 
+/** Days in a row (workouts plus planned rest days). Shown from 2; "was 9" for a week after one ends. */
+export function StreakCell({ s }) {
+  if (!s) return <span className="cx-muted">—</span>;
+  if (s.current >= 2) return <span className={`cx-streak ${s.atRisk ? "risk" : ""}`} title={s.atRisk ? "Today is planned and not done yet" : `${s.current} days in a row${s.best > s.current ? `, best ${s.best}` : ""}`}><Icon.Flame size={14} />{s.current}{s.atRisk && <small>at risk</small>}</span>;
+  if (s.brokeAt) return <span className="cx-streak off" title={`A ${s.brokeAt}-day streak ended this week`}><Icon.Flame size={14} />0<small>was {s.brokeAt}</small></span>;
+  return <span className="cx-muted">{s.current === 1 ? "1" : "—"}</span>;
+}
+
 function Skeleton({ w = 80 }) { return <span className="cx-skel" style={{ display: "inline-block", width: w, height: 14 }} />; }
 
 function TableRow({ row, selected, onClick, tour }) {
@@ -172,6 +183,7 @@ function TableRow({ row, selected, onClick, tour }) {
     <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick} data-tour={tour}>
       <div className="name"><Avatar name={row.name} size="sm" /><div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><span>{row.name}</span>{row.manual && <span className="cx-tag" style={{ alignSelf: "flex-start" }} title="Added by name; they haven't joined the app">Not on app</span>}</div></div>
       <div>{row.loading ? <Skeleton w={70} /> : row.last == null ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
+      <div>{row.loading ? <Skeleton w={40} /> : <StreakCell s={row.streak} />}</div>
       <div className="cx-col-week">{row.loading ? <Skeleton w={90} /> : <WeekSquares week={row.week} />}</div>
       <div className="cx-col-pay"><Tone tone={pay.tone}>{pay.label}</Tone></div>
       <div className={`todo ${row.todo?.severity ? "" : "ok"}`}>{row.loading ? <Skeleton w={160} /> : row.todo.text}</div>
@@ -188,6 +200,7 @@ function CardRow({ row, onClick, tour }) {
         <Avatar name={row.name} />
         <div className="name">{row.name}</div>
         {row.manual && <span className="cx-tag">Not on app</span>}
+        {!row.loading && row.streak?.current >= 2 && <StreakCell s={row.streak} />}
         <Icon.Chevron />
       </div>
       <div className="facts">

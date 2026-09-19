@@ -22,6 +22,7 @@ function workoutBody(p) {
   const planned = exs.reduce((a, e) => a + (Number(e.sets_planned) || 0), 0);
   const sets = planned > 0 ? `${done} of ${planned} sets` : `${done} sets`;
   const note = (p.note || "").trim();
+  if (["easy", "medium", "hard"].includes(p.feel)) return `${sets} · felt ${p.feel}${note ? ` · "${note.length > 70 ? note.slice(0, 67) + "…" : note}"` : ""}`;
   return note ? `${sets} · "${note.length > 80 ? note.slice(0, 77) + "…" : note}"` : sets;
 }
 

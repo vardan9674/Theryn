@@ -565,6 +565,7 @@ export function computeStats({ history, routine, weights, measurements }) {
 
   return {
     adherencePct,
+    adherence: { done: completed, planned: scheduled },
     vol7: Math.round(vol7),
     bwDelta,
     sessionAvgMin,
