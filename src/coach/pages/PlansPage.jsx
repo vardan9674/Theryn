@@ -2,17 +2,18 @@ import React from "react";
 import { Button, Icon, Empty, Spinner, Sheet, Confirm, useToast, useViewport, Avatar } from "../ui/primitives.jsx";
 import { shortDate, plural } from "../lib/format.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
-import TemplateEditor from "../../components/templates/TemplateEditor.jsx";
+import PlanEditor from "./PlanEditor.jsx";
+import { templateWeightsMissing } from "../../hooks/useTemplates.ts";
 import AssignAthletesSheet from "../../components/templates/AssignAthletesSheet.jsx";
 import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 
 // Moved to lib so the data layer can build name-only clients' weeks from a saved plan.
 export { templateDaysToPlan } from "../lib/manualTemplates.js";
-import { templateDaysToPlan } from "../lib/manualTemplates.js";
+import { templateDaysToPlan, planToTemplateDays } from "../lib/manualTemplates.js";
 
 /**
  * The coach's saved plans. Each row: Edit plan · Excel · Update clients ·
- * Add clients. Editing opens the existing template editor full-screen.
+ * Add clients. Editing opens the same editor as a client's plan, full-screen.
  */
 export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const data = useCoachData();
@@ -20,7 +21,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const vp = useViewport();
   const [templates, setTemplates] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const [editing, setEditing] = React.useState(null); // { template, days }
+  const [editing, setEditing] = React.useState(null); // { template, days, plan, clientCount }
   const [naming, setNaming] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -43,21 +44,24 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     try {
       const t = await data.createTemplate(name);
       setNaming(false); setNewName("");
-      setEditing({ template: t, days: [] });
+      setEditing({ template: t, days: [], plan: templateDaysToPlan([]), clientCount: 0 });
       await reload();
     } catch (e) { toast(e.message || "Could not create plan", "error"); }
     finally { setBusy(false); }
   }
 
   async function openEditor(t) {
-    try { setEditing(await data.getTemplateWithTree(t.id)); }
+    try {
+      const { template, days } = await data.getTemplateWithTree(t.id);
+      setEditing({ template, days, plan: templateDaysToPlan(days, data.unitSystem), clientCount: t.assignment_count || 0 });
+    }
     catch (e) { toast("Could not open this plan", "error"); }
   }
 
   async function exportTemplate(t) {
     try {
       const { days } = await data.getTemplateWithTree(t.id);
-      onExport({ name: t.name, templates: templateDaysToPlan(days), history: null, subject: "plan" });
+      onExport({ name: t.name, templates: templateDaysToPlan(days, data.unitSystem), history: null, subject: "plan", unit: data.unitSystem === "metric" ? "kg" : "lb" });
     } catch (e) { toast("Could not load this plan", "error"); }
   }
 
@@ -127,18 +131,54 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     finally { setBusy(false); }
   }
 
+  // Save from the editor, then offer to send it to the clients on the plan.
+  async function saveEditing(plan) {
+    const { template } = editing;
+    const days = planToTemplateDays(plan, data.unitSystem, editing.days);
+    const version = await data.saveTemplateTree(template.id, days);
+    const saved = { ...template, version };
+    setEditing((p) => (p ? { ...p, template: saved, days } : null));
+    reload();
+    let assignments = [];
+    try { assignments = (await data.getTemplateAssignments(template.id)).filter((a) => !a.unassigned_at); } catch { /* the list shows the count anyway */ }
+    setEditing((p) => (p ? { ...p, clientCount: assignments.length } : null));
+    if (assignments.length) setPushing({ template: saved, assignments });
+    if (templateWeightsMissing()) return "Saved. Weights and per-set targets need the database update before they're kept.";
+    return assignments.length ? null : "Plan saved";
+  }
+
+  async function renameEditing(name) {
+    try {
+      await data.updateTemplateName(editing.template.id, name);
+      setEditing((p) => (p ? { ...p, template: { ...p.template, name } } : null));
+      reload();
+    } catch (e) { toast(e.message || "Could not rename", "error"); }
+  }
+
+  const pushModal = pushing && (
+    <PushUpdateModal templateName={pushing.template.name} assignments={pushing.assignments.filter((a) => !a.is_overridden)} allAssignments={pushing.assignments} loading={busy} onConfirm={confirmPush} onSkip={() => setPushing(null)}
+      heading="Update clients' plans" subtitle={`Give the clients on "${pushing.template.name}" its latest version (v${pushing.template.version}).`} skipLabel="Not now" skipHint="" />
+  );
+
   if (editing) {
+    const unit = data.unitSystem === "metric" ? "kg" : "lb";
+    const n = editing.clientCount;
     return (
-      <TemplateEditor
-        template={editing.template}
-        initialDays={editing.days}
-        myAthletes={clients.filter((c) => !c.manual)}
-        authUserId={data.coachId}
-        onAthletesCacheInvalidate={(ids) => onClientsChanged?.(ids)}
-        onBack={async () => { setEditing(null); await reload(); }}
-        onSaved={async (newVersion, days) => { setEditing((p) => (p ? { ...p, template: { ...p.template, version: newVersion }, days } : null)); await reload(); }}
-        onNameChange={async (name) => { try { await data.updateTemplateName(editing.template.id, name); setEditing((p) => (p ? { ...p, template: { ...p.template, name } } : null)); await reload(); } catch {} }}
-      />
+      <div className="pe-shell">
+        <PlanEditor
+          key={editing.template.id}
+          initialTemplates={editing.plan}
+          history={null}
+          unit={unit}
+          title={editing.template.name}
+          status={`v${editing.template.version} · ${n ? plural(n, "client") : "No clients yet"} · weights in ${unit}`}
+          onTitleChange={renameEditing}
+          onSave={saveEditing}
+          onCancel={() => { setEditing(null); reload(); }}
+          onSaved={(templates, extra) => { if (extra?.export) onExport({ name: editing.template.name, templates: extra.templates, history: null, subject: "plan", unit }); }}
+        />
+        {pushModal}
+      </div>
     );
   }
 
@@ -209,10 +249,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       {giving && (
         <AssignAthletesSheet athletes={clients} assignedAthleteIds={giving.assignedIds} lockedByTemplate={giving.lockedByTemplate} templateName={giving.template.name} loading={busy} onConfirm={confirmGive} onClose={() => setGiving(null)} />
       )}
-      {pushing && (
-        <PushUpdateModal templateName={pushing.template.name} assignments={pushing.assignments.filter((a) => !a.is_overridden)} allAssignments={pushing.assignments} loading={busy} onConfirm={confirmPush} onSkip={() => setPushing(null)}
-          heading="Update clients' plans" subtitle={`Give the clients on "${pushing.template.name}" its latest version (v${pushing.template.version}).`} skipLabel="Not now" skipHint="" />
-      )}
+      {pushModal}
       <Confirm open={Boolean(deleting)} title={`Delete "${deleting?.name}"?`} body="Clients who have it keep their current plan but won't get future updates." confirmLabel="Delete" danger busy={busy} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />
     </div>
   );

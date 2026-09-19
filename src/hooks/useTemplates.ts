@@ -38,6 +38,11 @@ export interface TemplateExercise {
   source_user_exercise_id?: string;
   target_sets: number;
   target_reps: string;
+  /** Target weight in weight_unit (needs migration 20260919120000). */
+  target_weight?: number | null;
+  /** Per-set targets when the sets differ: [{ reps, weight }]. */
+  set_list?: Array<{ reps?: string; weight?: number }> | null;
+  weight_unit?: "kg" | "lb" | null;
   notes?: string;
 }
 
@@ -153,10 +158,18 @@ export async function updateTemplateName(templateId: string, name: string): Prom
  * Full tree save: replaces all days + exercises for the template, then bumps version.
  * Days with day_index not in the new list are implicitly removed (no orphan rows).
  */
+// Weights and per-set targets live in columns added by migration
+// 20260919120000. Until it has been run, saves leave them out (sets and reps
+// still save) and this says so, so the editor can tell the coach.
+let weightColumnsMissing = false;
+export const templateWeightsMissing = () => weightColumnsMissing;
+const WEIGHT_COLS = ["target_weight", "set_list", "weight_unit"];
+const isMissingColumn = (err: any) => /target_weight|set_list|weight_unit/.test(String(err?.message || "")) && /column|schema cache/i.test(String(err?.message || ""));
+
 export async function saveTemplateTree(templateId: string, days: TemplateDay[]): Promise<number> {
   // Validate: must have at least one day with at least one exercise
   const hasContent = days.some(d => d.workout_type !== "Rest" && d.exercises.length > 0);
-  if (!hasContent) throw new Error("Template must have at least one day with exercises");
+  if (!hasContent) throw new Error("Add at least one exercise to a day first");
 
   // 1. Delete all existing days (cascade deletes exercises)
   const { error: delErr } = await supabase
@@ -193,13 +206,23 @@ export async function saveTemplateTree(templateId: string, days: TemplateDay[]):
         target_sets: ex.target_sets ?? 3,
         target_reps: ex.target_reps ?? "8-12",
         notes: ex.notes || null,
+        ...(weightColumnsMissing ? {} : {
+          target_weight: ex.target_weight ?? null,
+          set_list: ex.set_list ?? null,
+          weight_unit: ex.weight_unit ?? null,
+        }),
       }));
 
-      const { error: exErr } = await supabase
+      let { error: exErr } = await supabase
         .from("routine_template_exercises")
         .insert(exRows);
 
-      if (exErr) console.error("Failed inserting template exercises:", exErr.message);
+      if (exErr && !weightColumnsMissing && isMissingColumn(exErr)) {
+        weightColumnsMissing = true;
+        const bare = exRows.map((r: any) => { const o = { ...r }; for (const k of WEIGHT_COLS) delete o[k]; return o; });
+        ({ error: exErr } = await supabase.from("routine_template_exercises").insert(bare));
+      }
+      if (exErr) throw new Error(`Could not save ${day.label}'s exercises: ${exErr.message}`);
     }
   }
 
