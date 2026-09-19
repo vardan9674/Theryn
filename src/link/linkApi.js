@@ -16,7 +16,7 @@ export async function submitLink(token, kind, payload) {
 /** In-memory stand-in for the dev preview: /f/preview */
 export function createPreviewApi() {
   const plan = {
-    Mon: { type: "Push", exercises: [{ name: "Barbell bench press", sets: 3, reps: "8-10", weight: 40, coachNote: "Lower slowly. Keep your feet planted." }, { name: "Incline dumbbell press", sets: 3, reps: "10-12", weight: 12, coachNote: "Weight is per dumbbell." }, { name: "Seated shoulder press", sets: 3, reps: "10", weight: 10 }, { name: "Lateral raise", sets: 3, reps: "12-15", weight: 5 }, { name: "Cable triceps pushdown", sets: 3, reps: "12", weight: 15 }] },
+    Mon: { type: "Push", exercises: [{ name: "Barbell bench press", sets: 3, reps: "12/10/8", weight: 40, setList: [{ reps: "12", weight: 40 }, { reps: "10", weight: 42.5 }, { reps: "8", weight: 45 }], coachNote: "Lower slowly. Keep your feet planted." }, { name: "Incline dumbbell press", sets: 3, reps: "10-12", weight: 12, coachNote: "Weight is per dumbbell." }, { name: "Seated shoulder press", sets: 3, reps: "10", weight: 10 }, { name: "Lateral raise", sets: 3, reps: "12-15", weight: 5 }, { name: "Cable triceps pushdown", sets: 3, reps: "12", weight: 15 }] },
     Tue: { type: "Pull", exercises: ["Deadlift", "Pull-Up", "Barbell Row"] },
     Wed: { type: "Legs", exercises: ["Back Squat", "Leg Press", "Calf Raise"] },
     Thu: { type: "Rest", exercises: [] },

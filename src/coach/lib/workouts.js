@@ -47,6 +47,31 @@ function repsWithin(r, planned) {
   return one ? Number(r) === Number(one[0]) : true;
 }
 
+/**
+ * Done sets as { w, r, changed }. Uses what the client typed; blanks fall back
+ * to what the coach planned for that set (plan_sets when the sets differ).
+ * No typed detail: per-set plan chips when the plan had different sets, else none.
+ */
+function setsDetail(e, done) {
+  const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
+  const planR = (i) => ps?.[i]?.r ?? e.reps;
+  const planW = (i) => ps?.[i]?.w ?? e.weight_target;
+  if (Array.isArray(e.sets) && e.sets.length) {
+    return e.sets.filter((x) => x && x.done).map((x) => {
+      const i = (Number(x.n) || 1) - 1;
+      const w = x.weight ?? planW(i) ?? e.weight_used ?? null; // blank = the planned weight
+      const r = x.reps ?? null;
+      return {
+        w: w != null ? String(w) : "",
+        r: r != null ? String(r) : repsLabel(planR(i)),
+        changed: (x.weight != null && planW(i) != null && Number(x.weight) !== Number(planW(i))) || (r != null && !repsWithin(r, planR(i))),
+      };
+    });
+  }
+  if (ps && done > 0) return ps.slice(0, done).map((s, i) => ({ w: s.w != null ? String(s.w) : "", r: repsLabel(s.r ?? e.reps) || "", changed: false }));
+  return [];
+}
+
 /** One workout, ready to render. `unit` is the client's weight unit label. */
 export function workoutDetail(entry) {
   const sub = entry.submission;
@@ -65,17 +90,7 @@ export function workoutDetail(entry) {
         weightChanged: e.weight_used != null && e.weight_target != null && Number(e.weight_used) !== Number(e.weight_target),
         // Set by set, when the client typed reps or weights: done sets only,
         // with `changed` where they did something other than the plan.
-        sets: Array.isArray(e.sets) && e.sets.length
-          ? e.sets.filter((x) => x && x.done).map((x) => {
-              const w = x.weight ?? e.weight_target ?? e.weight_used ?? null; // blank = the planned weight
-              const r = x.reps ?? null;
-              return {
-                w: w != null ? String(w) : "",
-                r: r != null ? String(r) : repsLabel(e.reps),
-                changed: (x.weight != null && e.weight_target != null && Number(x.weight) !== Number(e.weight_target)) || (r != null && !repsWithin(r, e.reps)),
-              };
-            })
-          : [],
+        sets: setsDetail(e, done),
       };
     });
     return {

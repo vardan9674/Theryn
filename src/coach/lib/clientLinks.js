@@ -52,9 +52,14 @@ export const DAY_LONG = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: 
 export function normalizeExercise(ex) {
   if (typeof ex === "string") return { name: ex, sets: null, reps: null, weight: null, note: null };
   if (!ex || typeof ex !== "object") return { name: "", sets: null, reps: null, weight: null, note: null };
+  // Per-set targets (the coach's editor writes setList when the sets differ).
+  const setList = Array.isArray(ex.setList) && ex.setList.length
+    ? ex.setList.slice(0, 20).map((s) => ({ reps: s?.reps != null && s.reps !== "" ? String(s.reps) : null, weight: s?.weight != null && s.weight !== "" && Number.isFinite(Number(s.weight)) ? Number(s.weight) : null }))
+    : null;
   return {
     name: ex.name || "",
-    sets: ex.sets != null && ex.sets !== "" ? Number(ex.sets) || null : null,
+    setList,
+    sets: setList ? setList.length : ex.sets != null && ex.sets !== "" ? Number(ex.sets) || null : null,
     reps: ex.reps != null && ex.reps !== "" ? String(ex.reps) : null,
     weight: ex.weight != null && ex.weight !== "" ? ex.weight : null,
     note: ex.coachNote || ex.note || null,
@@ -166,6 +171,10 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
         weight_target: e.weight,
         weight_used: perSet ? firstWeight : numOrNull(entry),
       };
+      // What the coach asked for, set by set, when the sets differ.
+      if (Array.isArray(e.setList) && e.setList.length) {
+        out.plan_sets = e.setList.map((s) => { const o = {}; if (s.reps) o.r = String(s.reps); if (s.weight != null) o.w = s.weight; return o; });
+      }
       if (typed.some((x) => x.r != null || x.w != null)) {
         out.sets = typed.map((x, s) => {
           const one = { n: s + 1, done: s < done };
@@ -214,15 +223,18 @@ export function submissionToMeasurement(sub) {
 /** A workout submission row → the history entry shape the dashboard already uses. */
 /** What one done set weighed and how many reps: what the client typed, else what the coach planned. */
 export function doneSets(e) {
-  const plannedReps = e.reps ? String(e.reps).replace(/[^0-9].*$/, "") : "";
+  const firstNum = (r) => (r ? String(r).replace(/[^0-9].*$/, "") : "");
   const w = (x) => (x != null && x !== "" ? String(x) : "");
-  const fallbackW = e.weight_used ?? e.weight_target;
+  const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
+  // What the coach planned for set `i` (0-based): its own numbers when the sets differ.
+  const planR = (i) => firstNum(ps?.[i]?.r ?? e.reps);
   if (Array.isArray(e.sets) && e.sets.length) {
     // Per set, a blank weight means the planned one (weight_used is just the first typed weight).
-    const planned = e.weight_target ?? e.weight_used;
-    return e.sets.filter((s) => s && s.done).map((s) => ({ w: w(s.weight ?? planned), r: s.reps != null ? String(s.reps) : plannedReps }));
+    const planW = (i) => ps?.[i]?.w ?? e.weight_target ?? e.weight_used;
+    return e.sets.filter((s) => s && s.done).map((s) => { const i = (Number(s.n) || 1) - 1; return { w: w(s.weight ?? planW(i)), r: s.reps != null ? String(s.reps) : planR(i) }; });
   }
-  return Array.from({ length: e.sets_done || 0 }, () => ({ w: w(fallbackW), r: plannedReps }));
+  const planW = (i) => ps?.[i]?.w ?? e.weight_used ?? e.weight_target;
+  return Array.from({ length: e.sets_done || 0 }, (_, i) => ({ w: w(planW(i)), r: planR(i) }));
 }
 
 export function submissionToHistory(sub) {

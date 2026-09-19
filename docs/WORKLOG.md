@@ -2,6 +2,22 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+
+## 2026-09-19 (evening) — Plan editor rebuilt, per-set targets, branch `feat/plan-editor-v2`
+
+**Asked**
+- "Edit plan should be easy for coaches; they should be able to add sets, each set with its own lb and reps; easy enough for a kid, with cool animation, and better on mobile since most coaches use their phone." Mocked on the "Theryn Link Exercise Card" canvas (bottom two rows), then built.
+
+**Done** (no database change; `setList` is a new optional key inside each plan exercise)
+- `src/coach/lib/planSets.js`: the plan now holds per-set targets. An exercise is still `{ sets, reps, weight }` when every set is the same; when they differ it adds `setList: [{ reps, weight }, ...]`, and `reps` reads "12/10/8" so older readers and the Excel export still show something sensible. 8 tests.
+- **Plan editor, phone:** a 7-day strip on top (type colour under each day, dashed when empty), one day at a time. Exercises are one-line closed cards ("3 sets · 12/10/8 reps · 60–70 kg", amber "no weight yet"); tap to open, the others close. Open card: one row per set with big reps and weight boxes; **+ Add set** copies the last set; × removes a set and the rest renumber; **Same for all** is on by default (type set 1, every set follows) and switches itself off when a later set is changed. Note field, "Aisha last did: …", Remove. **Add exercise** is a sheet: search, suggestions for the day's type, tap several, "Add 3". **Copy day** to any other days. Sticky Save at the bottom that pulses once when there are unsaved changes; the header counts them.
+- **Tablet/laptop:** the week as a list on the left, the day in the middle; laptop adds a live "What Aisha sees" preview on the right.
+- **Animations:** cards open with a small grow, new exercises slide in, a new set slides in and flashes green, dragged cards lift with a shadow, Save pulses. All off under prefers-reduced-motion.
+- **Everywhere the plan is read:** the link page shows each set's own numbers (placeholders, "edited" check, fold summary); workouts sent back carry `plan_sets` so the coach's per-set chips and "changed" markers compare against that set's target; kg/lb conversion covers `setList` and `plan_sets`; the Plan tab reads "3 × 12/10/8 · 60–70 kg"; Excel's Weight cell reads "60/65/70".
+
+**Verified**
+- Coach preview at 375: open card, set 1 → all sets follow, change set 4 → "Same for all" turns off, add set (copies, flashes), remove set 2 (renumbers), add 2 suggestions + 1 custom, copy Monday to Friday, save → "Saved and sent to Aisha", Plan tab shows "4 × 8/8/6/10-12 · 60–137.5 lb". Layout audit clean at 320 / 414 / 790 / 1024 / 1280. Link preview: per-set placeholders 12/40, 10/42.5, 8/45 and the fold summary. 6 end-to-end tests (editor → plan → link → submission → coach, and kg ↔ lb). Typecheck, 104 tests, build pass.
+
 ## 2026-09-19 (later) — Streaks for clients and coaches, branch `feat/streaks`
 
 **Asked**
