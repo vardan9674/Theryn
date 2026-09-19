@@ -109,6 +109,8 @@
 .lk-center p { font-size: 16px; color: var(--cx-tx2); line-height: 1.45; margin: 0; max-width: 320px; }
 .lk-keep { width: 100%; text-align: left; display: flex; gap: 12px; }
 .lk-nudge { font-size: 15px; color: var(--cx-mu); min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.lk-weeknote { margin-top: 8px; font-size: 13px; color: var(--cx-mu); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.lk-weeknote a { color: var(--cx-a); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .lk-nudge a { color: var(--cx-a); font-weight: 600; text-decoration: none; white-space: nowrap; }
 
 @media (min-width: 768px) {
@@ -116,17 +118,9 @@
   .lk-h1 { font-size: 38px; }
 }
 
-/* Log another day */
-.lk-daypick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
-.lk-daychip { flex: 0 0 auto; min-height: 44px; padding: 6px 14px; border-radius: 22px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); color: var(--cx-tx2); font-size: 14px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; }
-.lk-daychip small { font-size: 12px; color: var(--cx-mu); }
-.lk-daychip[aria-pressed="true"] { border-color: var(--cx-a); color: var(--cx-tx); font-weight: 700; }
 .lk-sentnote { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.45; color: var(--cx-tx2); background: var(--cx-s1); border: 1px solid var(--cx-bd); border-radius: 10px; padding: 10px 12px; }
 .lk-sentnote svg { color: var(--cx-a); flex: 0 0 auto; margin-top: 2px; }
 
-/* Week strip days are buttons: tap one to see or log that day */
-button.lk-day { padding: 0; font: inherit; font-size: 12px; min-width: 0; }
-.lk-day.selected { border-color: var(--cx-a); background: var(--cx-s2); box-shadow: 0 0 0 1px var(--cx-a) inset; }
 
 /* kg / lb switch in the byline: the client's own units for the whole page */
 .lk-units { display: inline-flex; border: 1px solid var(--cx-bd2); border-radius: 10px; overflow: hidden; flex: 0 0 auto; }

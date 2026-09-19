@@ -42,17 +42,6 @@ function linkStore(token) {
   };
 }
 
-/** Days the client can log: today, then the last six days that had a workout planned. */
-function loggableDays(plan, now = new Date()) {
-  const out = [{ iso: isoOf(now), label: "Today" }];
-  for (let i = 1; i <= 6; i++) {
-    const d = new Date(now); d.setDate(now.getDate() - i); d.setHours(12, 0, 0, 0);
-    const day = plan?.[dayKeyOf(d)];
-    if (!day?.type || day.type === "Rest" || !(day.exercises || []).length) continue;
-    out.push({ iso: isoOf(d), label: i === 1 ? "Yesterday" : `${dayKeyOf(d)} ${d.getDate()}`, type: day.type });
-  }
-  return out;
-}
 const longDate = (d = new Date()) => d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
 const weekRange = (d = new Date()) => {
   const mon = new Date(d); const js = mon.getDay(); mon.setDate(mon.getDate() - (js === 0 ? 6 : js - 1));
@@ -64,7 +53,8 @@ const weekRange = (d = new Date()) => {
 
 /**
  * The page a client opens from WhatsApp: /f/<token>.
- * No account, no history. Two tabs: today's workout and measurements.
+ * No account, no history. Two tabs: today's workout and measurements. The
+ * week strip only shows the plan's shape; other days' workouts are in the app.
  */
 export default function LinkPage({ token, api }) {
   const fetchLink = api?.fetchLink || realFetch;
@@ -73,7 +63,6 @@ export default function LinkPage({ token, api }) {
   const [tab, setTab] = React.useState(() => (new URLSearchParams(window.location.search).get("tab") === "measurements" ? "measurements" : "workout"));
   const [sent, setSent] = React.useState(null); // { kind, summary }
   const store = React.useMemo(() => linkStore(token), [token]);
-  const [logDate, setLogDate] = React.useState(isoToday); // which day's workout is being logged
   // The client's own kg/lb, remembered on this phone. Until they pick, the plan's units.
   const [units, setUnitsState] = React.useState(() => linkStore(token).units());
   const setUnits = React.useCallback((u) => { setUnitsState(u); store.setUnits(u); }, [store]);
@@ -101,9 +90,8 @@ export default function LinkPage({ token, api }) {
   const d = { ...state.data, plan: convertPlan(state.data.plan, clientUnits, { assumeFrom: coachUnits }), unit_system: clientUnits, onUnits: setUnits };
   d.doneDates = [...(Array.isArray(state.data.done_dates) ? state.data.done_dates : []), ...store.doneDates()];
   const today = todayFromPlan(d.plan);
-  const logging = logDate === isoToday() ? today : todayFromPlan(d.plan, dateOf(logDate));
 
-  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} onBack={() => { setSent(null); setTab("workout"); setLogDate(isoToday()); window.scrollTo(0, 0); }} />;
+  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} onBack={() => { setSent(null); setTab("workout"); window.scrollTo(0, 0); }} />;
 
   return (
     <div className="lk-page cx-app">
@@ -112,7 +100,7 @@ export default function LinkPage({ token, api }) {
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
       {tab === "workout"
-        ? <WorkoutTab key={`${logDate}:${clientUnits}`} d={d} today={logging} date={logDate} days={loggableDays(d.plan)} onPickDate={setLogDate} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+        ? <WorkoutTab key={clientUnits} d={d} today={today} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
     </div>
   );
@@ -204,7 +192,7 @@ function Byline({ coach, units, onUnits }) {
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
+function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
@@ -223,14 +211,11 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [feel, setFeel] = React.useState(() => draft?.feel || null); // "easy" | "medium" | "hard"
-  const [picking, setPicking] = React.useState(false);
   // A finished exercise folds to one line; tapping it opens it again until it changes.
   const [reopened, setReopened] = React.useState({});
   const isToday = date === isoToday();
   const upcoming = date > isoToday(); // a day later this week: show the plan, nothing to tick yet
   const realToday = dayKeyOf(new Date());
-  // This week's dates, Monday first, so each day in the strip can be opened.
-  const weekDates = React.useMemo(() => { const now = new Date(); const js = now.getDay(); const mon = new Date(now); mon.setDate(now.getDate() - (js === 0 ? 6 : js - 1)); return DAY_ORDER.map((_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return isoOf(x); }); }, []);
   const sentBefore = store?.sent(date) || null;
   const st = React.useMemo(() => streakStats(d.doneDates || [], d.plan), [d.doneDates, d.plan]);
   // Save every tick as it happens.
@@ -303,30 +288,14 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
             : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
         </div>
 
-        {days.length > 1 && picking ? (
-          <div className="lk-daypick" role="group" aria-label="Which day are you logging?">
-            {days.map((x) => (
-              <button key={x.iso} type="button" className="lk-daychip" aria-pressed={x.iso === date} onClick={() => { onPickDate?.(x.iso); setPicking(false); }}>
-                {x.label}{x.type ? <small>{x.type}</small> : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
         {d.plan && (
           <section aria-label="This week">
             <div className="lk-row" style={{ marginBottom: 10 }}><span className="lk-eyebrow">This week</span><span className="lk-small">{weekRange()}</span></div>
-            <div className="lk-week" role="group" aria-label="Pick a day">
-              {DAY_ORDER.map((k, i) => {
+            <div className="lk-week">
+              {DAY_ORDER.map((k) => {
                 const day = d.plan[k]; const t = day?.type && day.type !== "Rest" && (day.exercises || []).length ? day.type : "Rest";
                 const c = t === "Rest" ? undefined : TYPE_COLORS[t];
-                const iso = weekDates[i];
-                return (
-                  <button key={k} type="button" className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""} ${iso === date ? "selected" : ""}`} style={c ? { "--day": c } : undefined}
-                    aria-pressed={iso === date} aria-label={`${DAY_LONG[k]}, ${t}${k === realToday ? ", today" : ""}`} onClick={() => { onPickDate?.(iso); setPicking(false); }}>
-                    <span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}
-                  </button>
-                );
+                return <div key={k} className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""}`} style={c ? { "--day": c } : undefined}><span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}</div>;
               })}
             </div>
             {isToday && st.days.some((x) => x.state === "done") && (
@@ -335,11 +304,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                 {st.days.slice(-7).map((x) => <i key={x.iso} className={x.state} />)}
               </div>
             )}
-            {days.length > 1 && !picking && (
-              <div className="lk-row" style={{ marginTop: 4, justifyContent: "flex-end" }}>
-                <button type="button" className="lk-linkbtn" style={{ minHeight: 32, fontSize: 13 }} onClick={() => setPicking(true)}>Earlier days</button>
-              </div>
-            )}
+            {!controlledTicks && <div className="lk-weeknote"><span>Every day's workout is in the Theryn app.</span> <a href={APP_URL}>Get the app</a></div>}
           </section>
         )}
 
@@ -462,11 +427,6 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
           </div>
         )}
       </main>
-      {!today.isRest && upcoming && (
-        <div className="lk-footer"><div className="lk-footer-inner">
-          <button type="button" className="lk-send secondary" onClick={() => onPickDate?.(isoToday())}>Back to today</button>
-        </div></div>
-      )}
       {!today.isRest && !upcoming && (
         <div className="lk-footer"><div className="lk-footer-inner">
           <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
