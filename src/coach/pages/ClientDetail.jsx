@@ -10,6 +10,7 @@ import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
+import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 
 const TABS = [
   { id: "plan", label: "Plan" },
@@ -73,7 +74,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       ) : tab === "plan" ? (
         <PlanTab data={data} row={row} actions={actions} />
       ) : tab === "progress" ? (
-        <ProgressTab data={data} row={row} />
+        <ProgressTab data={data} row={row} actions={actions} />
       ) : tab === "body" ? (
         <BodyTab data={data} />
       ) : (
@@ -160,7 +161,7 @@ function PlanTab({ data, row, actions }) {
             <div key={d} className="cx-daycard">
               <button type="button" className="hd" style={{ background: "none", border: "none", padding: 0, width: "100%", minHeight: 32 }} onClick={() => setOpen(isOpen ? null : d)} aria-expanded={isOpen}>
                 <b>{DAY_LONG[d]}</b>
-                <span className="cx-row">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>Done via link</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
+                <span className="cx-row">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>{latestByDay[d].byCoach ? "Logged by you" : "Done via link"}</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
               </button>
               {isOpen && latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && (
                 <div className="cx-small" style={{ color: "var(--cx-tx2)" }}>
@@ -192,8 +193,26 @@ function PlanTab({ data, row, actions }) {
 }
 
 // ── Workouts ──────────────────────────────────────────────────────────────
-function ProgressTab({ data, row }) {
+function ProgressTab({ data, row, actions }) {
   const { history, routine, profile } = data;
+  const coachData = useCoachData();
+  const toast = useToast();
+  const firstName = row.name.split(" ")[0];
+  const [logging, setLogging] = React.useState(false);
+  const [removing, setRemoving] = React.useState(null);
+  const canLog = row.link.manual && typeof coachData.logWorkoutForClient === "function" && routine && DAYS.some((d) => routine[d]?.type && routine[d].type !== "Rest" && (routine[d].exercises || []).length);
+  const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
+  const sheet = canLog ? (
+    <LogWorkoutSheet open={logging} firstName={firstName} routine={routine} history={history} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
+      onClose={() => setLogging(false)}
+      onSave={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
+  ) : null;
+  async function removeLogged(w) {
+    setRemoving(w.id);
+    try { await coachData.deleteSubmission(w.submissionId); toast("Removed"); actions?.reloadClient?.(row.link.athlete_id); }
+    catch (e) { toast(e.message || "Could not remove", "error"); }
+    finally { setRemoving(null); }
+  }
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
   const stats = React.useMemo(() => computeStats(data), [data]);
@@ -204,9 +223,11 @@ function ProgressTab({ data, row }) {
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!history || history.length === 0) return <Empty title="No workouts yet">{row.link.manual ? "Workouts they tick off through their link show up here." : "Workouts they log in the app or tick off through their link show up here."}</Empty>;
+  if (!history || history.length === 0) return <><Empty title="No workouts yet" action={logButton}>{row.link.manual ? `Workouts they tick off through their link show up here. If ${firstName} trained but didn't tick it off, you can log it for them.` : "Workouts they log in the app or tick off through their link show up here."}</Empty>{sheet}</>;
   return (
     <>
+      {sheet}
+      {logButton && <div className="cx-row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="cx-small cx-muted" style={{ flex: "1 1 180px" }}>Trained but didn't tick it off? Log it for them.</span>{logButton}</div>}
       <div className="cx-stats" style={{ marginBottom: 0 }}>
         <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
         <div className="cx-card cx-stat"><span className="k">Consistency</span><span className="v" style={{ color: stats.adherencePct == null ? undefined : stats.adherencePct >= 80 ? "var(--cx-a)" : stats.adherencePct >= 60 ? "#F5A742" : "#FF6B6B" }}>{stats.adherencePct == null ? "—" : `${stats.adherencePct}%`}</span><span className="s">{stats.adherence?.planned ? `${stats.adherence.done} of ${stats.adherence.planned} · 4 wks` : "no plan yet"}</span></div>
@@ -232,7 +253,7 @@ function ProgressTab({ data, row }) {
             <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
               <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
                 <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
-                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
                   <span className="cx-small cx-muted">{workoutSummary(w)}{w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
                 </span>
                 <Icon.Down />
@@ -257,7 +278,8 @@ function ProgressTab({ data, row }) {
                     </div>
                   ))}
                   {w.feel && <div className="cx-small" style={{ marginTop: 6 }}><span className="cx-muted">Felt </span><b className={`cx-feel ${w.feel}`}>{w.feel}</b></div>}
-                  {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{row.name.split(" ")[0]}: "{w.note}"</div>}
+                  {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{w.byCoach ? "Your note" : row.name.split(" ")[0]}: "{w.note}"</div>}
+                  {w.byCoach && w.submissionId && <div className="cx-row" style={{ justifyContent: "space-between", marginTop: 8 }}><span className="cx-small cx-muted">You logged this for {firstName}.</span><Button size="sm" onClick={() => removeLogged(w)} disabled={removing === w.id}>{removing === w.id ? "Removing…" : "Remove"}</Button></div>}
                 </div>
               )}
             </div>

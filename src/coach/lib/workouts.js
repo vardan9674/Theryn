@@ -94,7 +94,7 @@ export function workoutDetail(entry) {
       };
     });
     return {
-      id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true,
+      id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true, byCoach: p.logged_by === "coach", submissionId: sub.id,
       note: (p.note || entry.note || "").trim(),
       feel: ["easy", "medium", "hard"].includes(p.feel) ? p.feel : null,
       durationMin: null,

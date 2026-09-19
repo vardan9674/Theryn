@@ -243,6 +243,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     shareLink: (id) => setSheet({ kind: "shareLink", athleteId: id }),
     profile: () => setSheet({ kind: "profile" }),
     editPlan: (id) => setEditor({ athleteId: id }),
+    reloadClient: (id) => cache.load(id, { force: true }).catch(() => {}),
     exportPlan: (id) => {
       const d = cache.get(id); const c = clientById(id);
       if (!d || !c) { toast("Still loading this client. Try again in a moment."); return; }
