@@ -247,11 +247,10 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
     setReopened((o) => ({ ...o, [i]: false }));
   };
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
-  // Typing reps or weight for a set means it was done: tick it (and the ones before it).
+  // Typing only edits the number. Ticking is a separate tap, so reaching for a value never ticks a set.
   const setSetValue = (i, si, field, raw) => {
     const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [field]: v } } }));
-    if (v !== "") { setTicks((t) => ({ ...t, [i]: Math.max(t[i] || 0, si + 1) })); setSkipped((s) => ({ ...s, [i]: false })); }
   };
 
   async function send() {
@@ -383,7 +382,9 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               return (
                 <div key={i} className={`lk-card lk-ex ${done ? "done" : ""} ${isCurrent ? "current" : ""}`}>
                   <div className="lk-ex-head">
-                    <span className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</span>
+                    {upcoming
+                      ? <span className="lk-badge">{String(i + 1).padStart(2, "0")}</span>
+                      : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{e.name}</div>
                       <div className="lk-ex-meta">{full} {full === 1 ? "set" : "sets"}{e.reps ? ` × ${e.reps} reps` : ""}{e.weight != null ? ` · ${e.weight} ${unit}` : ""}</div>
@@ -395,19 +396,25 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                       : n > 0 ? <span className="lk-ex-count">{n}/{full}</span> : null}
                   </div>
 
-                  {rows.map((x) => (
-                    <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""}`}>
-                      {!upcoming && <button type="button" className="lk-srow-hit" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)} />}
-                      <span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span>
-                      <span className="lk-srow-label"><span><span className="w">Set </span>{x.si + 1}</span>{x.changed && <em>edited</em>}</span>
-                      <span className="lk-srow-nums">
-                        <input className="lk-sin" inputMode="numeric" placeholder={e.reps || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} aria-label={`Set ${x.si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
-                        <span className="lk-srow-unit">reps</span>
-                        <input className="lk-sin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} aria-label={`Set ${x.si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
-                        <span className="lk-srow-unit">{unit}</span>
-                      </span>
-                    </div>
-                  ))}
+                  {rows.map((x) => {
+                    const tick = <><span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span><span className="lk-srow-label"><span><span className="w">Set </span>{x.si + 1}</span>{x.changed && <em>edited</em>}</span></>;
+                    return (
+                      <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""}`}>
+                        {/* Only this part ticks. The number cells never do, so reaching for a value can't tick the set. */}
+                        {upcoming
+                          ? <span className="lk-srow-tick">{tick}</span>
+                          : <button type="button" className="lk-srow-tick" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)}>{tick}</button>}
+                        <label className="lk-srow-cell">
+                          <input className="lk-sin" inputMode="numeric" placeholder={e.reps || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
+                          <span className="lk-srow-unit">reps</span>
+                        </label>
+                        <label className="lk-srow-cell">
+                          <input className="lk-sin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
+                          <span className="lk-srow-unit">{unit}</span>
+                        </label>
+                      </div>
+                    );
+                  })}
 
                   {!upcoming && <div className="lk-ex-actions" style={{ justifyContent: "flex-end" }}>
                     {done
