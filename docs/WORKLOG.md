@@ -18,6 +18,18 @@ Newest first. One entry per working session. Record what was done, what was foun
 - Editors say who a change reaches. A client's plan from a saved plan: "Changes here are only for Ravi. The plan and your other clients stay the same." The saved-plan editor: "Changes here are for all N clients on this plan…". Saving a client's plan adds "Your plan … didn't change."
 
 **Verified**: coach preview: empty plan blocked; add Ravi; edit only Ravi; plan shows "1 with their own changes"; Update → Keep theirs → 3 updated, Ravi kept; Update → Use plan → 4 updated, mark gone. No overflow at 320. 110 tests, typecheck, build.
+## 2026-09-19 (late night) — Link shows today only, branch `fix/link-today-only`
+
+**Asked**
+- "The client with the link should only have the week strip and be able to update or see today's workout; they need the app to see all the days' workouts, just like we had previously."
+
+**Done** (no database change)
+- The week strip on `/f/<token>` is display-only again (plain tiles, as before 394bd5c). Tapping a day does nothing; there's no "Earlier days" picker and no read-only "coming up" view.
+- Under the strip: "Every day's workout is in the Theryn app. Get the app".
+- Removed `loggableDays`, the day-picker state and its CSS. Today's workout, streak, last 7 days, per-set logging, feel, note and Finish are unchanged.
+
+**Verified**
+- `/f/preview` at 375: 7 plain day tiles, no day buttons, no "Earlier days", note fits on one line, no sideways scroll; tick an exercise → Finish → receipt. 109 tests, typecheck, build pass.
 
 ## 2026-09-19 (night) — Saved plans use the new plan editor, branch `feat/saved-plan-editor` (on top of `feat/plan-editor-v2`)
 
