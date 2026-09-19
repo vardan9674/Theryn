@@ -401,6 +401,19 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     // `label` column as "tok:<token>": coach-only under RLS, never returned to
     // the public page, and unused otherwise. Links made before this carry only
     // the device's localStorage copy; the first device that has it syncs it up.
+    // The coach ticks off a workout for a name-only client (stored like a link
+    // submission, payload.logged_by = "coach"; counts for their streak).
+    async logWorkoutForClient(clientId, payload) {
+      const mid = manualIdOf(clientId);
+      if (!mid) throw new Error("This works for clients added by name. App clients log in the app.");
+      const { error } = await supabase.from("client_submissions").insert({ coach_id: coachId, manual_client_id: mid, athlete_id: null, link_id: null, kind: "workout", payload, user_agent: "coach dashboard" });
+      if (error) throw new Error(/row-level security|permission denied/i.test(error.message) ? "Logging workouts for clients needs a quick database update: run supabase/migrations/20260919160000_coach_logs_workouts.sql in the Supabase SQL editor." : error.message);
+    },
+    async deleteSubmission(id) {
+      const { error } = await supabase.from("client_submissions").delete().eq("id", id).eq("coach_id", coachId);
+      if (error) throw new Error(error.message);
+    },
+
     async getClientLink(clientId) {
       const t = linkTarget(clientId);
       let q = supabase.from("client_links").select("id, requested, opens, last_opened_at, submissions, created_at, label, token_hash").eq("coach_id", coachId).is("revoked_at", null);

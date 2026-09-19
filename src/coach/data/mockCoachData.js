@@ -322,6 +322,8 @@ export function createMockCoachData() {
     async createClientLink(clientId, { requested } = {}) { await wait(300); const l = { id: "lnk-" + uid(), token: generateToken(), requested: requested || ["chest", "waist", "hips", "arm", "thigh"], opens: 0, submissions: 0, created_at: new Date().toISOString() }; st.clientLinks[clientId] = l; return { link: l, token: l.token }; },
     async revokeClientLink(clientId) { await wait(150); delete st.clientLinks[clientId]; },
     async updateClientLinkRequested(clientId, requested) { await wait(100); if (st.clientLinks[clientId]) st.clientLinks[clientId].requested = requested; },
+    async logWorkoutForClient(clientId, payload) { await wait(250); st.submissions.unshift({ id: "sub-" + uid(), kind: "workout", submitted_at: new Date().toISOString(), clientId, payload }); notify(); },
+    async deleteSubmission(id) { await wait(150); st.submissions = st.submissions.filter((x) => x.id !== id); notify(); },
     async loadRecentSubmissions() { await wait(100); return st.submissions.slice(); },
     async loadNotificationFeed(clients) {
       await wait(120);
