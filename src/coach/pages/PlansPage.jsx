@@ -9,7 +9,7 @@ import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 
 // Moved to lib so the data layer can build name-only clients' weeks from a saved plan.
 export { templateDaysToPlan } from "../lib/manualTemplates.js";
-import { templateDaysToPlan, planToTemplateDays } from "../lib/manualTemplates.js";
+import { templateDaysToPlan, planToTemplateDays, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 
 /**
  * The coach's saved plans. Each row: Edit plan · Excel · Update clients ·
@@ -67,6 +67,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
 
   async function openGive(t) {
     try {
+      if (!templateHasWorkouts((await data.getTemplateWithTree(t.id)).days)) { toast(EMPTY_PLAN_MSG, "error"); return; }
       const [assignments, locked] = await Promise.all([
         data.getTemplateAssignments(t.id),
         data.getActiveAssignmentsForAthletes(clients.map((c) => c.athlete_id)),
@@ -84,13 +85,22 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     const toRemove = assignedIds.filter((id) => !selectedIds.includes(id));
     setBusy(true);
     try {
+      // Only count the clients the server says were added; say which failed and why.
+      let added = 0, failed = [];
       if (toAssign.length) {
         const res = await data.assignTemplate(template.id, toAssign);
-        if (res.failed?.length) toast(`${res.failed.length} could not be added`, "error");
+        added = (res.succeeded || []).filter((id) => toAssign.includes(id)).length;
+        failed = res.failed || [];
       }
       if (toRemove.length) await data.unassignTemplate(template.id, toRemove);
       onClientsChanged?.([...toAssign, ...toRemove]);
-      toast(toAssign.length && toRemove.length ? "Clients updated" : toAssign.length ? `Added ${plural(toAssign.length, "client")} to the plan` : "Taken off the plan");
+      const nameOf = (id) => clients.find((c) => c.athlete_id === id)?.athlete_name || "A client";
+      const why = (r) => (r === "no_permission" ? "they haven't accepted you as their coach" : r || "unknown error");
+      const parts = [];
+      if (added) parts.push(`Added ${plural(added, "client")} to the plan`);
+      if (toRemove.length) parts.push(`took ${plural(toRemove.length, "client")} off`);
+      if (failed.length) parts.push(`${failed.length === 1 ? `${nameOf(failed[0].athlete_id)} wasn't added` : `${failed.length} weren't added`}: ${why(failed[0].reason)}`);
+      toast(parts.length ? parts.join(". ").replace(/^./, (c) => c.toUpperCase()) : "Nothing changed", failed.length ? "error" : undefined);
       setGiving(null);
       await reload();
     } catch (e) { toast(e.message || "Could not update", "error"); }
@@ -99,6 +109,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
 
   async function openPush(t) {
     try {
+      if (!templateHasWorkouts((await data.getTemplateWithTree(t.id)).days)) { toast(EMPTY_PLAN_MSG, "error"); return; }
       const assignments = (await data.getTemplateAssignments(t.id)).filter((a) => !a.unassigned_at);
       if (assignments.length === 0) { toast("No clients on this plan yet. Use \"Add clients\" first."); return; }
       setPushing({ template: t, assignments });

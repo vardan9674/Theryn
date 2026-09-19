@@ -7,7 +7,7 @@ import { isoDate } from "../lib/format.js";
 import { isManualId, toClientId, manualIdOf, manualToClient, manualClientData, manualFeeRow, manualPaymentRows, parseManualPaymentId, parseManualFeeId, cleanName, randomId } from "../lib/manualClients.js";
 import { generateToken, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan } from "../lib/units.js";
-import { planTemplate, stampTemplate, manualPlanFromTemplate, templateDaysToPlan } from "../lib/manualTemplates.js";
+import { planTemplate, stampTemplate, manualPlanFromTemplate, templateDaysToPlan, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -303,7 +303,7 @@ export function createMockCoachData() {
     async saveTemplateTree(id, days) { await wait(300); const t = st.templates.find((x) => x.id === id); t.days = JSON.parse(JSON.stringify(days)); t.version += 1; t.updated_at = new Date().toISOString(); return t.version; },
     async duplicateTemplate(id, name) { await wait(200); const src = st.templates.find((x) => x.id === id); const t = { ...JSON.parse(JSON.stringify(src)), id: "t" + uid(), name, version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; st.templates.push(t); st.assignments[t.id] = []; return t; },
     async softDeleteTemplate(id) { await wait(200); st.templates = st.templates.filter((x) => x.id !== id); delete st.assignments[id]; },
-    async assignTemplate(id, athleteIds) { await wait(300); const t0 = st.templates.find((x) => x.id === id); const given = athleteIds.filter(isManualId); for (const a of given) { const m = st.manual.find((r) => r.id === manualIdOf(a)); if (m) m.plan = manualPlanFromTemplate(t0, t0.days, st.units); } athleteIds = athleteIds.filter((a) => !isManualId(a)); for (const a of athleteIds) { for (const k of Object.keys(st.assignments)) st.assignments[k] = st.assignments[k].filter((x) => x !== a); st.assignments[id].push(a); const t = st.templates.find((x) => x.id === id); st.routines[a] = fromTemplateDays(t.days); } return { succeeded: [...athleteIds, ...given], failed: [], archived: [] }; },
+    async assignTemplate(id, athleteIds) { await wait(300); const t0 = st.templates.find((x) => x.id === id); if (!templateHasWorkouts(t0.days)) throw new Error(EMPTY_PLAN_MSG); const given = athleteIds.filter(isManualId); for (const a of given) { const m = st.manual.find((r) => r.id === manualIdOf(a)); if (m) m.plan = manualPlanFromTemplate(t0, t0.days, st.units); } athleteIds = athleteIds.filter((a) => !isManualId(a)); for (const a of athleteIds) { for (const k of Object.keys(st.assignments)) st.assignments[k] = st.assignments[k].filter((x) => x !== a); st.assignments[id].push(a); const t = st.templates.find((x) => x.id === id); st.routines[a] = fromTemplateDays(t.days); } return { succeeded: [...athleteIds, ...given], failed: [], archived: [] }; },
     async pushTemplateUpdate(id, athleteIds, force) {
       await wait(300); const t = st.templates.find((x) => x.id === id);
       const manualIds = st.manual.filter((m) => planTemplate(m.plan)?.id === id).map((m) => toClientId(m.id)).filter((mid) => !athleteIds || athleteIds.includes(mid));

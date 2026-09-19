@@ -17,7 +17,7 @@ import {
 } from "../lib/manualClients.js";
 import { generateToken, hashToken, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan, normUnits } from "../lib/units.js";
-import { planTemplate, stampTemplate, manualPlanFromTemplate } from "../lib/manualTemplates.js";
+import { planTemplate, stampTemplate, manualPlanFromTemplate, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 import { isoDate } from "../lib/format.js";
 
 const MANUAL_COLS_V1 = "id, coach_id, first_name, last_name, plan, fee, payments, notes, created_at, updated_at";
@@ -320,9 +320,11 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     softDeleteTemplate,
     async assignTemplate(templateId, clientIds) {
       const manualIds = clientIds.filter(isManualId), appIds = clientIds.filter((id) => !isManualId(id));
+      // Giving an empty plan would replace each client's week with rest days.
+      const { template, days } = await getTemplateWithTree(templateId);
+      if (!templateHasWorkouts(days)) throw new Error(EMPTY_PLAN_MSG);
       const res = appIds.length ? await assignTemplate(templateId, appIds) : { succeeded: [], failed: [], archived: [] };
       if (manualIds.length) {
-        const { template, days } = await getTemplateWithTree(templateId);
         for (const id of manualIds) {
           try { await patchManualRow(manualIdOf(id), { plan: manualPlanFromTemplate(template, days, unitSystem) }); res.succeeded = [...(res.succeeded || []), id]; }
           catch (e) { res.failed = [...(res.failed || []), { athlete_id: id, reason: e.message }]; }
@@ -331,6 +333,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       return res;
     },
     async pushTemplateUpdate(templateId, clientIds, force, skipMidWeek) {
+      if (!templateHasWorkouts((await getTemplateWithTree(templateId)).days)) throw new Error(EMPTY_PLAN_MSG);
       const ids = clientIds || null;
       const appIds = ids ? ids.filter((id) => !isManualId(id)) : null;
       const res = !ids || appIds.length ? await pushTemplateUpdate(templateId, appIds, { force: Boolean(force), skipMidWeek: skipMidWeek !== false }) : { succeeded: [], skipped_overridden: [], skipped_mid_week: [], active_session_conflicts: [], failed: [] };
