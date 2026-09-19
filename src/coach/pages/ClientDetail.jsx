@@ -60,12 +60,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
           ? <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
       </div>
-      {manual && (
-        <div className="cx-col" style={{ gap: 6 }}>
-          <span className="cx-small cx-muted">Added by name. They send workouts and measurements through their link.</span>
-          <ClientEmail clientId={athleteId} initial={link.email} firstName={row.name.split(" ")[0]} />
-        </div>
-      )}
+      {manual && <ClientEmail clientId={athleteId} initial={link.email} firstName={row.name.split(" ")[0]} />}
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
@@ -93,21 +88,35 @@ function ClientEmail({ clientId, initial, firstName }) {
   const [email, setEmail] = React.useState(initial || "");
   const [draft, setDraft] = React.useState(initial || "");
   const [editing, setEditing] = React.useState(false);
+  const [open, setOpen] = React.useState(false); // the explanation, shown only after "Link to app"
   const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { setEmail(initial || ""); setDraft(initial || ""); setEditing(false); }, [clientId, initial]);
+  React.useEffect(() => { setEmail(initial || ""); setDraft(initial || ""); setEditing(false); setOpen(false); }, [clientId, initial]);
   if (typeof data.updateManualEmail !== "function") return null;
   async function save() {
     setBusy(true);
-    try { const saved = await data.updateManualEmail(clientId, draft); setEmail(saved || ""); setEditing(false); toast(saved ? "Email saved" : "Email removed"); }
+    try { const saved = await data.updateManualEmail(clientId, draft); setEmail(saved || ""); setEditing(false); setOpen(false); toast(saved ? "Email saved" : "Email removed"); }
     catch (e) { toast(e.message || "Could not save", "error"); }
     finally { setBusy(false); }
   }
+  // Collapsed: one line. The explanation and the email field open on "Link to app".
+  if (!open && !editing) {
+    return (
+      <div className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
+        <span className="cx-small cx-muted" style={{ minWidth: 0 }}>{email ? <>Uses their link · <span style={{ color: "var(--cx-tx2)" }}>{email}</span></> : "Uses their link, not the app"}</span>
+        <button type="button" className="cx-linkbtn cx-small" style={{ minHeight: 32, flex: "none" }} onClick={() => { setOpen(true); setEditing(true); }} aria-expanded={false}>{email ? "Change" : "Link to app"}</button>
+      </div>
+    );
+  }
+  const why = <span className="cx-small cx-muted">{firstName} sends workouts and measurements through their link. Add their email: when they sign up for the app with it, their history comes with them.</span>;
   if (editing) {
     return (
+      <div className="cx-col" style={{ gap: 6 }}>
+      {why}
       <div className="cx-row" style={{ gap: 6 }}>
         <input className="cx-input" type="email" inputMode="email" autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`${firstName}'s email`} aria-label={`${firstName}'s email`} style={{ flex: 1, minWidth: 0 }} autoFocus />
         <Button size="sm" variant="primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
-        <Button size="sm" onClick={() => { setDraft(email); setEditing(false); }} disabled={busy}>Cancel</Button>
+        <Button size="sm" onClick={() => { setDraft(email); setEditing(false); setOpen(false); }} disabled={busy}>Cancel</Button>
+      </div>
       </div>
     );
   }
