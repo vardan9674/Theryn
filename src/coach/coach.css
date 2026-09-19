@@ -360,6 +360,19 @@
 .cx-planrow:last-child { border-bottom: none; }
 .cx-planrow .acts { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .cx-plan-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.cx-plan-own { font-size: 12px; color: #F5A742; margin-top: 2px; }
+.cx-linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--cx-a); font-weight: 600; cursor: pointer; }
+.cx-how { padding: 16px; margin-bottom: 16px; border-color: rgba(200, 255, 0, 0.25); }
+.cx-how-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cx-how-head b { font-size: 16px; }
+.cx-how-head .cx-linkbtn { min-height: 36px; padding: 0 4px; }
+.cx-how-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.cx-how-steps li { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.cx-how-steps li > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cx-how-steps b { font-size: 14px; }
+.cx-how-steps small { font-size: 13px; color: var(--cx-tx2); line-height: 1.4; }
+.cx-how-n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: rgba(200, 255, 0, 0.14); color: var(--cx-a); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.cx-how-foot { margin: 12px 0 0; font-size: 13px; color: var(--cx-mu); line-height: 1.4; }
 .cx-plan-card .acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 
 .cx-cardgrid { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -531,6 +544,8 @@
 .pe-titlebtn { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; color: var(--cx-tx); cursor: pointer; text-align: left; font: inherit; }
 .pe-titlebtn svg { flex: none; color: var(--cx-a); }
 .pe-titlein { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; font-size: 16px; font-weight: 800; color: var(--cx-tx); background: var(--cx-s2); border: 1px solid var(--cx-a); border-radius: 8px; padding: 5px 9px; outline: none; }
+.pe-scope { display: flex; gap: 8px; align-items: flex-start; padding: 10px 16px; font-size: 13px; line-height: 1.4; color: var(--cx-tx2); background: rgba(200, 255, 0, 0.06); border-bottom: 1px solid var(--cx-bd); }
+.pe-scope svg { flex: none; margin-top: 2px; color: var(--cx-a); }
 .pe-shell { position: fixed; inset: 0; z-index: 60; overflow-y: auto; background: var(--cx-bg); }
 .pe-save { height: 44px; padding: 0 18px; border-radius: 12px; border: none; background: var(--cx-s2); color: var(--cx-mu); font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; flex: none; transition: background 0.15s, color 0.15s, transform 0.08s; }
 .pe-save.dirty { background: var(--cx-a); color: #080808; animation: pe-pulse 1.6s ease-out 1; }

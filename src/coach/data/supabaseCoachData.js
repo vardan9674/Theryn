@@ -308,9 +308,9 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     // (see lib/manualTemplates.js). Every call below splits the two kinds.
     async listTemplates() {
       const [list, manual] = await Promise.all([listTemplates(coachId), listManualRows()]);
-      const extra = {};
-      for (const r of manual) { const t = planTemplate(r.plan); if (t) extra[t.id] = (extra[t.id] || 0) + 1; }
-      return list.map((t) => ({ ...t, assignment_count: (t.assignment_count || 0) + (extra[t.id] || 0) }));
+      const extra = {}, custom = {};
+      for (const r of manual) { const t = planTemplate(r.plan); if (t) { extra[t.id] = (extra[t.id] || 0) + 1; if (t.overridden) custom[t.id] = (custom[t.id] || 0) + 1; } }
+      return list.map((t) => ({ ...t, assignment_count: (t.assignment_count || 0) + (extra[t.id] || 0), custom_count: (t.custom_count || 0) + (custom[t.id] || 0) }));
     },
     createTemplate: (name) => createTemplate(coachId, name),
     getTemplateWithTree,

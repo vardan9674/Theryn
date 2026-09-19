@@ -29,6 +29,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const [pushing, setPushing] = React.useState(null); // { template, assignments }
   const [deleting, setDeleting] = React.useState(null);
   const [menuFor, setMenuFor] = React.useState(null);
+  const [showHow, setShowHow] = React.useState(() => { try { return localStorage.getItem("theryn.plansHowSeen") !== "1"; } catch { return true; } });
+  const setHow = (v) => { setShowHow(v); if (!v) { try { localStorage.setItem("theryn.plansHowSeen", "1"); } catch { /* private mode */ } } };
 
   const reload = React.useCallback(async () => {
     try { setTemplates(await data.listTemplates()); }
@@ -116,14 +118,25 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     } catch (e) { toast("Could not load assignments", "error"); }
   }
 
-  async function confirmPush({ athleteIds, force, skipMidWeek }) {
+  async function confirmPush({ athleteIds, force, skipMidWeek, replaceIds = [] }) {
     setBusy(true);
     try {
-      const res = await data.pushTemplateUpdate(pushing.template.id, athleteIds, force, skipMidWeek);
-      const n = res.succeeded?.length || 0;
-      const skipped = (res.skipped_overridden?.length || 0) + (res.skipped_mid_week?.length || 0) + (res.active_session_conflicts?.length || 0);
-      onClientsChanged?.(res.succeeded || []);
-      toast(skipped ? `Updated ${n}. ${skipped} skipped (you edited their plan, or they're mid-workout).` : `Updated ${plural(n, "client")}`);
+      const none = { succeeded: [], skipped_overridden: [], skipped_mid_week: [], active_session_conflicts: [], failed: [] };
+      // Everyone following the plan; then, separately, the clients whose own changes the coach chose to replace.
+      const res = athleteIds === null || athleteIds.length ? await data.pushTemplateUpdate(pushing.template.id, athleteIds, force, skipMidWeek) : none;
+      const res2 = replaceIds.length ? await data.pushTemplateUpdate(pushing.template.id, replaceIds, true, skipMidWeek) : none;
+      const all = (k) => [...new Set([...(res[k] || []), ...(res2[k] || [])])];
+      const done = all("succeeded");
+      // The first pass skips everyone with their own changes; the ones replaced in the second pass weren't kept.
+      const kept = all("skipped_overridden").filter((id) => !done.includes(id));
+      const busyNow = all("skipped_mid_week").length + all("active_session_conflicts").length;
+      onClientsChanged?.(done);
+      const nameOf = (id) => (pushing.assignments.find((a) => a.athlete_id === id)?.athlete_name || "a client").split(" ")[0];
+      const bits = [`Updated ${plural(done.length, "client")}`];
+      if (kept.length) bits.push(kept.length === 1 ? `Kept ${nameOf(kept[0])}'s own changes` : `Kept own changes for ${plural(kept.length, "client")}`);
+      if (busyNow) bits.push(`Skipped ${plural(busyNow, "client")} who started this week`);
+      toast(bits.join(". ") + ".");
+      reload();
       setPushing(null);
     } catch (e) { toast(e.message || "Could not send update", "error"); }
     finally { setBusy(false); }
@@ -183,6 +196,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
           unit={unit}
           title={editing.template.name}
           status={`v${editing.template.version} · ${n ? plural(n, "client") : "No clients yet"} · weights in ${unit}`}
+          scope={n ? `Changes here are for all ${plural(n, "client")} on this plan. They get them when you tap Update clients.` : "Changes here are for everyone you add to this plan."}
           onTitleChange={renameEditing}
           onSave={saveEditing}
           onCancel={() => { setEditing(null); reload(); }}
@@ -200,10 +214,12 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       <div className="cx-page-head">
         <div>
           <h1 className="cx-h1">Your plans</h1>
-          <div className="cx-sub">Write a week of workouts once, then give it to any client. Editing a plan doesn't change the clients on it until you press Update clients.</div>
+          <div className="cx-sub">Write a week of workouts once, then give it to any client.{!showHow && <> <button type="button" className="cx-linkbtn" onClick={() => setHow(true)}>How plans work</button></>}</div>
         </div>
         <Button variant="primary" icon={<Icon.Plus />} onClick={() => setNaming(true)}>New plan</Button>
       </div>
+
+      {showHow && <HowPlansWork onClose={() => setHow(false)} />}
 
       {loading ? <Spinner label="Loading plans…" /> : templates.length === 0 ? (
         <Empty title="No plans yet" action={<Button variant="primary" icon={<Icon.Plus />} onClick={() => setNaming(true)}>Create your first plan</Button>}>
@@ -217,6 +233,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{t.name}</div>
                   <div className="cx-small cx-muted">v{t.version} · {t.assignment_count > 0 ? `${plural(t.assignment_count, "client")} · ` : "No clients yet · "}changed {shortDate(t.updated_at?.slice(0, 10))}</div>
+                  {t.custom_count > 0 && <div className="cx-small cx-plan-own">{t.custom_count} with their own changes</div>}
                 </div>
                 <RowMenu open={menuFor === t.id} onToggle={() => setMenuFor(menuFor === t.id ? null : t.id)} onDuplicate={() => duplicate(t)} onDelete={() => { setMenuFor(null); setDeleting(t); }} />
               </div>
@@ -236,7 +253,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
             <div key={t.id} className="cx-planrow">
               <div style={{ fontSize: 15, fontWeight: 600 }}>{t.name}</div>
               <div className="cx-small cx-muted">v{t.version}</div>
-              <div className="cx-small">{t.assignment_count > 0 ? plural(t.assignment_count, "client") : <span className="cx-muted">No clients yet</span>}</div>
+              <div className="cx-small">{t.assignment_count > 0 ? plural(t.assignment_count, "client") : <span className="cx-muted">No clients yet</span>}{t.custom_count > 0 && <div className="cx-plan-own">{t.custom_count} own changes</div>}</div>
               <div className="cx-small cx-muted">{shortDate(t.updated_at?.slice(0, 10))}</div>
               <div className="acts">
                 <Button size="sm" icon={<Icon.Edit />} onClick={() => openEditor(t)}>Edit plan</Button>
@@ -263,6 +280,25 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       {pushModal}
       <Confirm open={Boolean(deleting)} title={`Delete "${deleting?.name}"?`} body="Clients who have it keep their current plan but won't get future updates." confirmLabel="Delete" danger busy={busy} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />
     </div>
+  );
+}
+
+/** Four plain steps, shown until the coach taps Got it; "How plans work" brings it back. */
+function HowPlansWork({ onClose }) {
+  const steps = [
+    ["Write the week once", "Tap New plan and add the workouts."],
+    ["Add clients", "Each client gets their own copy of the week."],
+    ["Change it for everyone", "Tap Edit plan, save, then tap Update clients."],
+    ["Change it for one client", "Open that client and tap Edit plan. The plan and everyone else stay the same."],
+  ];
+  return (
+    <section className="cx-card cx-how" aria-label="How plans work">
+      <div className="cx-how-head"><b>How plans work</b><button type="button" className="cx-linkbtn" onClick={onClose}>Got it</button></div>
+      <ol className="cx-how-steps">
+        {steps.map(([h, p], i) => <li key={h}><span className="cx-how-n">{i + 1}</span><span><b>{h}</b><small>{p}</small></span></li>)}
+      </ol>
+      <p className="cx-how-foot">When you update a plan, clients you changed by hand are asked about first: keep their version, or use the plan.</p>
+    </section>
   );
 }
 

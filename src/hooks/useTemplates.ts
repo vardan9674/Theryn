@@ -93,7 +93,7 @@ export async function listTemplates(coachId: string): Promise<(RoutineTemplate &
   const ids = templates.map((t: any) => t.id);
   const { data: counts } = await supabase
     .from("routine_template_assignments")
-    .select("template_id")
+    .select("template_id, is_overridden")
     .in("template_id", ids)
     .is("unassigned_at", null);
 
@@ -102,7 +102,9 @@ export async function listTemplates(coachId: string): Promise<(RoutineTemplate &
     countMap[(row as any).template_id] = (countMap[(row as any).template_id] || 0) + 1;
   }
 
-  return templates.map((t: any) => ({ ...t, assignment_count: countMap[t.id] || 0 }));
+  const customMap: Record<string, number> = {};
+  for (const row of counts || []) if ((row as any).is_overridden) customMap[(row as any).template_id] = (customMap[(row as any).template_id] || 0) + 1;
+  return templates.map((t: any) => ({ ...t, assignment_count: countMap[t.id] || 0, custom_count: customMap[t.id] || 0 }));
 }
 
 export async function createTemplate(coachId: string, name: string): Promise<RoutineTemplate> {

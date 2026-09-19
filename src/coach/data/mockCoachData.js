@@ -296,7 +296,7 @@ export function createMockCoachData() {
     subscribeMessages(_clients, onMessage) { const fn = () => onMessage({}); st.listeners.add(fn); return () => st.listeners.delete(fn); },
     subscribeLiveData() { return () => {}; },
 
-    async listTemplates() { await wait(150); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length + st.manual.filter((m) => planTemplate(m.plan)?.id === t.id).length })); },
+    async listTemplates() { await wait(150); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length + st.manual.filter((m) => planTemplate(m.plan)?.id === t.id).length, custom_count: st.manual.filter((m) => planTemplate(m.plan)?.id === t.id && planTemplate(m.plan).overridden).length })); },
     async createTemplate(name) { await wait(200); const t = { id: "t" + uid(), owner_coach_id: COACH_ID, name, version: 1, visibility: "private", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), days: [] }; st.templates.push(t); st.assignments[t.id] = []; return t; },
     async getTemplateWithTree(id) { await wait(150); const t = st.templates.find((x) => x.id === id); const { days, ...template } = t; return { template, days: JSON.parse(JSON.stringify(days)) }; },
     async updateTemplateName(id, name) { await wait(100); const t = st.templates.find((x) => x.id === id); if (t) t.name = name; },
