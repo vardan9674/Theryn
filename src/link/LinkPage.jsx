@@ -157,6 +157,18 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
 }
 
 const FEELS = [{ id: "easy", label: "Easy" }, { id: "medium", label: "Medium" }, { id: "hard", label: "Hard" }];
+/** "3 sets × 8-10 reps · 40 kg", or "3 sets · 12/10/8 reps · 60–70 kg" when the sets differ. */
+function planMeta(e, full, unit) {
+  const setWord = `${full} ${full === 1 ? "set" : "sets"}`;
+  if (e.setList?.length) {
+    const r = e.setList.map((s) => s.reps || "–");
+    const ws = e.setList.map((s) => s.weight).filter((w) => w != null);
+    const reps = r.some((x) => x !== "–") ? ` · ${r.every((x) => x === r[0]) ? r[0] : r.join("/")} reps` : "";
+    const lo = ws.length ? Math.min(...ws) : null, hi = ws.length ? Math.max(...ws) : null;
+    return `${setWord}${reps}${lo != null ? ` · ${lo === hi ? lo : `${lo}–${hi}`} ${unit}` : ""}`;
+  }
+  return `${setWord}${e.reps ? ` × ${e.reps} reps` : ""}${e.weight != null ? ` · ${e.weight} ${unit}` : ""}`;
+}
 const firstNum = (reps) => (String(reps || "").match(/\d+/) || [""])[0];
 /** Did the client's reps fall inside the plan's "8" or "8-12"? (No plan: anything counts.) */
 function repsWithin(r, planned) {
@@ -353,15 +365,17 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
               const done = n >= full;
               const isCurrent = i === currentIdx;
               const last = store?.last(e.name);
-              const planReps = firstNum(e.reps);
+              // The coach's numbers for set `si`: its own when the sets differ.
+              const planR = (si) => e.setList?.[si]?.reps ?? e.reps;
+              const planW = (si) => e.setList?.[si]?.weight ?? e.weight;
               const rows = Array.from({ length: full }, (_, si) => {
                 const x = log[i]?.[si] || {};
                 const isDone = si < n;
-                const rChanged = x.r !== "" && x.r != null && !repsWithin(x.r, e.reps);
-                const wChanged = x.w !== "" && x.w != null && e.weight != null && Number(x.w) !== Number(e.weight);
+                const rChanged = x.r !== "" && x.r != null && !repsWithin(x.r, planR(si));
+                const wChanged = x.w !== "" && x.w != null && planW(si) != null && Number(x.w) !== Number(planW(si));
                 return { si, isDone, r: x.r || "", w: x.w || "", changed: isDone && (rChanged || wChanged) };
               });
-              const summary = rows.filter((x) => x.isDone).map((x) => ({ text: `${x.r || planReps || "?"}×${x.w || (e.weight ?? "?")}`, changed: x.changed }));
+              const summary = rows.filter((x) => x.isDone).map((x) => ({ text: `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}`, changed: x.changed }));
               const folded = !upcoming && (done || skipped[i]) && !reopened[i];
 
               if (folded) {
@@ -387,7 +401,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                       : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{e.name}</div>
-                      <div className="lk-ex-meta">{full} {full === 1 ? "set" : "sets"}{e.reps ? ` × ${e.reps} reps` : ""}{e.weight != null ? ` · ${e.weight} ${unit}` : ""}</div>
+                      <div className="lk-ex-meta">{planMeta(e, full, unit)}</div>
                       {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                     </div>
@@ -405,11 +419,11 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                           ? <span className="lk-srow-tick">{tick}</span>
                           : <button type="button" className="lk-srow-tick" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)}>{tick}</button>}
                         <label className="lk-srow-cell">
-                          <input className="lk-sin" inputMode="numeric" placeholder={e.reps || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
+                          <input className="lk-sin" inputMode="numeric" placeholder={planR(x.si) || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${planR(x.si) ? `, plan ${planR(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">reps</span>
                         </label>
                         <label className="lk-srow-cell">
-                          <input className="lk-sin" inputMode="decimal" placeholder={e.weight != null ? String(e.weight) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} weight in ${unit}${e.weight != null ? `, plan ${e.weight}` : ""}`} />
+                          <input className="lk-sin" inputMode="decimal" placeholder={planW(x.si) != null ? String(planW(x.si)) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} weight in ${unit}${planW(x.si) != null ? `, plan ${planW(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">{unit}</span>
                         </label>
                       </div>

@@ -57,9 +57,13 @@ export function convertPlan(plan, to, { assumeFrom = to } = {}) {
     out[k] = {
       ...day,
       units: normUnits(to),
-      exercises: (day.exercises || []).map((ex) => (ex && typeof ex === "object" && ex.weight != null && ex.weight !== ""
-        ? { ...ex, weight: convertWeight(ex.weight, from, to) }
-        : ex)),
+      exercises: (day.exercises || []).map((ex) => {
+        if (!ex || typeof ex !== "object") return ex;
+        const out = { ...ex };
+        if (ex.weight != null && ex.weight !== "") out.weight = convertWeight(ex.weight, from, to);
+        if (Array.isArray(ex.setList)) out.setList = ex.setList.map((s) => (s && s.weight != null && s.weight !== "" ? { ...s, weight: convertWeight(s.weight, from, to) } : s));
+        return out;
+      }),
     };
   }
   return out;
@@ -90,6 +94,7 @@ export function convertSubmission(sub, to, { workoutFrom = to } = {}) {
       weight_used: e.weight_used != null ? convertWeight(e.weight_used, from, target) : e.weight_used,
       weight_target: e.weight_target != null ? convertWeight(e.weight_target, from, target) : e.weight_target,
       ...(Array.isArray(e.sets) ? { sets: e.sets.map((x) => (x && x.weight != null ? { ...x, weight: convertWeight(x.weight, from, target) } : x)) } : {}),
+      ...(Array.isArray(e.plan_sets) ? { plan_sets: e.plan_sets.map((x) => (x && x.w != null ? { ...x, w: convertWeight(x.w, from, target) } : x)) } : {}),
     }));
     return { ...sub, payload: { ...p, exercises, weight_unit: target } };
   }

@@ -100,6 +100,14 @@ export function parseWeight(v) {
 /** "4 × 8 · 40 lb" for the plan view, tolerant of missing values. */
 export function setsReps(ex, unit) {
   const o = normalizeExercise(ex);
+  if (Array.isArray(o.setList) && o.setList.length) {
+    // Different sets: "3 × 12/10/8 · 60–70 kg"
+    const r = o.setList.map((s) => (s?.reps ? String(s.reps) : "–"));
+    const ws = o.setList.map((s) => parseWeight(s?.weight)).filter((x) => x != null);
+    let out = `${o.setList.length} × ${r.every((x) => x === r[0]) ? r[0] : r.join("/")}`;
+    if (ws.length) { const lo = Math.min(...ws), hi = Math.max(...ws); out += ` · ${lo === hi ? lo : `${lo}–${hi}`} ${unit || "lb"}`; }
+    return out;
+  }
   const s = o.sets != null && o.sets !== "" ? String(o.sets) : null;
   const r = o.reps != null && o.reps !== "" ? String(o.reps) : null;
   const w = parseWeight(o.weight);

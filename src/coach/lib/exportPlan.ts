@@ -30,6 +30,12 @@ function exName(ex: ExerciseItem): string {
 }
 function exField(ex: ExerciseItem, key: "sets" | "reps" | "weight" | "coachNote"): string {
   if (typeof ex === "string" || !ex) return "";
+  // Different sets: the Weight cell lists each set's weight, "60/65/70".
+  const list = (ex as any).setList;
+  if (key === "weight" && Array.isArray(list) && list.length) {
+    const ws = list.map((s: any) => (s?.weight != null && s.weight !== "" ? String(s.weight) : "–"));
+    return ws.every((w: string) => w === ws[0]) ? (ws[0] === "–" ? "" : ws[0]) : ws.join("/");
+  }
   const v = (ex as any)[key];
   return v == null || v === "" ? "" : String(v);
 }

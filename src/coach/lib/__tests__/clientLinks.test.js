@@ -32,7 +32,7 @@ describe("todayFromPlan", () => {
     const t = todayFromPlan(plan, mon);
     expect(t.isRest).toBe(false);
     expect(t.type).toBe("Push");
-    expect(t.exercises[0]).toEqual({ name: "Bench Press", sets: 3, reps: "8-10", weight: 40, note: "Slow down" });
+    expect(t.exercises[0]).toEqual({ name: "Bench Press", setList: null, sets: 3, reps: "8-10", weight: 40, note: "Slow down" });
     expect(t.exercises[1].name).toBe("Lateral Raise");
   });
   it("finds the next training day on a rest day", () => {
