@@ -13,7 +13,7 @@ import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
-import LandingPage from "./components/LandingPage";
+import LandingPage from "./components/landing/Landing.jsx";
 import ChatView from "./components/ChatView";
 import { loadConversationPreviews } from "./hooks/useChat";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachCatchUp, markCoachSeen, getCoachLastSeen, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
