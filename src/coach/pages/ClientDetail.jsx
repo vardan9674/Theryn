@@ -2,10 +2,10 @@ import React from "react";
 import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
-import { streakStats, streakLabel } from "../lib/streak.js";
+import { streakStats, streakLabel, consistencyStats } from "../lib/streak.js";
 import { weekProgress } from "../lib/clientFacts.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
-import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
+import { computeBMI, bmiCategory } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
@@ -215,11 +215,11 @@ function ProgressTab({ data, row, actions }) {
   }
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
-  const stats = React.useMemo(() => computeStats(data), [data]);
   const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine), [history, routine]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
   const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
   const week = React.useMemo(() => weekProgress(history || [], routine), [history, routine]);
+  const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at), [history, routine, row.link.created_at]);
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,7 +230,7 @@ function ProgressTab({ data, row, actions }) {
       {logButton && <div className="cx-row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="cx-small cx-muted" style={{ flex: "1 1 180px" }}>Trained but didn't tick it off? Log it for them.</span>{logButton}</div>}
       <div className="cx-stats" style={{ marginBottom: 0 }}>
         <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
-        <div className="cx-card cx-stat"><span className="k">Consistency</span><span className="v" style={{ color: stats.adherencePct == null ? undefined : stats.adherencePct >= 80 ? "var(--cx-a)" : stats.adherencePct >= 60 ? "#F5A742" : "#FF6B6B" }}>{stats.adherencePct == null ? "—" : `${stats.adherencePct}%`}</span><span className="s">{stats.adherence?.planned ? `${stats.adherence.done} of ${stats.adherence.planned} · 4 wks` : "no plan yet"}</span></div>
+        <div className="cx-card cx-stat" title="Planned workout days they trained on, since they joined. Rest days don't count."><span className="k">Consistency</span><span className="v" style={{ color: cons.pct == null ? undefined : cons.pct >= 80 ? "var(--cx-a)" : cons.pct >= 60 ? "#F5A742" : "#FF6B6B" }}>{cons.pct == null ? "—" : `${cons.pct}%`}</span><span className="s">{cons.planned ? `${cons.done} of ${plural(cons.planned, "day")} · since ${shortDate(cons.since)}` : routine ? "starts on their first workout day" : "no plan yet"}</span></div>
         <div className="cx-card cx-stat"><span className="k">This week</span><span className="v" style={week.planned > 0 && week.done >= week.planned ? { color: "var(--cx-a)" } : undefined}>{week.planned > 0 ? `${week.done}/${week.planned}` : week.done || "—"}</span><span className="s">{week.planned > 0 ? "workouts" : "no plan"}</span></div>
       </div>
       {efforts.length > 0 && (
