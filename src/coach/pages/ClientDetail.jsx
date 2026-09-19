@@ -3,6 +3,7 @@ import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, useToast } from "../ui/p
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
 import { streakStats, streakLabel } from "../lib/streak.js";
+import { weekProgress } from "../lib/clientFacts.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory, computeStats } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
@@ -199,6 +200,8 @@ function ProgressTab({ data, row }) {
   const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine), [history, routine]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
   const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
+  const week = React.useMemo(() => weekProgress(history || [], routine), [history, routine]);
+  const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!history || history.length === 0) return <Empty title="No workouts yet">{row.link.manual ? "Workouts they tick off through their link show up here." : "Workouts they log in the app or tick off through their link show up here."}</Empty>;
@@ -206,16 +209,18 @@ function ProgressTab({ data, row }) {
     <>
       <div className="cx-stats" style={{ marginBottom: 0 }}>
         <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
-        <div className="cx-card cx-stat"><span className="k">Last 28 days</span><span className="v">{stats.adherencePct == null ? "—" : `${stats.adherencePct}%`}</span></div>
-        <div className="cx-card cx-stat"><span className="k">Avg session</span><span className="v">{stats.sessionAvgMin == null ? "—" : `${stats.sessionAvgMin}m`}</span></div>
+        <div className="cx-card cx-stat"><span className="k">Consistency</span><span className="v" style={{ color: stats.adherencePct == null ? undefined : stats.adherencePct >= 80 ? "var(--cx-a)" : stats.adherencePct >= 60 ? "#F5A742" : "#FF6B6B" }}>{stats.adherencePct == null ? "—" : `${stats.adherencePct}%`}</span><span className="s">{stats.adherence?.planned ? `${stats.adherence.done} of ${stats.adherence.planned} · 4 wks` : "no plan yet"}</span></div>
+        <div className="cx-card cx-stat"><span className="k">This week</span><span className="v" style={week.planned > 0 && week.done >= week.planned ? { color: "var(--cx-a)" } : undefined}>{week.planned > 0 ? `${week.done}/${week.planned}` : week.done || "—"}</span><span className="s">{week.planned > 0 ? "workouts" : "no plan"}</span></div>
       </div>
-      <div className="cx-small cx-muted">"Last 28 days" is the share of planned workouts that were done.</div>
+      {efforts.length > 0 && (
+        <div className="cx-small"><span className="cx-muted">Recent effort: </span>{efforts.map((f, k) => <React.Fragment key={k}>{k > 0 && <span className="cx-muted"> · </span>}<b className={`cx-feel ${f}`}>{f}</b></React.Fragment>)}</div>
+      )}
       <div className="cx-card cx-card-pad cx-col" style={{ gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 600 }} className="cx-muted">Last 14 days</span>
         <div className="cx-strip" role="img" aria-label={`Last 14 days: ${st.days.filter((x) => x.state === "done").length} workouts`}>
           {st.days.map((x) => <i key={x.iso} className={x.state} title={`${shortDate(x.iso)}: ${x.state === "done" ? "workout" : x.state === "rest" ? "rest day" : x.state === "missed" ? "missed" : x.state === "today" ? "today" : "before they started"}`} />)}
         </div>
-        <span className="cx-small cx-muted">Green = workout · dashed = rest day · grey = missed</span>
+        <span className="cx-small cx-muted">Green done · dashed rest · grey missed</span>
       </div>
 
       <div className="cx-card">

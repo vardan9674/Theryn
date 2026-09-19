@@ -505,3 +505,16 @@
 @media (max-width: 360px) {
   .cx-tabbtn { padding: 0 9px; font-size: 13px; }
 }
+
+/* Stat tiles on phones: three across still fit their labels */
+@media (max-width: 480px) {
+  .cx-stat { padding: 12px 10px; min-width: 0; }
+  .cx-stat .k { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cx-stat .v { font-size: 20px; white-space: nowrap; }
+  .cx-stat .s { font-size: 10.5px; line-height: 1.25; }
+}
+@media (max-width: 360px) {
+  .cx-stats { gap: 6px; }
+  .cx-stat { padding: 12px 8px; }
+  .cx-stat .k { font-size: 10px; letter-spacing: -0.01em; }
+}
