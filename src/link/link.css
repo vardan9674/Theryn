@@ -55,7 +55,7 @@
 .lk-set { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-mu); font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .lk-set.on { background: var(--cx-a); border-color: var(--cx-a); color: var(--cx-bg); }
 .lk-weight { height: 44px; border-radius: 9px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); color: var(--cx-tx); padding: 0 12px; font-size: 16px; width: 120px; }
-.lk-textarea { min-height: 72px; border-radius: 9px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); color: var(--cx-tx); padding: 10px 12px; font-size: 16px; line-height: 1.4; resize: vertical; width: 100%; }
+.lk-textarea { min-height: 48px; border-radius: 9px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); color: var(--cx-tx); padding: 10px 12px; font-size: 16px; line-height: 1.4; resize: vertical; width: 100%; }
 
 /* Measurements */
 .lk-grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
@@ -196,3 +196,27 @@ button.lk-day { padding: 0; font: inherit; font-size: 12px; min-width: 0; }
 .lk-tiles b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .lk-tiles b.a { color: var(--cx-a); }
 @media (prefers-reduced-motion: reduce) { .lk-streak svg, .lk-streak.solid, .lk-ring-fill { animation: none; } }
+
+/* How did it feel: three taps, then an optional short note */
+.lk-feel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.lk-feel-opt { height: 48px; border-radius: 12px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-tx2); font-size: 15px; font-weight: 700; transition: background 0.12s, border-color 0.12s, color 0.12s; }
+.lk-feel-opt:active { transform: scale(0.97); }
+.lk-feel-opt[aria-pressed="true"] { color: var(--cx-bg); }
+.lk-feel-opt.easy[aria-pressed="true"] { background: var(--cx-a); border-color: var(--cx-a); }
+.lk-feel-opt.medium[aria-pressed="true"] { background: #F5C542; border-color: #F5C542; }
+.lk-feel-opt.hard[aria-pressed="true"] { background: #FF8A5C; border-color: #FF8A5C; }
+
+/* Narrow phones (320 and under): "Set 1" becomes "1" and the numbers tighten so nothing is cut */
+@media (max-width: 360px) {
+  .lk-main { padding-left: 14px; padding-right: 14px; }
+  .lk-card { padding: 14px 12px; }
+  .lk-srow { gap: 6px; padding: 0 6px; }
+  .lk-srow-label { width: 16px; text-align: center; }
+  .lk-srow-label .w { display: none; }
+  .lk-srow-label em { display: none; }
+  .lk-sin { width: 46px; font-size: 16px; }
+  .lk-srow-unit { font-size: 11px; margin-right: 4px; }
+  .lk-h1 { font-size: 30px; }
+  .lk-day { font-size: 11px; }
+  .lk-day b { font-size: 11px; }
+}

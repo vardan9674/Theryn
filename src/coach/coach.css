@@ -496,3 +496,12 @@
 .cx-strip i.rest { background: var(--cx-s2); border: 1px dashed #3A3A3A; }
 .cx-strip i.before { background: transparent; border: 1px solid var(--cx-bd); }
 .cx-strip i.today { background: transparent; border: 1.5px solid var(--cx-a); }
+.cx-feel { text-transform: capitalize; }
+.cx-feel.easy { color: var(--cx-a); }
+.cx-feel.medium { color: #F5C542; }
+.cx-feel.hard { color: #FF8A5C; }
+
+/* Small phones: the four client tabs fit without sideways scrolling */
+@media (max-width: 360px) {
+  .cx-tabbtn { padding: 0 9px; font-size: 13px; }
+}

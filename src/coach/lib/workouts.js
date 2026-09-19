@@ -81,6 +81,7 @@ export function workoutDetail(entry) {
     return {
       id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true,
       note: (p.note || entry.note || "").trim(),
+      feel: ["easy", "medium", "hard"].includes(p.feel) ? p.feel : null,
       durationMin: null,
       totalSets: exercises.reduce((a, e) => a + e.done, 0),
       plannedSets: exercises.reduce((a, e) => a + e.planned, 0),
@@ -95,6 +96,7 @@ export function workoutDetail(entry) {
   return {
     id: entry.id, date: entry.date, type: entry.type || "Workout", viaLink,
     note: (entry.note || "").trim(),
+    feel: entry.feel || null,
     durationMin: entry.duration ? Math.round(entry.duration / 60) : null,
     totalSets: entry.totalSets ?? exercises.reduce((a, e) => a + e.done, 0),
     plannedSets: entry.plannedSets || 0,

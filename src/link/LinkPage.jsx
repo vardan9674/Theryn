@@ -156,6 +156,7 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   </div>;
 }
 
+const FEELS = [{ id: "easy", label: "Easy" }, { id: "medium", label: "Medium" }, { id: "hard", label: "Hard" }];
 const firstNum = (reps) => (String(reps || "").match(/\d+/) || [""])[0];
 /** Did the client's reps fall inside the plan's "8" or "8-12"? (No plan: anything counts.) */
 function repsWithin(r, planned) {
@@ -209,6 +210,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   const [log, setLog] = React.useState(() => draft?.log || {});
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
+  const [feel, setFeel] = React.useState(() => draft?.feel || null); // "easy" | "medium" | "hard"
   const [picking, setPicking] = React.useState(false);
   // A finished exercise folds to one line; tapping it opens it again until it changes.
   const [reopened, setReopened] = React.useState({});
@@ -222,8 +224,8 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   // Save every tick as it happens.
   React.useEffect(() => {
     if (!store || controlledTicks || upcoming) return;
-    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, log, skipped, note });
-  }, [store, date, today.key, today.type, d.unit_system, ticks, log, skipped, note, controlledTicks, upcoming]);
+    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, log, skipped, note, feel });
+  }, [store, date, today.key, today.type, d.unit_system, ticks, log, skipped, note, feel, controlledTicks, upcoming]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -255,7 +257,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, log, note, date, d.unit_system);
+      const payload = workoutPayload(today, ticks, log, note, date, d.unit_system, feel);
       const res = await onSubmit(payload);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
       const before = streakStats(d.doneDates || [], d.plan).current;
@@ -322,10 +324,11 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                 {st.days.slice(-7).map((x) => <i key={x.iso} className={x.state} />)}
               </div>
             )}
-            <div className="lk-row" style={{ marginTop: 8 }}>
-              <span className="lk-small">Tap a day to see its workout.</span>
-              {days.length > 1 && !picking && <button type="button" className="lk-linkbtn" style={{ minHeight: 32, fontSize: 13 }} onClick={() => setPicking(true)}>Earlier days</button>}
-            </div>
+            {days.length > 1 && !picking && (
+              <div className="lk-row" style={{ marginTop: 4, justifyContent: "flex-end" }}>
+                <button type="button" className="lk-linkbtn" style={{ minHeight: 32, fontSize: 13 }} onClick={() => setPicking(true)}>Earlier days</button>
+              </div>
+            )}
           </section>
         )}
 
@@ -396,7 +399,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                     <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""}`}>
                       {!upcoming && <button type="button" className="lk-srow-hit" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)} />}
                       <span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span>
-                      <span className="lk-srow-label">Set {x.si + 1}{x.changed && <em>edited</em>}</span>
+                      <span className="lk-srow-label"><span><span className="w">Set </span>{x.si + 1}</span>{x.changed && <em>edited</em>}</span>
                       <span className="lk-srow-nums">
                         <input className="lk-sin" inputMode="numeric" placeholder={e.reps || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} aria-label={`Set ${x.si + 1} reps${e.reps ? `, plan ${e.reps}` : ""}`} />
                         <span className="lk-srow-unit">reps</span>
@@ -406,8 +409,7 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
                     </div>
                   ))}
 
-                  {!upcoming && <div className="lk-ex-actions">
-                    <span className="lk-small">{isCurrent && !done ? "Tap a set when it’s done. Tap a number to change it." : "Tap a number to change it."}</span>
+                  {!upcoming && <div className="lk-ex-actions" style={{ justifyContent: "flex-end" }}>
                     {done
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo all</button>
                       : skipped[i]
@@ -421,7 +423,10 @@ function WorkoutTab({ d, today, date = isoToday(), days = [], onPickDate, store 
             {!upcoming && <>
             <div>
               <div className="lk-row" style={{ marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 700 }}>How did it feel?</span><span className="lk-small">Optional</span></div>
-              <textarea className="lk-textarea" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Anything you'd like your coach to know…" aria-label="How did it feel?" />
+              <div className="lk-feel" role="group" aria-label="How did it feel?">
+                {FEELS.map((x) => <button key={x.id} type="button" className={`lk-feel-opt ${x.id}`} aria-pressed={feel === x.id} onClick={() => setFeel(feel === x.id ? null : x.id)}>{x.label}</button>)}
+              </div>
+              <textarea className="lk-textarea" rows={1} value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Add a note for your coach" aria-label="Note for your coach" />
             </div>
             </>}
             {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
@@ -568,7 +573,7 @@ function StreakChip({ st }) {
   return (
     <span className={`lk-streak ${cls}`} title={`${st.current} days in a row${st.best > st.current ? `, best ${st.best}` : ""}`}>
       <Icon.Flame size={12} />
-      {st.atRisk ? `${st.current} · tick today to keep it` : newBest ? `${st.current} · new best` : streakLabel(st.current)}
+      {st.atRisk ? `${st.current} days · keep it going today` : newBest ? `${st.current} · new best` : streakLabel(st.current)}
     </span>
   );
 }

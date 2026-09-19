@@ -58,3 +58,17 @@ describe("last time", () => {
     expect(setsLine(lastSetsFor(history, "Dips").sets)).toBe("12");
   });
 });
+
+import { buildNotifications } from "../notifications.js";
+describe("how did it feel", () => {
+  it("is sent only when it's one of the three, and reaches the coach", () => {
+    expect(workoutPayload(mon, { 0: 3 }, {}, "", "2026-09-14", "metric", "hard").feel).toBe("hard");
+    expect(workoutPayload(mon, { 0: 3 }, {}, "", "2026-09-14", "metric", "brutal").feel).toBeUndefined();
+    expect(workoutPayload(mon, { 0: 3 }, {}, "", "2026-09-14", "metric").feel).toBeUndefined();
+    const payload = workoutPayload(mon, { 0: 3 }, {}, "Shoulder tight", "2026-09-14", "metric", "hard");
+    const sub = { id: "s", kind: "workout", submitted_at: "2026-09-14T12:00:00.000Z", manual_client_id: "x", payload };
+    expect(workoutDetail({ ...submissionToHistory(sub), submission: sub }).feel).toBe("hard");
+    const [n] = buildNotifications({ submissions: [sub], clients: [{ athlete_id: "manual:x", athlete_name: "Sam Lee" }] });
+    expect(n.body).toBe('3 of 5 sets · felt hard · "Shoulder tight"');
+  });
+});

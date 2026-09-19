@@ -251,6 +251,7 @@ function ProgressTab({ data, row }) {
                       </span>
                     </div>
                   ))}
+                  {w.feel && <div className="cx-small" style={{ marginTop: 6 }}><span className="cx-muted">Felt </span><b className={`cx-feel ${w.feel}`}>{w.feel}</b></div>}
                   {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{row.name.split(" ")[0]}: "{w.note}"</div>}
                 </div>
               )}
