@@ -9,7 +9,9 @@ import { A, BG, S1, S2, BD, TX, SB, MT, RED } from "./tokens.js";
  *   templateName  — string
  *   assignments   — TemplateAssignment[] (active, non-overridden)
  *   allAssignments — TemplateAssignment[] (all active including overridden)
- *   onConfirm     — ({ athleteIds: string[] | null, force: bool, skipMidWeek: bool }) => void
+ *   onConfirm     — ({ athleteIds: string[] | null, force: bool, skipMidWeek: bool, replaceIds: string[] }) => void
+ *                   athleteIds never includes clients with their own changes; the
+ *                   ones the coach chose to replace come in replaceIds (push with force).
  *   onSkip        — () => void  (no push this time)
  *   loading       — bool
  */
@@ -30,6 +32,9 @@ export default function PushUpdateModal({
   const [pushMode, setPushMode] = React.useState("none"); // "none" | "all" | "choose"
   const [chosen, setChosen] = React.useState(new Set());
   const [skipMidWeek, setSkipMidWeek] = React.useState(true);
+  // Clients the coach changed by hand: keep their version (default) or replace it with the plan.
+  const [replace, setReplace] = React.useState(new Set());
+  const setKeep = (id, keep) => setReplace(prev => { const next = new Set(prev); keep ? next.delete(id) : next.add(id); return next; });
 
   const nonOverridden = (allAssignments || []).filter(a => !a.is_overridden);
   const overridden    = (allAssignments || []).filter(a => a.is_overridden);
@@ -47,15 +52,26 @@ export default function PushUpdateModal({
     if (pushMode === "none") { onSkip(); return; }
     const force = false;
     let athleteIds = null;
+    let replaceIds = [];
 
     if (pushMode === "all") {
       athleteIds = null; // server pushes all non-overridden
+      replaceIds = overridden.filter(a => replace.has(a.athlete_id)).map(a => a.athlete_id);
     } else if (pushMode === "choose") {
-      athleteIds = Array.from(chosen);
-      if (athleteIds.length === 0) { onSkip(); return; }
+      const picked = Array.from(chosen);
+      athleteIds = picked.filter(id => !overriddenIds.has(id));
+      replaceIds = picked.filter(id => overriddenIds.has(id) && replace.has(id));
+      if (athleteIds.length === 0 && replaceIds.length === 0) { onSkip(); return; }
     }
-    onConfirm({ athleteIds, force, skipMidWeek });
+    onConfirm({ athleteIds, force, skipMidWeek, replaceIds });
   }
+
+  const overriddenIds = new Set(overridden.map(a => a.athlete_id));
+  // The customized clients this update would reach: all of them, or the ones picked.
+  const customInScope = pushMode === "all" ? overridden : pushMode === "choose" ? overridden.filter(a => chosen.has(a.athlete_id)) : [];
+  const willUpdate = pushMode === "all"
+    ? nonOverridden.length + overridden.filter(a => replace.has(a.athlete_id)).length
+    : Array.from(chosen).filter(id => !overriddenIds.has(id) || replace.has(id)).length;
 
   const modeLabel = {
     none:   skipLabel,
@@ -120,7 +136,7 @@ export default function PushUpdateModal({
                 )}
                 {mode === "all" && overridden.length > 0 && (
                   <div style={{ fontSize:11, color:SB, marginTop:1 }}>
-                    {overridden.length} customized athlete{overridden.length !== 1 ? "s" : ""} will be skipped
+                    {overridden.length} {overridden.length === 1 ? "has" : "have"} their own changes. You choose below.
                   </div>
                 )}
               </div>
@@ -162,11 +178,34 @@ export default function PushUpdateModal({
                 </div>
                 {a.is_overridden && (
                   <span style={{ fontSize:10, background:`${A}18`, color:A, borderRadius:4, padding:"2px 6px", fontWeight:700 }}>
-                    Customized
+                    Own changes
                   </span>
                 )}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Clients with their own changes: keep theirs or use the plan */}
+        {customInScope.length > 0 && (
+          <div style={{ background:S2, borderRadius:12, border:`1px solid ${BD}`, padding:"12px 12px 6px", marginBottom:12 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:TX }}>
+              {customInScope.length === 1 ? "This client has changes you made just for them" : "These clients have changes you made just for them"}
+            </div>
+            <div style={{ fontSize:11, color:SB, margin:"2px 0 8px" }}>Keep them, or replace with this plan.</div>
+            {customInScope.map(a => {
+              const keep = !replace.has(a.athlete_id);
+              const seg = (on) => ({ padding:"7px 10px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, whiteSpace:"nowrap", background: on ? A : "transparent", color: on ? BG : SB });
+              return (
+                <div key={a.athlete_id} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 0", flexWrap:"wrap" }}>
+                  <div style={{ flex:"1 1 100px", minWidth:0, fontSize:13, color:TX, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.athlete_name || "Client"}</div>
+                  <div role="group" aria-label={`${a.athlete_name || "Client"}'s changes`} style={{ display:"flex", gap:2, background:S1, border:`1px solid ${BD}`, borderRadius:10, padding:2 }}>
+                    <button type="button" aria-pressed={keep} onClick={() => setKeep(a.athlete_id, true)} style={seg(keep)}>Keep theirs</button>
+                    <button type="button" aria-pressed={!keep} onClick={() => setKeep(a.athlete_id, false)} style={seg(!keep)}>Use plan</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -206,7 +245,7 @@ export default function PushUpdateModal({
 
         {/* Confirm */}
         <button
-          disabled={loading || (pushMode === "choose" && chosen.size === 0)}
+          disabled={loading || (pushMode !== "none" && willUpdate === 0)}
           onClick={handleConfirm}
           style={{
             width:"100%", padding:15,
@@ -221,9 +260,11 @@ export default function PushUpdateModal({
             ? "Updating…"
             : pushMode === "none"
             ? "Close"
-            : pushMode === "choose"
-            ? `Update ${chosen.size} client${chosen.size !== 1 ? "s" : ""}`
-            : `Update all ${totalCount} client${totalCount !== 1 ? "s" : ""}`}
+            : willUpdate === 0
+            ? "Nobody to update"
+            : pushMode === "all" && willUpdate === totalCount
+            ? `Update all ${totalCount} client${totalCount !== 1 ? "s" : ""}`
+            : `Update ${willUpdate} client${willUpdate !== 1 ? "s" : ""}`}
         </button>
       </div>
     </div>

@@ -15,6 +15,7 @@ export const Icon = {
   Back: (p) => <svg width={p.size || 20} height={p.size || 20} {...svgProps}><path d="M15 6l-6 6 6 6" /></svg>,
   Close: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M6 6l12 12M18 6L6 18" /></svg>,
   Sheet: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" /></svg>,
+  Info: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>,
   Edit: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps}><path d="M4 20h4l10-10-4-4L4 16v4z" /></svg>,
   Download: (p) => <svg width={p.size || 16} height={p.size || 16} {...svgProps} strokeWidth={2.5}><path d="M12 4v12M6 10l6 6 6-6M4 20h16" /></svg>,
   Send: (p) => <svg width={p.size || 18} height={p.size || 18} {...svgProps}><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>,

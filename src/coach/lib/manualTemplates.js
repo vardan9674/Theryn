@@ -74,6 +74,12 @@ export function planToTemplateDays(plan, units, previous = []) {
   });
 }
 
+/** True when a saved plan has at least one workout day with an exercise. */
+export function templateHasWorkouts(days) {
+  return (days || []).some((d) => d.workout_type !== "Rest" && (d.exercises || []).length > 0);
+}
+export const EMPTY_PLAN_MSG = "This plan has no exercises yet. Tap Edit plan, add a workout, save, then add clients.";
+
 /** The saved plan a client's week came from, or null. */
 export function planTemplate(plan) {
   if (!plan || typeof plan !== "object") return null;

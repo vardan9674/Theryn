@@ -63,3 +63,12 @@ describe("saved plans keep per-set targets and weights", () => {
     expect(plan.Mon.exercises[0]).toEqual({ name: "Bench Press", sets: 4, reps: "6-8" });
   });
 });
+
+import { templateHasWorkouts } from "../manualTemplates.js";
+describe("empty saved plans can't be given to clients", () => {
+  it("needs a workout day with an exercise", () => {
+    expect(templateHasWorkouts([])).toBe(false);
+    expect(templateHasWorkouts([{ workout_type: "Push", exercises: [] }, { workout_type: "Rest", exercises: [] }])).toBe(false);
+    expect(templateHasWorkouts([{ workout_type: "Push", exercises: [{ exercise_name: "Bench Press" }] }])).toBe(true);
+  });
+});

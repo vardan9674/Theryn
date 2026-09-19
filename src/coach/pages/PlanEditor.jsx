@@ -72,7 +72,7 @@ const dayCount = (day) => ({ ex: day.exercises.length, sets: day.exercises.reduc
  * `onTitleChange` and `onSave(templates)` (returns the toast to show), and
  * no `client` or `history`.
  */
-export default function PlanEditor({ client, initialTemplates, history, unit = "lb", onCancel, onSaved, title, status, onTitleChange, onSave }) {
+export default function PlanEditor({ client, initialTemplates, history, unit = "lb", onCancel, onSaved, title, status, onTitleChange, onSave, scope }) {
   const data = useCoachData();
   const toast = useToast();
   const vp = useViewport();
@@ -86,6 +86,9 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   const [confirmLeave, setConfirmLeave] = React.useState(false);
   const dirty = changes > 0;
   const firstName = client ? (client.athlete_name || "client").split(" ")[0] : "your client";
+  // A client's week that came from a saved plan: say that edits here are for them alone.
+  const sourcePlan = client ? planTemplate(initialTemplates) : null;
+  const scopeText = scope || (sourcePlan ? `From your plan "${sourcePlan.name}". Changes here are only for ${firstName}. The plan and your other clients stay the same.` : null);
 
   const requestClose = React.useCallback(() => { if (dirty) setConfirmLeave(true); else onCancel(); }, [dirty, onCancel]);
   useBackHandler(!adding && !copying, requestClose);
@@ -172,7 +175,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
       const res = await data.saveClientRoutine(client.athlete_id, templates);
       setChanges(0);
       if (res?.routineId === "offline_saved") toast(`Saved on this device. It will reach ${firstName} when you're back online.`);
-      else toast(client.manual ? `Saved. ${firstName} sees it next time they open their link.` : `Saved and sent to ${firstName}.`);
+      else toast(`${client.manual ? `Saved. ${firstName} sees it next time they open their link.` : `Saved and sent to ${firstName}.`}${fromPlan ? ` Your plan "${fromPlan.name}" didn't change.` : ""}`);
       onSaved(templates);
     } catch (e) {
       toast(`Could not save: ${e.message || e}`, "error");
@@ -201,6 +204,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
         {wide && <Button size="sm" icon={<Icon.Sheet />} onClick={() => onSaved(null, { export: true, templates: toTemplates(days, unit === "kg" ? "metric" : "imperial") })}>Export to Excel</Button>}
         {wide && <button type="button" className={`pe-save ${dirty ? "dirty" : ""}`} onClick={save} disabled={saving || !dirty}>{saveLabel}</button>}
       </div>
+      {scopeText && <div className="pe-scope" role="note"><Icon.Info size={14} /><span>{scopeText}</span></div>}
 
       {wide ? (
         <div className={`pe-grid ${vp === "laptop" ? "with-preview" : ""}`}>

@@ -4,6 +4,20 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-19 (late night) — Plans: empty-plan bug, keep or replace per client, plain guidance, branch `fix/plans-add-clients`
+
+**Asked**
+- "When we add a client to a plan it says added but doesn't add the client." Then: let a coach change one client's workout without touching the plan, with a way to choose, and make coaches with basic phone skills aware of how it works.
+
+**Found** (production logs, 13:55 today): 2 name-only clients were added to a plan with no days. They were stamped with it, their week became 7 rest days, and the toast said "Added". The toast also counted picks, not what the server added.
+
+**Done** (no database change)
+- Empty plans can't be given out or updated (Plans page and data layer). The Added toast counts only real adds and names failures.
+- Update pop-up: clients with their own changes are listed with **Keep theirs / Use plan** (default keep). "Use plan" sends them the plan with force, which clears their mark. Toast: "Updated 3 clients. Kept Ravi's own changes."
+- Plans tab: a 4-step "How plans work" card (Got it hides it; a "How plans work" link brings it back). Each plan shows "N with their own changes".
+- Editors say who a change reaches. A client's plan from a saved plan: "Changes here are only for Ravi. The plan and your other clients stay the same." The saved-plan editor: "Changes here are for all N clients on this plan…". Saving a client's plan adds "Your plan … didn't change."
+
+**Verified**: coach preview: empty plan blocked; add Ravi; edit only Ravi; plan shows "1 with their own changes"; Update → Keep theirs → 3 updated, Ravi kept; Update → Use plan → 4 updated, mark gone. No overflow at 320. 110 tests, typecheck, build.
 ## 2026-09-19 (late night) — Link shows today only, branch `fix/link-today-only`
 
 **Asked**
