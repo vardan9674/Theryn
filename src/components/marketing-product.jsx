@@ -10,6 +10,16 @@ import '../index.css';
 import '../coach/coach.css';
 
 const noop = () => {};
+
+// Embedded in the landing page: the sample app must never scroll the page
+// around it. Browsers pass scrollIntoView and focus scrolling up to the
+// parent, which yanked visitors to another section when a preview loaded.
+if (window.parent !== window) {
+  Element.prototype.scrollIntoView = noop;
+  const focus = HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus = function (options) { focus.call(this, { ...options, preventScroll: true }); };
+}
+
 function Preview() {
   const data = useMemo(createMockCoachData, []);
   const cache = useClientDataCache(data);
