@@ -180,11 +180,12 @@ export function createMockCoachData() {
       await wait(200 + Math.random() * 300);
       const mid = manualIdOf(athleteId);
       const subs = st.submissions.filter((x) => x.clientId === athleteId);
+      const rowUnits = (r) => (r?.unit_system === "metric" || r?.unit_system === "imperial" ? r.unit_system : st.units);
       if (mid) {
         const row = st.manual.find((m) => m.id === mid); if (!row) throw new Error("This client no longer exists.");
         const base = manualClientData(row);
-        const linked = linkClientData(subs, { plan: row.plan, coachUnits: st.units });
-        const routine = row.plan ? convertPlan(row.plan, st.units, { assumeFrom: st.units }) : base.routine;
+        const linked = linkClientData(subs, { plan: row.plan, coachUnits: rowUnits(row) });
+        const routine = row.plan ? convertPlan(row.plan, rowUnits(row), { assumeFrom: rowUnits(row) }) : base.routine;
         return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
       }
       return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs };
@@ -339,6 +340,7 @@ export function createMockCoachData() {
     async markNotificationsSeen(iso = new Date().toISOString()) { st.notifSeenAt = iso; return iso; },
     async clearNotifications(iso = new Date().toISOString()) { st.notifClearedAt = iso; st.notifSeenAt = iso; st.notifDismissed = []; return iso; },
     async dismissNotification(id) { st.notifDismissed = [...(st.notifDismissed || []), id]; return st.notifDismissed; },
+    async setClientUnits(clientId, units) { await wait(150); const m = st.manual.find((r) => r.id === manualIdOf(clientId)); if (!m) throw new Error("Clients on the app use their own setting in the app."); m.unit_system = units === "metric" ? "metric" : "imperial"; notify(); return m.unit_system; },
     async updateDisplayName() { await wait(100); },
     async updateCurrency() { await wait(100); },
     signOut() { alert("Preview mode: sign out does nothing."); },
