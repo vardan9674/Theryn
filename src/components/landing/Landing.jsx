@@ -66,15 +66,15 @@ function useMedia(query) {
 }
 const useReducedMotion = () => useMedia("(prefers-reduced-motion: reduce)");
 
-// Light by default; the toggle switches to dark and the pick is remembered on
+// Dark by default; the toggle switches to light and the pick is remembered on
 // this device. index.html reads the same key to paint the first frame.
 const THEME_KEY = "theryn_landing_theme";
 const THEME_BG = { dark: "#080808", light: "#fbfcf8" };
 function useTheme() {
   const [picked, setPicked] = useState(() => {
-    try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : null; } catch { return null; }
+    try { return localStorage.getItem(THEME_KEY) === "light" ? "light" : null; } catch { return null; }
   });
-  const theme = picked || "light";
+  const theme = picked || "dark";
   const toggle = () => {
     const next = theme === "light" ? "dark" : "light";
     setPicked(next);

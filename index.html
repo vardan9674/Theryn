@@ -138,13 +138,13 @@
     </script>
 
     <script>
-      // The landing page is light by default. Paint it light before any JS
-      // loads so visitors never see a dark flash. Signed-in users (a stored
-      // Supabase session) go straight to the dark app, so they're left alone.
+      // The landing page is dark by default. A visitor who picked light gets
+      // it painted before any JS loads, so there's no dark flash. Signed-in
+      // users (a stored Supabase session) go straight to the dark app.
       try {
         var ls = window.localStorage;
         var signedIn = Object.keys(ls).some(function (k) { return /^sb-.+-auth-token$/.test(k); });
-        if (location.pathname === "/" && !signedIn && ls.getItem("theryn_landing_theme") !== "dark") {
+        if (location.pathname === "/" && !signedIn && ls.getItem("theryn_landing_theme") === "light") {
           document.documentElement.classList.add("tl-light-boot");
         }
       } catch (e) {}
