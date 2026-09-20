@@ -500,7 +500,7 @@
 /* A set the client did differently from the plan (link check-ins with per-set reps/weight) */
 .cx-setchip.changed { border-color: rgba(200, 255, 0, 0.45); color: var(--cx-tx); }
 
-/* Streak: days in a row (workouts plus planned rest days) */
+/* Streak: workouts in a row (rest days keep it, but don't add to it) */
 .cx-streak { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--cx-a); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cx-streak small { font-size: 11px; font-weight: 600; margin-left: 2px; }
 .cx-streak.risk { color: #F5A742; }

@@ -7,9 +7,9 @@ const plan = { Mon: { type: "Push" }, Tue: { type: "Pull" }, Wed: { type: "Legs"
 const fri = (h = 12) => new Date(2026, 8, 18, h);
 
 describe("streakStats", () => {
-  it("counts workouts and rest days, and today not done doesn't break it", () => {
+  it("counts workouts only; a rest day keeps the streak but adds nothing", () => {
     const s = streakStats(["2026-09-14", "2026-09-15", "2026-09-16"], plan, fri());
-    expect(s.current).toBe(4); // Mon Tue Wed + Thu rest; Fri still open
+    expect(s.current).toBe(3); // Mon Tue Wed; Thu rest adds nothing; Fri still open
     expect(s.doneToday).toBe(false);
     expect(s.atRisk).toBe(false);
   });
@@ -19,16 +19,23 @@ describe("streakStats", () => {
   });
   it("a missed planned day ends it and is reported for a week", () => {
     const s = streakStats(["2026-09-11", "2026-09-12", "2026-09-14", "2026-09-15"], plan, fri());
-    // Fri Sat (Sun rest) Mon Tue = 5, then Wed missed; Thu rest alone is not a streak
+    // Fri Sat (Sun rest) Mon Tue = 4 workouts, then Wed missed
     expect(s.current).toBe(0);
-    expect(s.brokeAt).toBe(5);
-    expect(s.best).toBe(5);
+    expect(s.brokeAt).toBe(4);
+    expect(s.best).toBe(4);
   });
   it("tracks the best run and this month's count", () => {
     const s = streakStats(["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-04", "2026-09-05", "2026-09-07", "2026-09-16", "2026-09-18"], plan, fri());
-    expect(s.best).toBe(8);        // Mon 31 Aug … Mon 7 Sep with two rest days
-    expect(s.current).toBe(3);     // Wed, Thu rest, Fri
+    expect(s.best).toBe(6);        // six workouts from Mon 31 Aug to Mon 7 Sep, the rest days between them don't count
+    expect(s.current).toBe(2);     // Wed and Fri; Thu rest adds nothing
     expect(s.thisMonth).toBe(7);
+  });
+  it("the coach's example: Friday then two rest days stays 1, Monday makes it 2", () => {
+    // Fri 18 Sep trained; Sat and Sun are rest days in this plan.
+    const sun = new Date(2026, 8, 20, 12);
+    expect(streakStats(["2026-09-18"], { ...plan, Sat: { type: "Rest" } }, sun).current).toBe(1);
+    const mon = new Date(2026, 8, 21, 12);
+    expect(streakStats(["2026-09-18", "2026-09-21"], { ...plan, Sat: { type: "Rest" } }, mon).current).toBe(2);
   });
   it("gives the last 14 days for the strip", () => {
     const s = streakStats(["2026-09-14", "2026-09-16"], plan, fri());
@@ -44,7 +51,7 @@ describe("streakStats", () => {
     expect(streakStats(["2026-09-17", "2026-09-18"], null, fri()).current).toBe(2);
   });
   it("streakWith shows what sending today makes it", () => {
-    expect(streakWith(["2026-09-14", "2026-09-15", "2026-09-16"], "2026-09-18", plan, fri()).current).toBe(5);
+    expect(streakWith(["2026-09-14", "2026-09-15", "2026-09-16"], "2026-09-18", plan, fri()).current).toBe(4);
   });
 });
 

@@ -43,10 +43,10 @@ describe("week progress", () => {
 });
 
 describe("streak", () => {
-  it("counts rest days and stops at the first missed planned day", () => {
-    // Mon 7th done, Tue 8th done, Wed 9th (today) is rest → 3
+  it("counts workouts; a rest day keeps the streak but adds nothing", () => {
+    // Mon 7th done, Tue 8th done, Wed 9th (today) is a rest day → 2 workouts
     const s = routineStreak([session("2026-09-07"), session("2026-09-08")], routine, NOW);
-    expect(s).toBe(3);
+    expect(s).toBe(2);
   });
   it("is zero with no history", () => {
     expect(routineStreak([], routine, NOW)).toBe(0);
