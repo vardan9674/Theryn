@@ -304,7 +304,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                 {st.days.slice(-7).map((x) => <i key={x.iso} className={x.state} />)}
               </div>
             )}
-            {!controlledTicks && <div className="lk-weeknote"><span>Every day's workout is in the Theryn app.</span> <a href={APP_URL}>Get the app</a></div>}
+            {!controlledTicks && <div className="lk-weeknote"><span>Every day's workout will be in the Theryn app.</span> <b className="soon">App coming soon</b></div>}
           </section>
         )}
 
@@ -606,7 +606,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
           : "Keep this link. Open it on training days to tick off your workout, and come back when your coach asks for measurements."}</span></div>
         <div style={{ flex: 1 }} />
         <button type="button" className="lk-send secondary" onClick={onBack}>{sent.kind === "measurements" && !today.isRest ? "Go to today's workout" : "Back"}</button>
-        <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <a href={APP_URL}>Get the app</a></div>
+        <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <b className="soon">App coming soon</b></div>
       </div>
     </div>
   );

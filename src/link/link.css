@@ -112,6 +112,7 @@
 .lk-weeknote { margin-top: 8px; font-size: 13px; color: var(--cx-mu); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
 .lk-weeknote a { display: inline-flex; align-items: center; min-height: 32px; color: var(--cx-a); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .lk-nudge a { display: inline-flex; align-items: center; min-height: 32px; color: var(--cx-a); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.lk-nudge .soon, .lk-weeknote .soon { color: var(--cx-a); font-weight: 600; white-space: nowrap; }
 
 @media (min-width: 768px) {
   .lk-main { padding-top: 32px; }
