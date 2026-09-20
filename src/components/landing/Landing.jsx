@@ -66,15 +66,15 @@ function useMedia(query) {
 }
 const useReducedMotion = () => useMedia("(prefers-reduced-motion: reduce)");
 
-// Light by default; the toggle switches to dark and the pick is remembered on
+// Dark by default; the toggle switches to light and the pick is remembered on
 // this device. index.html reads the same key to paint the first frame.
 const THEME_KEY = "theryn_landing_theme";
 const THEME_BG = { dark: "#080808", light: "#fbfcf8" };
 function useTheme() {
   const [picked, setPicked] = useState(() => {
-    try { return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : null; } catch { return null; }
+    try { return localStorage.getItem(THEME_KEY) === "light" ? "light" : null; } catch { return null; }
   });
-  const theme = picked || "light";
+  const theme = picked || "dark";
   const toggle = () => {
     const next = theme === "light" ? "dark" : "light";
     setPicked(next);
@@ -380,8 +380,8 @@ function Problem() {
     <section className="tl-section" id="problem">
       <div className="tl-wrap tl-problem-grid">
         <div className="tl-problem-copy">
-          <h2>Your coaching lives in <em>four apps.</em></h2>
-          <p className="tl-lede">None of them talk to each other. So you chase, copy and remember, for every athlete.</p>
+          <h2>All in <em>one place.</em></h2>
+          <p className="tl-lede">Plans, questions, notes and payments are scattered across four apps. Theryn keeps them in one row per athlete.</p>
         </div>
         <div className={`tl-chaos${solved ? " solved" : ""}`}>
           <div className="tl-chaos-scene">
@@ -395,7 +395,7 @@ function Problem() {
           </div>
         </div>
         <div className="tl-problem-cta">
-          <button className="tl-btn tl-btn-ghost" aria-pressed={solved} onClick={() => setSolved(s => !s)}>{solved ? "← Show the four apps again" : "Put it all in one place →"}</button>
+          <button className="tl-btn tl-btn-ghost" aria-pressed={solved} onClick={() => setSolved(s => !s)}>{solved ? "← Show the four apps again" : "See it in one place →"}</button>
           {solved && <p className="tl-solved-note">One row per athlete: plan, last workout, notes and payment.</p>}
         </div>
       </div>
