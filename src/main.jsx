@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+// Statically imported on purpose: it has to paint before any lazy chunk lands.
+import TherynLoader from './components/TherynLoader.jsx'
 
 // Dev-only preview of the coach dashboard with sample data, no sign-in needed:
 //   http://localhost:5173/?coachPreview=1
@@ -35,9 +37,9 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
       {linkMatch
-        ? <Suspense fallback={null}><ClientLink /></Suspense>
+        ? <Suspense fallback={<TherynLoader />}><ClientLink /></Suspense>
         : previewCoach
-        ? <Suspense fallback={null}><CoachPreview /></Suspense>
+        ? <Suspense fallback={<TherynLoader />}><CoachPreview /></Suspense>
         : <App />}
     </ErrorBoundary>
   </StrictMode>,
