@@ -1,27 +1,31 @@
 // A colour per letter, so a client's initials are recognisable at a glance.
-// Same idea as the workout type colours: soft, never loud, and readable on the
-// dark background. A–Z each get their own hue, spread around the wheel and
-// nudged away from the muddy yellow-green that clashes with the app's accent.
-// Anything that isn't a letter falls back to grey. Pure; no React.
+//
+// These colours mean nothing: they are decoration keyed to the letter. So they
+// stay out of the hues the dashboard uses to say something — the lime accent
+// (done, primary action), amber (at risk), red (overdue) and the warm oranges
+// of a Push day. Letters live in the cool half of the wheel (teal → blue →
+// violet → pink), muted and light enough to read on the dark background.
+// Anything that isn't a letter stays grey. Pure; no React.
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-// 26 hues, stepped so neighbours in the alphabet don't look alike.
-const hueOf = (i) => Math.round((i * 138.5 + 14) % 360);
+// The safe band: 175° (teal) to 335° (pink). Stepping by the golden ratio
+// inside it keeps letters next to each other in the alphabet far apart.
+const BAND_START = 175;
+const BAND_WIDTH = 160;
+const hueOf = (i) => Math.round(BAND_START + ((i * 0.6180339887) % 1) * BAND_WIDTH);
 
 /** The colour for one character: `text` for the letter, `tint` for behind it. */
 export function letterColor(ch) {
   const i = LETTERS.indexOf(String(ch || "").toUpperCase());
-  if (i < 0) return { text: "var(--cx-mu)", tint: "rgba(255, 255, 255, 0.06)" };
+  if (i < 0) return { text: "var(--cx-mu)", tint: "rgba(255, 255, 255, 0.05)" };
   const h = hueOf(i);
-  return { text: `hsl(${h} 62% 72%)`, tint: `hsl(${h} 55% 55% / 0.16)` };
+  return { text: `hsl(${h} 45% 74%)`, tint: `hsl(${h} 40% 50% / 0.13)` };
 }
 
-/** Initials split into letters with their colours, plus the background behind them. */
+/** Initials split into letters with their colours, plus the circle behind them. */
 export function initialColors(initials) {
   const letters = String(initials || "?").split("").slice(0, 2);
   const colors = letters.map(letterColor);
-  const background = colors.length > 1
-    ? `linear-gradient(135deg, ${colors[0].tint}, ${colors[1].tint})`
-    : colors[0].tint;
-  return { letters, colors, background };
+  // One flat tint, from the first letter: two blended tints made the circle busy.
+  return { letters, colors, background: colors[0].tint };
 }
