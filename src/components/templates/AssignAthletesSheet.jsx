@@ -96,7 +96,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
           <button
             onClick={allSelected ? clearAll : selectAll}
             disabled={selectableAthletes.length === 0}
-            style={{ background:"none", border:`1px solid ${BD}`, borderRadius:8, padding:"5px 12px", color:A, fontSize:12, fontWeight:700, cursor: selectableAthletes.length === 0 ? "not-allowed" : "pointer", opacity: selectableAthletes.length === 0 ? 0.5 : 1 }}
+            style={{ background:"none", border:`1px solid ${BD}`, borderRadius:8, padding:"0 12px", minHeight:32, color:A, fontSize:12, fontWeight:700, cursor: selectableAthletes.length === 0 ? "not-allowed" : "pointer", opacity: selectableAthletes.length === 0 ? 0.5 : 1 }}
           >
             {allSelected ? "Untick all" : "Tick all"}
           </button>
