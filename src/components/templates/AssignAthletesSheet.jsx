@@ -1,5 +1,6 @@
 import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED } from "./tokens.js";
+import { Overlay } from "../../coach/ui/primitives.jsx";
 
 /**
  * Bottom-sheet checklist for managing template assignments.
@@ -57,6 +58,7 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
   };
 
   return (
+    <Overlay>
     <div
       style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,0.7)" }}
       onClick={onClose}
@@ -206,5 +208,6 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
         </div>
       </div>
     </div>
+    </Overlay>
   );
 }

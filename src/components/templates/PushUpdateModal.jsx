@@ -1,5 +1,6 @@
 import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED } from "./tokens.js";
+import { Overlay } from "../../coach/ui/primitives.jsx";
 
 /**
  * Modal shown when coach saves a template that has active assignments.
@@ -80,6 +81,7 @@ export default function PushUpdateModal({
   };
 
   return (
+    <Overlay>
     <div
       style={{ position:"fixed", inset:0, zIndex:310, background:"rgba(0,0,0,0.75)", display:"flex", alignItems:"flex-end", justifyContent:"center" }}
       onClick={onSkip}
@@ -269,5 +271,6 @@ export default function PushUpdateModal({
         </button>
       </div>
     </div>
+    </Overlay>
   );
 }

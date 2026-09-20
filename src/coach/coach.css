@@ -72,6 +72,8 @@
 .cx-tabbar {
   display: flex;
   flex: none;
+  position: relative;
+  z-index: 1; /* below anything that covers the app; those portal to <body> */
   height: calc(var(--cx-tab-h) + env(safe-area-inset-bottom, 0px));
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
   background: rgba(16, 16, 16, 0.96);

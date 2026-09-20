@@ -5,6 +5,7 @@
 // Everything renders client-side from loadAthleteData() output.
 
 import React from "react";
+import { Overlay } from "../../coach/ui/primitives.jsx";
 
 // "YYYY-MM-DD" parsed as local midday so the day never shifts in negative-offset zones.
 const localDate = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T12:00:00`) : new Date(v));
@@ -785,6 +786,7 @@ export function AthleteSessionDrawer({ session, onClose, unit = "lbs" }) {
   const color = TYPE_COLORS[session.type] || A;
 
   return (
+    <Overlay>
     <div
       style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.6)" }}
       onClick={onClose}
@@ -894,5 +896,6 @@ export function AthleteSessionDrawer({ session, onClose, unit = "lbs" }) {
         </div>
       </div>
     </div>
+    </Overlay>
   );
 }
