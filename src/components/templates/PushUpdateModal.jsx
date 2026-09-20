@@ -88,8 +88,9 @@ export default function PushUpdateModal({
         style={{
           width:"100%", maxWidth:480,
           background:S1, borderRadius:"20px 20px 0 0",
-          padding:"24px 20px 40px",
+          padding:"24px 20px calc(16px + env(safe-area-inset-bottom, 0px))",
           animation:"drawerUp 0.22s cubic-bezier(0.2,0.8,0.2,1)",
+          maxHeight:"85dvh", overflowY:"auto",
         }}
         onClick={e => e.stopPropagation()}
       >

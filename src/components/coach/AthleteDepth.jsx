@@ -795,11 +795,13 @@ export function AthleteSessionDrawer({ session, onClose, unit = "lbs" }) {
           position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
           width: "100%", maxWidth: 480,
           background: S1, borderRadius: "20px 20px 0 0",
-          padding: "8px 16px 40px",
-          // Always feel like a proper bottom sheet: min 70vh, snap to ~94vh on expand
-          minHeight: expanded ? "94vh" : "70vh",
-          maxHeight: expanded ? "94vh" : "70vh",
-          height: expanded ? "94vh" : "70vh",
+          padding: "8px 16px calc(16px + env(safe-area-inset-bottom, 0px))",
+          // Always feel like a proper bottom sheet: min 70dvh, snap to ~94dvh on
+          // expand. dvh, not vh: on iPhone Safari vh ignores the toolbar, so the
+          // bottom of the sheet ended up under it.
+          minHeight: expanded ? "94dvh" : "70dvh",
+          maxHeight: expanded ? "94dvh" : "70dvh",
+          height: expanded ? "94dvh" : "70dvh",
           display: "flex", flexDirection: "column",
           fontFamily: "inherit",
           animation: "drawerUpCentered 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)",
