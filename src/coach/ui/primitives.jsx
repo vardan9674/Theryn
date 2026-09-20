@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { initialsOf } from "../lib/format.js";
 import { useBackHandler } from "../../lib/backStack.ts";
 
@@ -77,6 +78,17 @@ export function Empty({ title, children, action }) {
   );
 }
 
+/**
+ * Anything that covers the app (sheets, dialogs, the plan editor) renders into
+ * <body>. Inside the scrolling page, iPhone Safari paints the blurred tab bar
+ * on top of it, which hid the Save and Add buttons at the bottom of a sheet.
+ */
+export function Overlay({ children }) {
+  const [host] = React.useState(() => (typeof document === "undefined" ? null : document.body));
+  if (!host) return children;
+  return createPortal(children, host);
+}
+
 // ── Sheet / modal: bottom sheet on phone, centered dialog on wider screens ──
 export function Sheet({ open, onClose, title, subtitle, children, wide }) {
   useBackHandler(Boolean(open), () => onClose?.());
@@ -88,6 +100,7 @@ export function Sheet({ open, onClose, title, subtitle, children, wide }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
+    <Overlay>
     <div className="cx-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} role="presentation">
       <div className="cx-sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 760 } : undefined}>
         <div className="cx-sheet-grip" />
@@ -97,6 +110,7 @@ export function Sheet({ open, onClose, title, subtitle, children, wide }) {
         {children}
       </div>
     </div>
+    </Overlay>
   );
 }
 

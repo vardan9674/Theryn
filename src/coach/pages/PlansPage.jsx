@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Icon, Empty, Spinner, Sheet, Confirm, useToast, useViewport, Avatar } from "../ui/primitives.jsx";
+import { Button, Icon, Empty, Spinner, Sheet, Confirm, useToast, useViewport, Avatar, Overlay } from "../ui/primitives.jsx";
 import { shortDate, plural } from "../lib/format.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import PlanEditor from "./PlanEditor.jsx";
@@ -188,6 +188,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     const unit = data.unitSystem === "metric" ? "kg" : "lb";
     const n = editing.clientCount;
     return (
+      <Overlay>
       <div className="pe-shell">
         <PlanEditor
           key={editing.template.id}
@@ -204,6 +205,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
         />
         {pushModal}
       </div>
+      </Overlay>
     );
   }
 
