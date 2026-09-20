@@ -48,7 +48,8 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
 
   const confirmLabel = () => {
     if (loading) return "Saving…";
-    if (noChanges) return "Nothing changed";
+    // Say what to do, so the button never reads as "there is nothing here".
+    if (noChanges) return assignedAthleteIds.length > 0 ? "Tick a client to add" : "Tick the clients to add";
     const parts = [];
     if (toAssign > 0) parts.push(`Add ${toAssign} client${toAssign !== 1 ? "s" : ""}`);
     if (toRemove > 0) parts.push(`Take off ${toRemove}`);
@@ -65,9 +66,11 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
           position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)",
           width:"100%", maxWidth:480,
           background:S1, borderRadius:"20px 20px 0 0",
-          padding:"24px 20px 40px",
+          padding:"24px 20px calc(16px + env(safe-area-inset-bottom, 0px))",
           animation:"drawerUpCentered 0.25s cubic-bezier(0.2,0.8,0.2,1)",
-          maxHeight:"85vh", display:"flex", flexDirection:"column",
+          // dvh, not vh: on iPhone Safari vh ignores the toolbar, which pushed
+          // the button off the bottom of the screen.
+          maxHeight:"85dvh", display:"flex", flexDirection:"column",
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -184,8 +187,8 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
           )}
         </div>
 
-        {/* Confirm button */}
-        <div style={{ marginTop:20 }}>
+        {/* Confirm button: stays in view, whatever the list does */}
+        <div style={{ marginTop:16, flexShrink:0 }}>
           <button
             disabled={noChanges || loading}
             onClick={() => onConfirm(Array.from(selected))}
