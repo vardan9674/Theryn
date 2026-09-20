@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { initialsOf } from "../lib/format.js";
+import { initialColors } from "../lib/initialColor.js";
 import { useBackHandler } from "../../lib/backStack.ts";
 
 // ── Icons: stroke-based, 24px grid, currentColor ─────────────────────────
@@ -43,7 +44,13 @@ export function Button({ variant = "default", size, block, icon, children, class
 
 export function Avatar({ name, size }) {
   const cls = ["cx-avatar", size === "lg" && "cx-avatar-lg", size === "sm" && "cx-avatar-sm"].filter(Boolean).join(" ");
-  return <div className={cls} aria-hidden="true">{initialsOf(name)}</div>;
+  // Each letter keeps its own colour, so "RP" reads as R and P.
+  const { letters, colors, background } = initialColors(initialsOf(name));
+  return (
+    <div className={cls} style={{ background }} aria-hidden="true">
+      {letters.map((ch, i) => <span key={i} style={{ color: colors[i].text }}>{ch}</span>)}
+    </div>
+  );
 }
 
 const TONE_COLORS = { ok: "var(--cx-tx2)", warn: "var(--cx-amber)", bad: "var(--cx-red)", attention: "var(--cx-orange)", muted: "var(--cx-mu)" };

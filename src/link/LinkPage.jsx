@@ -3,6 +3,7 @@ import "../coach/coach.css";
 import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
+import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
@@ -180,7 +181,7 @@ function lastLine(last, units) {
 function Byline({ coach, units, onUnits }) {
   return (
     <div className="lk-byline">
-      <span className="cx-avatar cx-avatar-sm" aria-hidden="true">{(coach || "C")[0]}</span><span style={{ flex: 1 }}>From your coach, <b>{coach}</b></span>
+      {(() => { const c = letterColor((coach || "C")[0]); return <span className="cx-avatar cx-avatar-sm" aria-hidden="true" style={{ background: c.tint, color: c.text }}>{(coach || "C")[0]}</span>; })()}<span style={{ flex: 1 }}>From your coach, <b>{coach}</b></span>
       {onUnits && (
         <span className="lk-units" role="group" aria-label="Units">
           <button type="button" aria-pressed={units === "metric"} onClick={() => onUnits("metric")}>kg</button>

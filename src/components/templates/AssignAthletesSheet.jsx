@@ -1,6 +1,7 @@
 import React from "react";
 import { A, BG, S1, S2, BD, TX, SB, MT, RED } from "./tokens.js";
 import { Overlay } from "../../coach/ui/primitives.jsx";
+import { letterColor } from "../../coach/lib/initialColor.js";
 
 /**
  * Bottom-sheet checklist for managing template assignments.
@@ -157,9 +158,9 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
                   {/* Avatar */}
                   <div style={{
                     width:36, height:36, borderRadius:"50%", flexShrink:0,
-                    background:`${A}22`, border:`1px solid ${A}33`,
+                    background: letterColor((link.athlete_name || "A")[0]).tint,
                     display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:14, fontWeight:800, color:A,
+                    fontSize:14, fontWeight:800, color: letterColor((link.athlete_name || "A")[0]).text,
                   }}>
                     {(link.athlete_name || "A")[0].toUpperCase()}
                   </div>
