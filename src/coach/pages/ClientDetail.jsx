@@ -60,6 +60,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
           ? <Button icon={<Icon.Payments size={16} />} onClick={() => actions.recordPayment(athleteId)}>Record payment</Button>
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
       </div>
+      {manual && <ClientUnits clientId={athleteId} units={data?.profile?.unit_system} firstName={row.name.split(" ")[0]} onChanged={() => actions?.reloadClient?.(athleteId)} />}
       {manual && <ClientEmail clientId={athleteId} initial={link.email} firstName={row.name.split(" ")[0]} />}
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
@@ -75,6 +76,33 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
       ) : (
         <PaymentsTab row={row} fees={fees} payments={payments} defaultCurrency={defaultCurrency} actions={actions} payment={payment} />
       )}
+    </div>
+  );
+}
+
+// ── Units (name-only clients) ─────────────────────────────────────────────
+// Each client can be in kg or lb, whatever the coach's own setting is. Weights
+// already typed keep their unit and are converted on the way out.
+function ClientUnits({ clientId, units, firstName, onChanged }) {
+  const data = useCoachData();
+  const toast = useToast();
+  const [busy, setBusy] = React.useState(false);
+  const current = units === "metric" ? "metric" : "imperial";
+  if (typeof data.setClientUnits !== "function") return null;
+  async function pick(u) {
+    if (u === current || busy) return;
+    setBusy(true);
+    try { await data.setClientUnits(clientId, u); toast(`${firstName}'s weights now show in ${u === "metric" ? "kg" : "lb"}.`); onChanged?.(); }
+    catch (e) { toast(e.message || "Could not change units", "error"); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
+      <span className="cx-small cx-muted" style={{ minWidth: 0 }}>Weights for {firstName}</span>
+      <span className="cx-units" role="group" aria-label={`Weight units for ${firstName}`}>
+        <button type="button" aria-pressed={current === "metric"} disabled={busy} onClick={() => pick("metric")}>kg</button>
+        <button type="button" aria-pressed={current === "imperial"} disabled={busy} onClick={() => pick("imperial")}>lb</button>
+      </span>
     </div>
   );
 }

@@ -24,6 +24,9 @@ const MANUAL_COLS_V1 = "id, coach_id, first_name, last_name, plan, fee, payments
 // email + archived_at come with 20260918200000_keep_client_history.sql; until it is
 // applied the dashboard falls back to V1 (and cannot archive, only refuse to delete).
 const MANUAL_COLS_V2 = MANUAL_COLS_V1 + ", email, archived_at";
+// unit_system: the coach's kg/lb choice for this one client (20260920120000).
+const MANUAL_COLS_V3 = MANUAL_COLS_V2 + ", unit_system";
+const UNITS_SETUP_MSG = "Setting kg or lb per client needs a quick database update: run supabase/migrations/20260920120000_client_units.sql in the Supabase SQL editor.";
 const HISTORY_SETUP_MSG = "This needs a one-time database update: run supabase/migrations/20260918200000_keep_client_history.sql in the Supabase SQL editor.";
 const isMissingColumn = (error) => error?.code === "42703" || error?.code === "PGRST204" || /column .* does not exist|could not find .* column/i.test(String(error?.message || ""));
 const SETUP_MSG = "Name-only clients need a one-time database update. Run supabase/migrations/20260909120000_coach_manual_clients.sql in the Supabase SQL editor.";
@@ -43,7 +46,11 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   let unitSystem = (profile?.units || profile?.unit_system) === "metric" ? "metric" : "imperial";
   let manualAvailable = true;
   let historyV2 = true; // email + archived_at columns present
-  const cols = () => (historyV2 ? MANUAL_COLS_V2 : MANUAL_COLS_V1);
+  let perClientUnits = true; // unit_system column present
+  const cols = () => (perClientUnits && historyV2 ? MANUAL_COLS_V3 : historyV2 ? MANUAL_COLS_V2 : MANUAL_COLS_V1);
+  // The units this client's numbers are shown and saved in: the coach's choice
+  // for them, or the coach's own setting until they pick one.
+  const unitsOf = (row) => normUnits(row?.unit_system || unitSystem);
 
   // ── Manual client rows ────────────────────────────────────────────────
   async function listManualRows() {
@@ -53,6 +60,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     const { data, error } = await q.order("created_at", { ascending: true });
     if (error) {
       if (isMissingTable(error)) { manualAvailable = false; return []; }
+      if (perClientUnits && isMissingColumn(error)) { perClientUnits = false; return listManualRows(); }
       if (historyV2 && isMissingColumn(error)) { historyV2 = false; return listManualRows(); }
       throw new Error(error.message);
     }
@@ -60,6 +68,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   }
   async function getManualRow(manualId) {
     const { data, error } = await supabase.from("coach_manual_clients").select(cols()).eq("id", manualId).eq("coach_id", coachId).maybeSingle();
+    if (error && perClientUnits && isMissingColumn(error)) { perClientUnits = false; return getManualRow(manualId); }
     if (error && historyV2 && isMissingColumn(error)) { historyV2 = false; return getManualRow(manualId); }
     if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
     if (!data) throw new Error("This client no longer exists.");
@@ -68,6 +77,8 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   async function patchManualRow(manualId, patch) {
     const { data, error } = await supabase.from("coach_manual_clients").update(patch).eq("id", manualId).eq("coach_id", coachId).select(cols()).single();
     if (error && isMissingColumn(error)) {
+      if ("unit_system" in patch) throw new Error(UNITS_SETUP_MSG);
+      if (perClientUnits) { perClientUnits = false; return patchManualRow(manualId, patch); }
       if (historyV2 && !("email" in patch) && !("archived_at" in patch)) { historyV2 = false; return patchManualRow(manualId, patch); }
       throw new Error(HISTORY_SETUP_MSG);
     }
@@ -116,9 +127,10 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         // Name-only clients have no app data; link submissions are their only history.
         const [row, subs] = await Promise.all([getManualRow(mid), loadSubmissions({ manual_client_id: mid })]);
         const base = manualClientData(row);
-        const linked = linkClientData(subs, { plan: row.plan, coachUnits: unitSystem });
-        // Plan target weights in the coach's units too (the editor saves them stamped with those units).
-        const routine = row.plan ? convertPlan(row.plan, unitSystem, { assumeFrom: unitSystem }) : base.routine;
+        const u = unitsOf(row);
+        const linked = linkClientData(subs, { plan: row.plan, coachUnits: u });
+        // Target weights in this client's units (the editor saves them stamped with those units).
+        const routine = row.plan ? convertPlan(row.plan, u, { assumeFrom: u }) : base.routine;
         return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
       }
       const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
@@ -159,6 +171,14 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       return p;
     },
     /** Optional email for a name-only client: later, signing in with it offers them their history. */
+    // The coach's kg/lb choice for one client. Numbers already saved keep the
+    // unit they were typed in; they are converted on the way out.
+    async setClientUnits(clientId, units) {
+      const mid = manualIdOf(clientId);
+      if (!mid) throw new Error("Clients on the app use their own setting in the app.");
+      const row = await patchManualRow(mid, { unit_system: normUnits(units) });
+      return normUnits(row.unit_system || units);
+    },
     async updateManualEmail(clientId, email) {
       const mid = manualIdOf(clientId);
       if (!mid) throw new Error("Only for clients added by name.");
@@ -334,8 +354,9 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       if (!templateHasWorkouts(days)) throw new Error(EMPTY_PLAN_MSG);
       const res = appIds.length ? await assignTemplate(templateId, appIds) : { succeeded: [], failed: [], archived: [] };
       if (manualIds.length) {
+        const rowsById = Object.fromEntries((await listManualRows()).map((r) => [r.id, r]));
         for (const id of manualIds) {
-          try { await patchManualRow(manualIdOf(id), { plan: manualPlanFromTemplate(template, days, unitSystem) }); res.succeeded = [...(res.succeeded || []), id]; }
+          try { await patchManualRow(manualIdOf(id), { plan: manualPlanFromTemplate(template, days, unitsOf(rowsById[manualIdOf(id)])) }); res.succeeded = [...(res.succeeded || []), id]; }
           catch (e) { res.failed = [...(res.failed || []), { athlete_id: id, reason: e.message }]; }
         }
       }
@@ -353,7 +374,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
           const id = toClientId(r.id);
           // The coach edited this client's week since: keep it unless they chose to overwrite.
           if (planTemplate(r.plan)?.overridden && !force) { res.skipped_overridden = [...(res.skipped_overridden || []), id]; continue; }
-          try { await patchManualRow(r.id, { plan: manualPlanFromTemplate(template, days, unitSystem) }); res.succeeded = [...(res.succeeded || []), id]; }
+          try { await patchManualRow(r.id, { plan: manualPlanFromTemplate(template, days, unitsOf(r)) }); res.succeeded = [...(res.succeeded || []), id]; }
           catch (e) { res.failed = [...(res.failed || []), { athlete_id: id, reason: e.message }]; }
         }
       }
