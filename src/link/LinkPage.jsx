@@ -2,6 +2,7 @@ import React from "react";
 import "../coach/coach.css";
 import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
+import TherynLoader from "../components/TherynLoader.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
@@ -82,7 +83,8 @@ export default function LinkPage({ token, api }) {
     return () => { delete document.body.dataset.app; };
   }, []);
 
-  if (state.loading) return <div className="lk-page"><div className="lk-center"><div className="cx-spinner" /></div></div>;
+  // Continues the tumble the Suspense fallback started — no second replay.
+  if (state.loading) return <div className="lk-page"><TherynLoader /></div>;
   if (state.error || !state.data?.ok) return <Unavailable reason={state.error} />;
   // The coach's editor stamps the plan with the units the coach typed in; the
   // client sees every target converted to their own.

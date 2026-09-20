@@ -14,6 +14,7 @@ import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, sa
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
 import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/landing/Landing.jsx";
+import TherynLoader from "./components/TherynLoader.jsx";
 import ChatView from "./components/ChatView";
 import { loadConversationPreviews } from "./hooks/useChat";
 import { requestNotificationPermissions, getNotificationPermissionState, scheduleDailyRoutine, scheduleReflection, scheduleStreakReminder, triggerCoachCatchUp, markCoachSeen, getCoachLastSeen, registerNotificationTapHandlers, consumePendingDeepLink } from "./hooks/useNotifications";
@@ -1100,11 +1101,7 @@ export default function GymApp() {
   // check, refreshing the page on web would always fall through to <LandingPage>
   // because `showLanding` defaults to true on `/` — so a signed-in coach would
   // get bounced to the marketing site on every reload.
-  if (authLoading) return (
-    <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ width:"32px", height:"32px", borderRadius:"50%", border:`3px solid ${MT}`, borderTopColor:A, animation:"spin 0.8s linear infinite" }}/>
-    </div>
-  );
+  if (authLoading) return <TherynLoader />;
 
   // Landing only shows when there's no live session. Authenticated users skip
   // straight into the app on refresh; signing out still routes back here.
@@ -1158,11 +1155,7 @@ export default function GymApp() {
 
   // While we check profiles.onboarding_completed, show the same spinner as
   // auth loading — no flash of Role picker or app chrome.
-  if (onboardingStatus === "loading") return (
-    <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ width:"32px", height:"32px", borderRadius:"50%", border:`3px solid ${MT}`, borderTopColor:A, animation:"spin 0.8s linear infinite" }}/>
-    </div>
-  );
+  if (onboardingStatus === "loading") return <TherynLoader />;
 
   // ── Onboarding — collect name + height + weight ONCE (not per device) ──
   if (onboardingStatus === "needed") return (
