@@ -12,6 +12,7 @@ import MessagesPage from "./pages/MessagesPage.jsx";
 import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
 import { AddClientSheet, ProfileSheet, LinkClientSheet, UnitsPromptSheet, unitsConfirmed, markUnitsConfirmed } from "./pages/Sheets.jsx";
+import TherynLoader from "../components/TherynLoader.jsx";
 import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
 import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
 import CoachTour, { isTourDone, markTourDone } from "./pages/CoachTour.jsx";
@@ -314,7 +315,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
       <main className="cx-main">
         {!loadedClients ? (
-          <div className="cx-page"><div className="cx-spinner" style={{ marginTop: 48 }} /></div>
+          <div className="cx-page" style={{ paddingTop: 48 }}><TherynLoader fullscreen={false} /></div>
         ) : tab === "clients" ? (
           <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} detailTab={detailTab} onDetailTab={setDetailTab} />
         ) : tab === "plans" ? (
