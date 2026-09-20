@@ -1,7 +1,8 @@
 // One streak rule for the coach dashboard and the client's link page.
-// A day keeps the streak going if a workout was done on it, or the plan says
-// Rest. A planned day with no workout ends it. Today never ends it (the day
-// isn't over), and a run made only of rest days doesn't count as a streak.
+// The streak counts workouts, not days: a rest day keeps it going but adds
+// nothing to it (train Friday, rest Saturday and Sunday, and it is still 1;
+// train Monday and it is 2). A planned day with no workout ends it. Today
+// never ends it, because the day isn't over.
 // Pure; dates are local "YYYY-MM-DD" strings.
 import { isoDate, dayKey } from "./format.js";
 
@@ -27,18 +28,17 @@ export function streakStats(doneDates, plan, now = new Date()) {
   const floor = new Date(today); floor.setDate(today.getDate() - MAX_DAYS);
   const start = first ? (at(first) < floor ? floor : at(first)) : null;
 
-  let run = 0, workouts = 0, best = 0, broke = null;
+  let run = 0, best = 0, broke = null;
   if (start) {
     for (const d = new Date(start); isoDate(d) <= todayIso; d.setDate(d.getDate() + 1)) {
       const iso = isoDate(d);
-      if (done.has(iso)) { run++; workouts++; }
-      else if (isRest(d)) { if (run > 0) run++; }
+      if (done.has(iso)) { run++; if (run > best) best = run; }
+      else if (isRest(d)) { /* keeps the streak, but doesn't add to it */ }
       else if (iso === todayIso) { /* still time today */ }
-      else { if (workouts > 0) broke = { length: run, endedOn: iso }; run = 0; workouts = 0; }
-      if (workouts > 0 && run > best) best = run;
+      else { if (run > 0) broke = { length: run, endedOn: iso }; run = 0; }
     }
   }
-  const current = workouts > 0 ? run : 0;
+  const current = run;
 
   const days = [];
   for (let i = 13; i >= 0; i--) {
@@ -65,8 +65,8 @@ export function streakWith(doneDates, iso, plan, now = new Date()) {
   return streakStats([...(doneDates || []), iso], plan, now);
 }
 
-/** "6-day streak" */
-export const streakLabel = (n) => `${n}-day streak`;
+/** "6 workouts in a row" (rest days keep a streak, they don't add to it) */
+export const streakLabel = (n) => `${n} workout${n === 1 ? "" : "s"} in a row`;
 
 /**
  * Consistency since the client joined: planned workout days they trained on,

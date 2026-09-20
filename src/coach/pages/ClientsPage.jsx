@@ -167,11 +167,11 @@ function WeekSquares({ week }) {
   );
 }
 
-/** Days in a row (workouts plus planned rest days). Shown from 2; "was 9" for a week after one ends. */
+/** Workouts in a row (rest days keep it going, but don't add to it). Shown from 2; "was 9" for a week after one ends. */
 export function StreakCell({ s }) {
   if (!s) return <span className="cx-muted">—</span>;
-  if (s.current >= 2) return <span className={`cx-streak ${s.atRisk ? "risk" : ""}`} title={s.atRisk ? "Today is planned and not done yet" : `${s.current} days in a row${s.best > s.current ? `, best ${s.best}` : ""}`}><Icon.Flame size={14} />{s.current}{s.atRisk && <small>at risk</small>}</span>;
-  if (s.brokeAt) return <span className="cx-streak off" title={`A ${s.brokeAt}-day streak ended this week`}><Icon.Flame size={14} />0<small>was {s.brokeAt}</small></span>;
+  if (s.current >= 2) return <span className={`cx-streak ${s.atRisk ? "risk" : ""}`} title={s.atRisk ? "Today is planned and not done yet" : `${s.current} workouts in a row${s.best > s.current ? `, best ${s.best}` : ""}`}><Icon.Flame size={14} />{s.current}{s.atRisk && <small>at risk</small>}</span>;
+  if (s.brokeAt) return <span className="cx-streak off" title={`A streak of ${s.brokeAt} ended this week`}><Icon.Flame size={14} />0<small>was {s.brokeAt}</small></span>;
   return <span className="cx-muted">{s.current === 1 ? "1" : "—"}</span>;
 }
 

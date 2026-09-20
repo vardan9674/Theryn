@@ -283,7 +283,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
           <p className="lk-lede">{today.isRest
             ? (!isToday ? `Hi ${first}. Nothing is planned for ${DAY_LONG[today.key]}.` : today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
-            : isToday ? `Hi ${first}. ${st.current >= 2 && !st.doneToday ? `Tick today and that's ${st.current + 1} days in a row.${st.best > st.current + 1 ? ` Your best is ${st.best}.` : ""}` : "Follow your coach's plan and tick off each exercise."}`
+            : isToday ? `Hi ${first}. ${st.current >= 2 && !st.doneToday ? `Tick today and that's ${st.current + 1} workouts in a row.${st.best > st.current + 1 ? ` Your best is ${st.best}.` : ""}` : "Follow your coach's plan and tick off each exercise."}`
             : upcoming ? `Hi ${first}. Here's ${DAY_LONG[today.key]}'s plan. You can tick it off on the day.`
             : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
         </div>
@@ -552,7 +552,7 @@ function StreakChip({ st }) {
   const newBest = st.doneToday && st.current >= 3 && st.current >= st.best;
   const cls = st.atRisk ? "risk" : st.doneToday ? "solid" : "";
   return (
-    <span className={`lk-streak ${cls}`} title={`${st.current} days in a row${st.best > st.current ? `, best ${st.best}` : ""}`}>
+    <span className={`lk-streak ${cls}`} title={`${st.current} workouts in a row${st.best > st.current ? `, best ${st.best}` : ""}`}>
       <Icon.Flame size={12} />
       {st.atRisk ? `${st.current} days · keep it going today` : newBest ? `${st.current} · new best` : streakLabel(st.current)}
     </span>
@@ -583,9 +583,9 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
       <div className="lk-center">
         {showStreak ? (
           <>
-            <div className="lk-ring" role="img" aria-label={`${st.current} days in a row`}>
+            <div className="lk-ring" role="img" aria-label={`${st.current} workouts in a row`}>
               <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke="var(--cx-a)" strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
-              <div className="lk-ring-in"><Icon.Flame size={28} /><b>{shown}</b><span>days in a row</span></div>
+              <div className="lk-ring-in"><Icon.Flame size={28} /><b>{shown}</b><span>workouts in a row</span></div>
             </div>
             <div className="lk-small">{newBest ? "That's your best streak yet." : `${st.best - st.current} more day${st.best - st.current === 1 ? "" : "s"} to match your best of ${st.best}.`}</div>
           </>
