@@ -175,7 +175,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
             : isToday
               ? `1.5px solid ${MT}`
               : "1.5px solid transparent",
-          width: "100%", maxWidth: size, aspectRatio: "1 / 1", height: "auto", justifySelf: "center",
+          width: "100%", maxWidth: size, aspectRatio: "1 / 1", height: "auto", minHeight: 32, justifySelf: "center",
           borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: tappable ? "pointer" : "default",
@@ -229,7 +229,8 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
                 background: view === v.k ? MT : "transparent",
                 border: "none",
                 color: view === v.k ? TX : SB,
-                padding: "5px 10px",
+                padding: "0 12px",
+                minHeight: "32px",
                 fontSize: "11px",
                 fontWeight: 700,
                 letterSpacing: "0.04em",
@@ -249,7 +250,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
           aria-label="Previous"
           style={{
             background: S1, border: `1px solid ${BD}`, borderRadius: "8px",
-            width: "28px", height: "28px",
+            width: "32px", height: "32px",
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", color: TX,
           }}
@@ -272,7 +273,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
           disabled={periodEnd >= today && view !== "week"}
           style={{
             background: S1, border: `1px solid ${BD}`, borderRadius: "8px",
-            width: "28px", height: "28px",
+            width: "32px", height: "32px",
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", color: TX,
             opacity: (periodEnd >= today && view !== "week") ? 0.35 : 1,
