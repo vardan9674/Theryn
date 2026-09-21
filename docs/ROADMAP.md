@@ -24,12 +24,14 @@ Status: `todo` · `doing` · `done` · `dropped`. Update the status in place and
 | 1.4 | First tests: `coachInsights.js`, `usePayments.ts` cycle math, `offlineQueue.ts` | todo | Vitest |
 | 1.5 | Fix content: add `og-image.png`, remove the email sign-in claim, decide on the PWA manifest | todo | |
 | 1.6 | Sign in with Apple on iOS | todo | Required by App Store guideline 4.8 |
-| 1.7 | Email/password signup | todo | Supported by the existing auth server |
+| 1.7 | Email sign-in (code by email, no password) | doing | Built on `feat/growth-loop` (decision 0008). Needs custom SMTP and `{{ .Token }}` in the Magic Link and Confirm signup email templates before real users get codes |
 | 1.8 | Mobile build workflow (Fastlane or EAS-style script) | todo | |
 | 1.9 | Coach dashboard rebuild per decision 0005 (Direction B): four areas, client table home, client page with tabs, plan editor, Export to Excel | done | Merged PR #38, #39. Old coach code in App.jsx still to be deleted (1.11) |
 | 1.10 | Shareable client links per decision 0006: public `/f/<token>` page for workout check-ins and measurements, Share link sheet, link data on the client page | doing | Merged PR #40 on 2026-09-12. First real link failed (pgcrypto `digest` not on the pinned search_path); fix migration `20260912180000_client_links_digest_fix.sql` applied 2026-09-12; real links verified end to end (submissions land, measurements and sessions promoted). Coach dashboard now sees them live (realtime publication + fresh reads, 2026-09-13) |
 | 1.11 | Delete the old coach components from App.jsx | todo | ~2,200 lines no longer rendered |
-| 1.12 | Push notification to the coach when a link submission arrives (trigger → notify_outbox) | todo | Reuses the outbox pipeline |
+| 1.12 | Push notification to the coach when a link submission arrives (trigger → notify_outbox) | doing | Built on `feat/growth-loop` as browser web push (decision 0008). Needs the migration, the `process-outbox` deploy and the VAPID secrets |
+| 1.13 | First-party growth events + `admin_growth_funnel()` (decision 0008) | doing | `feat/growth-loop` |
+| 1.14 | Claim: a name-only client saves their history to an account by link or verified email (decision 0007 step 2, as amended by 0008) | doing | `feat/growth-loop` |
 
 ## Phase 2 — Analytics lakehouse (learning project, runs in parallel after 0.3)
 

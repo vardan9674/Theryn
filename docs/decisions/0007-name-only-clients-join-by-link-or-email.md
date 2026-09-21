@@ -1,7 +1,7 @@
 # 0007 — Name-only clients bring their history into an account by their link or a verified email
 
 - Date: 2026-09-18
-- Status: accepted (step 1 built; step 2 when the app is close to launch)
+- Status: accepted (step 1 built; step 2 built 2026-09-21 with changes, see 0008)
 
 ## Context
 Every real client today is name-only: the coach added them by name and they check in through their link (decision 0006). Their workouts (per set), measurements and notes live in `client_submissions`. The owner wants that history to follow the person when they sign in to the app, and to be kept for progress reports and analytics.

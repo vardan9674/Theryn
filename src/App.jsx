@@ -29,6 +29,10 @@ import {
 import { AthleteAttendanceHeatmap, AthleteVolumeChart, AthletePRTimeline, AthleteSessionDrawer } from "./components/coach/AthleteDepth";
 import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
 import CoachDashboard from "./coach/CoachApp.jsx";
+import SignInSheet from "./components/auth/SignIn.jsx";
+import ClaimSuggestions from "./components/auth/ClaimSuggestions.jsx";
+import { track, trackActiveDay } from "./lib/events";
+import { clearReturnTo } from "./lib/authReturn";
 import PullToRefresh from "./components/PullToRefresh.jsx";
 import { consumeBackPress, useBackHandler } from "./lib/backStack";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
@@ -705,6 +709,20 @@ export default function GymApp() {
     setOnboardingStatus("done");
   }
 
+  // Growth events (decision 0008). Only once the profile row surely exists.
+  useEffect(() => {
+    if (authUser?.id && onboardingStatus === "done") trackActiveDay(authUser.id);
+  }, [authUser?.id, onboardingStatus]);
+  useEffect(() => {
+    if (!authUser?.id || onboardingStatus !== "done" || role !== "coach") return;
+    const key = `theryn_coach_signup_sent_${authUser.id}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch { /* send anyway; the server dedups */ }
+    track("coach_signup");
+  }, [authUser?.id, onboardingStatus, role]);
+
+  // Landing CTA: Google or an email code (roadmap 1.7), on the web.
+  const [signInOpen, setSignInOpen] = useState(false);
+
   useEffect(() => {
     // Check existing session on mount
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -1123,33 +1141,32 @@ export default function GymApp() {
       setRole(null);
       try { await supabase.auth.signOut(); } catch { /* ignore */ }
       setAuthUser(null);
-      setShowLanding(false);
       if (Capacitor.getPlatform() === "web") {
-        try {
-          const { error } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: {
-              redirectTo: `${window.location.origin}/oauth/consent`,
-              queryParams: { prompt: "select_account" },
-            },
-          });
-          if (error) throw error;
-        } catch (err) {
-          console.error("Landing sign-in failed:", err);
-          setAuthError(err?.message || "Sign-in failed. Please try again.");
-          setShowLanding(true);
-        }
+        // A half-finished "Save my history" from a client link must not hijack this sign-in.
+        clearReturnTo();
+        setSignInOpen(true);
+        return;
       }
+      setShowLanding(false);
     }} />
   );
+  const signInSheet = (
+    <SignInSheet
+      open={signInOpen}
+      onClose={() => setSignInOpen(false)}
+      title={pendingRole === "athlete" ? "Sign in to Theryn" : "Start coaching on Theryn"}
+      subtitle={pendingRole === "athlete" ? "Use Google, or get a code by email. No password." : "Free while in beta. Use Google, or get a code by email. No password."}
+      onSignedIn={() => { setSignInOpen(false); setShowLanding(false); }}
+    />
+  );
 
-  if (showLanding && !authUser) return renderLanding();
+  if (showLanding && !authUser) return <>{renderLanding()}{signInSheet}</>;
 
   if (!authUser) {
     // On web, signing out (or any other no-auth state outside the native app)
     // should return the user to the marketing landing page, not the bare
     // LoginScreen. The native LoginScreen is iOS/Android-only.
-    if (Capacitor.getPlatform() === "web") return renderLanding();
+    if (Capacitor.getPlatform() === "web") return <>{renderLanding()}{signInSheet}</>;
     return <LoginScreen authError={authError} onClearError={() => setAuthError(null)}/>;
   }
 
@@ -1210,17 +1227,21 @@ export default function GymApp() {
 
   // ── Web athlete → download page ──────────────────────────────────────────
   if ((role === "athlete" || role === "athlete_web") && isWeb) return (
-    <WebAthleteDownloadPage
-      onSwitchToCoach={() => {
-        setRole("coach");
-        localStorage.setItem(`theryn_role_${authUser.id}`, "coach");
-      }}
-      onSignOut={() => {
-        supabase.auth.signOut();
-        setAuthUser(null);
-        setRole(null);
-      }}
-    />
+    <>
+      <WebAthleteDownloadPage
+        onSwitchToCoach={() => {
+          setRole("coach");
+          localStorage.setItem(`theryn_role_${authUser.id}`, "coach");
+        }}
+        onSignOut={() => {
+          supabase.auth.signOut();
+          setAuthUser(null);
+          setRole(null);
+        }}
+      />
+      {/* A coach added them by name with this email: offer their history (decision 0007). */}
+      <ClaimSuggestions userId={authUser.id} />
+    </>
   );
 
   // ── Coach experience ─────────────────────────────────────────────────────

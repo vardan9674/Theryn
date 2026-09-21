@@ -219,3 +219,7 @@ button.lk-srow-tick:active .lk-srow-circle { transform: scale(0.9); }
 }
 button.lk-badge { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.08s, background 0.12s; }
 button.lk-badge:active { transform: scale(0.92); }
+
+/* Save my history (decision 0007) */
+.lk-save { border-color: color-mix(in srgb, var(--cx-a) 35%, var(--cx-bd)); text-align: left; width: 100%; box-sizing: border-box; }
+.lk-save-icon { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--cx-a) 14%, transparent); color: var(--cx-a); }

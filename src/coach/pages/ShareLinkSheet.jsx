@@ -2,6 +2,7 @@ import React from "react";
 import { Sheet, Button, Icon, Checkbox, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, requiredFields } from "../lib/clientLinks.js";
+import { track } from "../../lib/events.ts";
 
 /**
  * "Share link" on a client page. One durable link per client; the coach
@@ -30,6 +31,8 @@ export default function ShareLinkSheet({ open, onClose, client }) {
 
   const url = state.token ? linkUrl(state.token) : null;
   const text = url ? shareMessage(first, url) : "";
+  // Growth funnel (decision 0008): the coach sent the link on, by which route.
+  const shared = (via) => { if (data.mode === "supabase") track("link_shared", { via, manual: Boolean(client?.manual) }); };
 
   async function create(rotate = false) {
     setBusy(true);
@@ -53,10 +56,11 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     try { await data.updateClientLinkRequested(client.athlete_id, next); toast(`Saved. ${first} sees it next time they open the link.`); } catch (e) { toast(e.message || "Could not save", "error"); }
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+    try { await navigator.clipboard.writeText(url); toast("Link copied"); shared("copy"); }
     catch { toast("Could not copy. Use Share instead.", "error"); }
   }
   async function share() {
+    shared("share");
     try {
       if (data.isNative) { const { Share } = await import("@capacitor/share"); await Share.share({ text }); }
       else if (navigator.share) await navigator.share({ text });
@@ -99,7 +103,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
             <Button size="sm" variant="soft" onClick={copy} style={{ color: "var(--cx-a)" }}>Copy</Button>
           </div>
           <div className="cx-actions-2">
-            <Button variant="primary" icon={<Icon.Messages size={18} />} onClick={() => window.open(whatsappUrl(text), "_blank", "noopener")}>WhatsApp</Button>
+            <Button variant="primary" icon={<Icon.Messages size={18} />} onClick={() => { shared("whatsapp"); window.open(whatsappUrl(text), "_blank", "noopener"); }}>WhatsApp</Button>
             <Button icon={<Icon.Share size={18} />} onClick={share}>Share…</Button>
           </div>
           <div className="cx-card cx-card-pad" style={{ fontSize: 13, color: "var(--cx-tx2)", lineHeight: 1.45 }}>

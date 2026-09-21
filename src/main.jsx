@@ -5,6 +5,7 @@ import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 // Statically imported on purpose: it has to paint before any lazy chunk lands.
 import TherynLoader from './components/TherynLoader.jsx'
+import { peekReturnTo, AUTH_CALLBACK_PATH } from './lib/authReturn.ts'
 
 // Dev-only preview of the coach dashboard with sample data, no sign-in needed:
 //   http://localhost:5173/?coachPreview=1
@@ -12,7 +13,12 @@ const previewCoach = import.meta.env.DEV && new URLSearchParams(window.location.
 
 // Public client link: /f/<token>. Loads a small auth-free bundle; the main app never mounts.
 // In dev, /f/preview renders sample data with no backend.
+// A client who signed in from their link ("Save my history") comes back through
+// /oauth/consent; reopen their link page, which finishes the sign-in itself.
+const LINK_PATH = /^\/f\/([A-Za-z0-9_-]{6,128})\/?(?:\?.*)?$/
+const returnLink = window.location.pathname === AUTH_CALLBACK_PATH ? peekReturnTo() : null
 const linkMatch = window.location.pathname.match(/^\/f\/([A-Za-z0-9_-]{6,128})\/?$/)
+  || (returnLink && returnLink.match(LINK_PATH))
 
 const CoachPreview = lazy(async () => {
   const [{ default: CoachApp }, { createMockCoachData }] = await Promise.all([

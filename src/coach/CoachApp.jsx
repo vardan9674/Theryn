@@ -175,6 +175,23 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     Promise.resolve(data.markNotificationsSeen?.(iso)).catch(() => {});
   };
   const closeNotifications = () => { setNotifOpen(false); if (badgeSeenAt) setNotifSeenAt((cur) => (cur && cur > badgeSeenAt ? cur : badgeSeenAt)); };
+  // A tapped browser push (public/sw.js) lands here: as ?notifications=1 in a
+  // new tab, or as a message to a tab that was already open.
+  const openNotificationsRef = React.useRef(openNotifications);
+  openNotificationsRef.current = openNotifications;
+  React.useEffect(() => {
+    if (!loadedClients) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("notifications")) {
+      url.searchParams.delete("notifications");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      openNotificationsRef.current();
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const onMsg = (e) => { if (e.data?.type === "theryn:open-notifications") openNotificationsRef.current(); };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+  }, [loadedClients]);
 
   // Live data: a client logs a workout, body data or a link submission → refresh their facts.
   // Depend on the stable callbacks, not `cache` (its identity changes on every version bump).
@@ -348,6 +365,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
       <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
+        pushUserId={data.mode === "supabase" && !data.isNative ? data.coachId : null}
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
         onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />

@@ -1,0 +1,33 @@
+/* Sign-in panel (Google or email code). Self-contained: used on the landing
+   page, the client link page and the claim prompt, which don't share a theme. */
+.si-panel { --si-a: #C8FF00; --si-bg: #0B0B0B; --si-s1: #141414; --si-bd: #262626; --si-tx: #F0F0F0; --si-tx2: #A3A3A3; --si-red: #FF5C5C;
+  display: flex; flex-direction: column; gap: 12px; color: var(--si-tx); font-family: inherit; text-align: left; }
+.si-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+.si-sub { margin: 0; font-size: 15px; line-height: 1.5; color: var(--si-tx2); }
+.si-sub b { color: var(--si-tx); font-weight: 600; word-break: break-all; }
+.si-form { display: flex; flex-direction: column; gap: 10px; }
+.si-label { font-size: 13px; font-weight: 600; color: var(--si-tx2); }
+.si-input { height: 50px; border-radius: 12px; border: 1px solid var(--si-bd); background: var(--si-bg); color: var(--si-tx);
+  padding: 0 14px; font-size: 17px; font-family: inherit; outline: none; width: 100%; box-sizing: border-box; }
+.si-input:focus { border-color: var(--si-a); }
+.si-code { font-size: 24px; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; text-align: center; }
+.si-btn { height: 50px; border-radius: 12px; border: 1px solid var(--si-bd); background: var(--si-s1); color: var(--si-tx);
+  font-size: 16px; font-weight: 700; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; width: 100%; }
+.si-btn:disabled { opacity: 0.5; cursor: default; }
+.si-primary { background: var(--si-a); border-color: var(--si-a); color: #000; }
+.si-google { background: #fff; border-color: #fff; color: #1f1f1f; }
+.si-or { display: flex; align-items: center; gap: 10px; color: var(--si-tx2); font-size: 13px; }
+.si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: var(--si-bd); }
+.si-row { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.si-link { background: none; border: 0; padding: 6px 0; color: var(--si-a); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.si-link:disabled { color: var(--si-tx2); cursor: default; }
+.si-fine { margin: 0; font-size: 13px; color: var(--si-tx2); }
+.si-error { font-size: 14px; color: var(--si-red); line-height: 1.4; }
+.si-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.si-sheet { position: relative; width: 100%; max-width: 400px; max-height: calc(100dvh - 32px); overflow-y: auto; background: #101010;
+  border: 1px solid #262626; border-radius: 20px; padding: 28px 22px 22px; box-sizing: border-box; }
+.si-close { position: absolute; top: 10px; right: 12px; width: 36px; height: 36px; border: 0; background: none; color: #A3A3A3; font-size: 26px; line-height: 1; cursor: pointer; }
+@media (max-width: 480px) {
+  .si-overlay { align-items: flex-end; padding: 0; }
+  .si-sheet { max-width: none; border-radius: 20px 20px 0 0; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+}

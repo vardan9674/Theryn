@@ -10,6 +10,9 @@ import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
+import SaveHistorySheet, { SaveHistoryCard } from "./SaveHistory.jsx";
+import { peekReturnTo, clearReturnTo, AUTH_CALLBACK_PATH } from "../lib/authReturn.ts";
+import { supabase } from "../lib/supabase.ts";
 
 const APP_URL = "https://theryn.fit";
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -68,10 +71,30 @@ export default function LinkPage({ token, api }) {
   // The client's own kg/lb, remembered on this phone. Until they pick, the plan's units.
   const [units, setUnitsState] = React.useState(() => linkStore(token).units());
   const setUnits = React.useCallback((u) => { setUnitsState(u); store.setUnits(u); }, [store]);
+  // "Save my history" (decision 0007). Back from Google or the email link we land on
+  // /oauth/consent; put the link's own address back and reopen the sheet.
+  const [saveOpen, setSaveOpen] = React.useState(() => new URLSearchParams(window.location.search).has("claim"));
+  const [claimed, setClaimed] = React.useState(false);
+  React.useEffect(() => {
+    let live = true;
+    const back = window.location.pathname === AUTH_CALLBACK_PATH ? peekReturnTo() : null;
+    const tidy = () => {
+      const url = new URL(back || window.location.href, window.location.origin);
+      if (!back && !url.searchParams.has("claim")) return;
+      url.searchParams.delete("claim");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    };
+    if (!back) { tidy(); return; }
+    clearReturnTo();
+    if (back.includes("claim=1")) setSaveOpen(true);
+    // The sign-in code is still in the address; let Supabase exchange it first.
+    supabase.auth.getSession().finally(() => { if (live) tidy(); });
+    return () => { live = false; };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
-    fetchLink(token).then((d) => { if (!cancelled) setState({ loading: false, data: d, error: d?.ok ? null : d?.reason || "invalid" }); })
+    fetchLink(token).then((d) => { if (!cancelled) { setState({ loading: false, data: d, error: d?.ok ? null : d?.reason || "invalid" }); setClaimed(Boolean(d?.claimed)); } })
       // A thrown error is the server or the network, never the link itself.
       .catch((e) => { if (!cancelled) setState({ loading: false, data: null, error: /fetch|network|offline/i.test(e.message || "") ? "network" : "server" }); });
     return () => { cancelled = true; };
@@ -93,8 +116,10 @@ export default function LinkPage({ token, api }) {
   const d = { ...state.data, plan: convertPlan(state.data.plan, clientUnits, { assumeFrom: coachUnits }), unit_system: clientUnits, onUnits: setUnits };
   d.doneDates = [...(Array.isArray(state.data.done_dates) ? state.data.done_dates : []), ...store.doneDates()];
   const today = todayFromPlan(d.plan);
+  const onSave = claimed ? null : () => setSaveOpen(true);
+  const saveSheet = <SaveHistorySheet token={token} coach={d.coach_name} api={api} open={saveOpen} onClose={() => setSaveOpen(false)} onClaimed={() => setClaimed(true)} />;
 
-  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} onBack={() => { setSent(null); setTab("workout"); window.scrollTo(0, 0); }} />;
+  if (sent) return <>{saveSheet}<Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} onSave={onSave} onBack={() => { setSent(null); setTab("workout"); window.scrollTo(0, 0); }} /></>;
 
   return (
     <div className="lk-page cx-app">
@@ -103,8 +128,9 @@ export default function LinkPage({ token, api }) {
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
       {tab === "workout"
-        ? <WorkoutTab key={clientUnits} d={d} today={today} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+        ? <WorkoutTab key={clientUnits} d={d} today={today} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} onSave={onSave} />
         : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
+      {saveSheet}
     </div>
   );
 }
@@ -195,7 +221,7 @@ function Byline({ coach, units, onUnits }) {
 }
 
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
+function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, onSave = null, controlledTicks }) {
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
@@ -429,6 +455,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             <button type="button" className="lk-send secondary" onClick={onMeasure}>Go to Measurements</button>
           </div>
         )}
+        {onSave && !controlledTicks && <SaveHistoryCard coach={d.coach_name} onOpen={onSave} />}
       </main>
       {!today.isRest && !upcoming && (
         <div className="lk-footer"><div className="lk-footer-inner">
@@ -572,7 +599,7 @@ function nextTraining(plan, from = new Date()) {
   return null;
 }
 
-function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
+function Receipt({ sent, coach, today, plan, doneDates, onBack, onSave = null }) {
   const s = sent.summary;
   const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan) : null;
   const showStreak = Boolean(st && st.current >= 2);
@@ -607,6 +634,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
         <div className="lk-card lk-keep"><Icon.Link size={20} /><span style={{ fontSize: 15, color: "var(--cx-tx2)", lineHeight: 1.45 }}>{next
           ? `Keep this link. ${next.label} is ${next.type}; tick it to make ${st.current + 1}.`
           : "Keep this link. Open it on training days to tick off your workout, and come back when your coach asks for measurements."}</span></div>
+        {onSave && <SaveHistoryCard coach={coach} onOpen={onSave} />}
         <div style={{ flex: 1 }} />
         <button type="button" className="lk-send secondary" onClick={onBack}>{sent.kind === "measurements" && !today.isRest ? "Go to today's workout" : "Back"}</button>
         <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <b className="soon">App coming soon</b></div>

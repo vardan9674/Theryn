@@ -10,9 +10,11 @@
 //   SUPABASE_URL                - injected by Supabase
 //   SUPABASE_SERVICE_ROLE_KEY   - injected by Supabase (NEVER expose client-side)
 //   FCM_SERVICE_ACCOUNT_JSON    - set via `supabase secrets set` (Phase 1 setup)
+//   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT - web push (_shared/webpush.ts)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { sendToToken, type Platform, type PushPayload } from "../_shared/fcm.ts";
+import { sendToToken, type Platform, type PushPayload, type SendResult } from "../_shared/fcm.ts";
+import { isWebSubscription, sendWebPush } from "../_shared/webpush.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -86,9 +88,18 @@ async function processOne(row: OutboxRow): Promise<void> {
   const deadTokens: string[] = [];
 
   // HTTP/2 keep-alive lets these run effectively in parallel; we await each
-  // for clearer error attribution and dead-token tracking.
-  for (const t of tokens) {
-    const result = await sendToToken(t.token, t.platform, payload);
+  // for clearer error attribution and dead-token tracking. Browsers (web push)
+  // first; one token failing (e.g. FCM not configured) never skips the rest.
+  const ordered = [...tokens].sort((a, b) => Number(b.platform === "web") - Number(a.platform === "web"));
+  for (const t of ordered) {
+    let result: SendResult;
+    try {
+      result = t.platform === "web" && isWebSubscription(t.token)
+        ? await sendWebPush(t.token, payload)
+        : await sendToToken(t.token, t.platform, payload);
+    } catch (e) {
+      result = { success: false, errorCode: "SEND_THREW", errorMessage: e instanceof Error ? e.message : String(e) };
+    }
     if (result.success) {
       anySuccess = true;
     } else if (result.deadToken) {

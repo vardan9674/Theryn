@@ -2,6 +2,25 @@
 
 Newest first. One entry per working session. Record what was done, what was found, and what is still open.
 
+## 2026-09-21 — Growth loop: events, check-in push, claim, email sign-in, branch `feat/growth-loop`
+
+**Context.** 13 accounts, 2 active coaches. Owner chose growth over infrastructure scaling (under 1k users expected in 6–12 months). Branched from `origin/main` at 4d82d8c in a separate worktree (the main checkout had 53 uncommitted files).
+
+**Done** (decision 0008)
+- `20260921120000_growth_loop.sql`: `events` table + `track_event` + `admin_growth_funnel`, triggers for client added / link created / check-in, backfill from existing rows; check-in push trigger on `client_submissions`; promotion moved out of `link_submit` into that trigger with `promoted_at`; `claim_link`, `claim_suggestions`, `claim_by_email`; `link_view` returns `claimed`.
+- `process-outbox`: web push via VAPID (`_shared/webpush.ts`); one bad token no longer stops the rest.
+- Web: `public/sw.js`; "Turn on alerts" in the coach notification centre; tapping a push opens the centre.
+- Link page: "Save my history" card (page and Sent screen) and sheet: sign in with Google or an email code, confirm the account, claim.
+- Landing CTA opens a sign-in sheet (Google or email code) instead of going straight to Google.
+- Web athletes whose verified email matches a name-only client get the "bring it in" prompt.
+- Events from the browser: `coach_signup`, `active_day`, `link_shared` (copy / WhatsApp / share), `signin_email_code`.
+
+**Open**
+- Apply the migration, deploy `process-outbox`, set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`.
+- Email sign-in: custom SMTP + `{{ .Token }}` in the email templates. Then change the landing copy that says "Sign in with Google".
+- Admin page for `admin_growth_funnel()`.
+- Coach dashboard: show "has an account" on claimed name-only clients.
+
 
 
 ## 2026-09-19 (late night) — Plans: empty-plan bug, keep or replace per client, plain guidance, branch `fix/plans-add-clients`
