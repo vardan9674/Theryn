@@ -590,6 +590,21 @@
 .lw-hint { font-size: 12px; color: var(--cx-mu); }
 .lw-save { width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--cx-a); background: none; color: var(--cx-a); font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
 .lw-save:disabled, .lw-quick:disabled { opacity: 0.5; cursor: default; }
+/* Reps / Time switch on an exercise */
+.pe-mode { display: inline-flex; align-self: flex-start; gap: 2px; padding: 2px; border: 1px solid var(--cx-bd2); border-radius: 10px; background: var(--cx-s1); }
+.pe-mode button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--cx-mu); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pe-mode button[aria-pressed="true"] { background: var(--cx-s2); color: var(--cx-tx); box-shadow: inset 0 0 0 1px var(--cx-bd2); }
+.pe-hint { font-size: 12px; color: var(--cx-mu); line-height: 1.4; }
+.pe-timed { display: inline-flex; margin-left: 6px; color: var(--cx-mu); vertical-align: -1px; }
+/* Supersets: a label on the card and a bar joining the cards of one group */
+.pe-ss { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 20px; padding: 0 5px; margin-right: 8px; border-radius: 6px; background: rgba(143, 184, 255, 0.14); color: #9DB8F5; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; vertical-align: 2px; flex: none; }
+.pe-cardtop .pe-ss { margin: 0; }
+.pe-card.ss { border-left: 3px solid rgba(143, 184, 255, 0.55); }
+.pe-card.ss:not(.ss-last) { margin-bottom: -6px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+.pe-card.ss:not(.ss-first) { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.pe-ssrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--cx-tx2); }
+.pe-ssrow:empty { display: none; }
+.pe-ssrow .pe-chipbtn { display: inline-flex; align-items: center; gap: 6px; }
 .pe-scope { display: flex; gap: 8px; align-items: flex-start; padding: 10px 16px; font-size: 13px; line-height: 1.4; color: var(--cx-tx2); background: rgba(200, 255, 0, 0.06); border-bottom: 1px solid var(--cx-bd); }
 .pe-scope svg { flex: none; margin-top: 2px; color: var(--cx-a); }
 .pe-shell { position: fixed; inset: 0; z-index: 60; overflow-y: auto; background: var(--cx-bg); }

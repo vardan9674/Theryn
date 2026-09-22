@@ -3,6 +3,7 @@
 // The row-building is pure and unit-tested; the file writing uses SheetJS.
 import type { Templates, ExerciseItem } from "../../hooks/useRoutine";
 import type { WorkoutHistoryEntry } from "../../hooks/useWorkouts";
+import { formatDuration, supersetInfo } from "./exerciseKinds.js";
 
 export interface ExportOptions {
   /** Fill blank Weight cells with the heaviest weight lifted in the most recent session containing that exercise. */
@@ -35,6 +36,11 @@ function exField(ex: ExerciseItem, key: "sets" | "reps" | "weight" | "coachNote"
   if (key === "weight" && Array.isArray(list) && list.length) {
     const ws = list.map((s: any) => (s?.weight != null && s.weight !== "" ? String(s.weight) : "–"));
     return ws.every((w: string) => w === ws[0]) ? (ws[0] === "–" ? "" : ws[0]) : ws.join("/");
+  }
+  // Timed: the Reps cell says the time ("45 s", or "30 s/45 s/1 min" when sets differ).
+  if (key === "reps" && ((ex as any).mode === "time" || (ex as any).secs != null)) {
+    const ts = Array.isArray(list) && list.length ? list.map((s: any) => formatDuration(s?.secs ?? (ex as any).secs) || "–") : [formatDuration((ex as any).secs)];
+    return ts.every((t: string) => t === ts[0]) ? ts[0] : ts.join("/");
   }
   const v = (ex as any)[key];
   return v == null || v === "" ? "" : String(v);
@@ -79,6 +85,7 @@ export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}):
       widths.push(10, 10, 14, 24);
     }
     const rows: (string | number)[][] = [header];
+    const ssi = supersetInfo(exercises as any[]);
     exercises.forEach((ex, i) => {
       const name = exName(ex);
       // The coach's target wins; last lifted only fills exercises without one.
@@ -87,7 +94,7 @@ export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}):
         const last = lastLiftedWeight(opts.history, name);
         if (last != null) weight = last;
       }
-      const row: (string | number)[] = [i + 1, name, exField(ex, "sets"), exField(ex, "reps"), weight, exField(ex, "coachNote")];
+      const row: (string | number)[] = [i + 1, ssi[i] ? `${ssi[i].letter}${ssi[i].pos} · ${name}` : name, exField(ex, "sets"), exField(ex, "reps"), weight, exField(ex, "coachNote")];
       if (opts.blankColumns) row.push("", "", "", "");
       rows.push(row);
     });

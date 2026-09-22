@@ -1,4 +1,5 @@
 // Pure helpers for shareable client links (decision 0006).
+import { parseDuration } from "./exerciseKinds.js";
 import { planUnits, convertSubmission, normUnits } from "./units.js";
 export { planUnits };
 
@@ -53,10 +54,15 @@ export function normalizeExercise(ex) {
   if (typeof ex === "string") return { name: ex, sets: null, reps: null, weight: null, note: null };
   if (!ex || typeof ex !== "object") return { name: "", sets: null, reps: null, weight: null, note: null };
   // Per-set targets (the coach's editor writes setList when the sets differ).
+  const secsOf = (v) => (v != null && v !== "" && Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);
   const setList = Array.isArray(ex.setList) && ex.setList.length
-    ? ex.setList.slice(0, 20).map((s) => ({ reps: s?.reps != null && s.reps !== "" ? String(s.reps) : null, weight: s?.weight != null && s.weight !== "" && Number.isFinite(Number(s.weight)) ? Number(s.weight) : null }))
+    ? ex.setList.slice(0, 20).map((s) => {
+        const o = { reps: s?.reps != null && s.reps !== "" ? String(s.reps) : null, weight: s?.weight != null && s.weight !== "" && Number.isFinite(Number(s.weight)) ? Number(s.weight) : null };
+        if (s?.secs != null) o.secs = secsOf(s.secs);
+        return o;
+      })
     : null;
-  return {
+  const out = {
     name: ex.name || "",
     setList,
     sets: setList ? setList.length : ex.sets != null && ex.sets !== "" ? Number(ex.sets) || null : null,
@@ -64,6 +70,10 @@ export function normalizeExercise(ex) {
     weight: ex.weight != null && ex.weight !== "" ? ex.weight : null,
     note: ex.coachNote || ex.note || null,
   };
+  // Timed exercises (planks, runs) and supersets; absent on everything else.
+  if (ex.mode === "time" || ex.secs != null || (setList || []).some((s) => s.secs != null)) { out.mode = "time"; out.secs = secsOf(ex.secs); }
+  if (ex.superset) out.superset = String(ex.superset);
+  return out;
 }
 
 /** Today's day from the plan, or the next training day if today is rest. */
@@ -139,6 +149,8 @@ export function measurementsPayload(values, unit, date) {
 }
 
 /** `units` is what the client typed weights in (and saw the targets in). */
+// A time typed by the client ("1:30", "45") or set by the timer (a number of seconds).
+const secsOrNull = (v) => (typeof v === "number" ? (v > 0 ? Math.round(v) : null) : parseDuration(v));
 const numOrNull = (v) => (v == null || String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /**
@@ -161,7 +173,8 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       const done = Math.min(ticks[i] || 0, e.sets || 20);
       const entry = log?.[i];
       const perSet = entry && typeof entry === "object" ? entry : null;
-      const typed = perSet ? Array.from({ length: full }, (_, s) => ({ r: numOrNull(perSet[s]?.r), w: numOrNull(perSet[s]?.w) })) : [];
+      const timed = e.mode === "time";
+      const typed = perSet ? Array.from({ length: full }, (_, s) => ({ r: timed ? null : numOrNull(perSet[s]?.r), w: numOrNull(perSet[s]?.w), s: timed ? secsOrNull(perSet[s]?.s) : null })) : [];
       const firstWeight = typed.slice(0, done).find((x) => x.w != null)?.w ?? null;
       const out = {
         name: e.name,
@@ -173,12 +186,15 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       };
       // What the coach asked for, set by set, when the sets differ.
       if (Array.isArray(e.setList) && e.setList.length) {
-        out.plan_sets = e.setList.map((s) => { const o = {}; if (s.reps) o.r = String(s.reps); if (s.weight != null) o.w = s.weight; return o; });
+        out.plan_sets = e.setList.map((s) => { const o = {}; if (s.reps) o.r = String(s.reps); if (s.secs != null) o.s = s.secs; if (s.weight != null) o.w = s.weight; return o; });
       }
-      if (typed.some((x) => x.r != null || x.w != null)) {
+      if (timed) { out.mode = "time"; if (e.secs != null) out.secs_target = e.secs; }
+      if (e.superset) out.superset = e.superset;
+      if (typed.some((x) => x.r != null || x.w != null || x.s != null)) {
         out.sets = typed.map((x, s) => {
           const one = { n: s + 1, done: s < done };
           if (x.r != null) one.reps = x.r;
+          if (x.s != null) one.secs = x.s;
           if (x.w != null) one.weight = x.w;
           return one;
         });

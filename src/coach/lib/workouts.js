@@ -2,6 +2,7 @@
 // the app or ticked it off through their link. Pure; no React, no network.
 import { toClientId } from "./manualClients.js";
 import { submissionDate } from "./clientLinks.js";
+import { formatDuration } from "./exerciseKinds.js";
 
 /** Which dashboard client a submission row belongs to. Mock rows carry clientId; real rows carry the two ids. */
 export function clientIdOfSubmission(sub) {
@@ -54,6 +55,17 @@ function repsWithin(r, planned) {
  */
 function setsDetail(e, done) {
   const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
+  if (e.mode === "time") {
+    // Timed: each done set's time (typed or from the timer), else the planned one.
+    const planS = (i) => ps?.[i]?.s ?? e.secs_target ?? null;
+    const list = Array.isArray(e.sets) && e.sets.length ? e.sets.filter((x) => x && x.done) : Array.from({ length: done }, (_, i) => ({ n: i + 1 }));
+    return list.map((x) => {
+      const i = (Number(x.n) || 1) - 1;
+      const secs = x.secs ?? planS(i);
+      const w = x.weight ?? ps?.[i]?.w ?? e.weight_target ?? null;
+      return { w: w != null ? String(w) : "", r: "", t: formatDuration(secs) || "done", changed: x.secs != null && planS(i) != null && Math.abs(x.secs - planS(i)) > 5 };
+    });
+  }
   const planR = (i) => ps?.[i]?.r ?? e.reps;
   const planW = (i) => ps?.[i]?.w ?? e.weight_target;
   if (Array.isArray(e.sets) && e.sets.length) {
@@ -86,6 +98,8 @@ export function workoutDetail(entry) {
         planned, done,
         skipped: planned > 0 && done === 0,
         reps: e.reps || null,
+        timed: e.mode === "time",
+        superset: e.superset || null,
         weight: e.weight_used != null ? e.weight_used : e.weight_target != null ? e.weight_target : null,
         weightChanged: e.weight_used != null && e.weight_target != null && Number(e.weight_used) !== Number(e.weight_target),
         // Set by set, when the client typed reps or weights: done sets only,
