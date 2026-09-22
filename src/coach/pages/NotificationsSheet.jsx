@@ -42,11 +42,11 @@ export default function NotificationsSheet({ open, onClose, items, loading, onOp
                     <button type="button" className="cx-notif-main" onClick={() => onOpenItem?.(it)}>
                       <Avatar name={it.clientName} size="sm" />
                       <span className="cx-col" style={{ gap: 2, minWidth: 0, flex: 1, textAlign: "left" }}>
-                        <span className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
-                          <span style={{ fontWeight: it.unread ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
-                          <span className="cx-small cx-muted" style={{ flexShrink: 0 }}>{relativeTime(it.at)}</span>
+                        <span className="cx-row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <span style={{ fontWeight: it.unread ? 700 : 600, minWidth: 0, overflowWrap: "anywhere" }}>{it.title}</span>
+                          <span className="cx-small cx-muted" style={{ flexShrink: 0, paddingTop: 2 }}>{relativeTime(it.at)}</span>
                         </span>
-                        <span className="cx-small" style={{ color: "var(--cx-tx2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.body}</span>
+                        <span className="cx-small" style={{ color: "var(--cx-tx2)", overflowWrap: "anywhere" }}>{it.body}</span>
                       </span>
                       {it.unread && <span className="cx-dot" aria-hidden="true" />}
                     </button>

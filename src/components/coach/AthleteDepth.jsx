@@ -261,7 +261,7 @@ export function AthleteAttendanceCalendar({ history, onDateTap }) {
         </button>
 
         {/* Period KPIs */}
-        <div style={{ display: "flex", gap: "16px", alignItems: "baseline" }}>
+        <div style={{ display: "flex", gap: "clamp(8px, 3vw, 16px)", alignItems: "baseline", minWidth: 0 }}>
           <Stat label="Sessions" value={stats.sessions}/>
           <Stat label="Best Streak" value={stats.maxStreak + "d"}/>
           <Stat label="Volume" value={stats.totalVol >= 1000 ? (stats.totalVol / 1000).toFixed(1) + "k" : stats.totalVol || "—"}/>
@@ -374,7 +374,7 @@ function Stat({ label, value }) {
   return (
     <div style={{ textAlign: "center" }}>
       <div style={{ fontSize: "14px", fontWeight: 800, color: TX, letterSpacing: "-0.01em", lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: "8px", color: SB, letterSpacing: "0.1em", fontWeight: 600, marginTop: "3px", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: "8px", color: SB, letterSpacing: "0.1em", fontWeight: 600, marginTop: "3px", textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</div>
     </div>
   );
 }
@@ -560,14 +560,14 @@ export function AthleteVolumeChart({ history, unit = "lbs" }) {
       <div style={{
         fontSize: "9px", color: SB, letterSpacing: "0.08em", fontWeight: 600,
         textTransform: "uppercase",
-        display: "grid", gridTemplateColumns: "80px 1fr 70px",
+        display: "grid", gridTemplateColumns: "minmax(64px, 80px) minmax(0, 1fr) minmax(58px, 70px)",
         gap: "10px",
         padding: "6px 0",
         borderBottom: `1px solid ${BD}`,
       }}>
         <div>Type</div>
         <div style={{ textAlign: "center" }}>
-          8-week trend {hoverIdx !== null && <span style={{ color: A, textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· {hoverLabel}</span>}
+          <span style={{ whiteSpace: "nowrap" }}>Trend</span> {hoverIdx !== null && <span style={{ color: A, textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· {hoverLabel}</span>}
         </div>
         <div style={{ textAlign: "right" }}>{isCurrentWeek ? "This wk" : "That wk"}</div>
       </div>

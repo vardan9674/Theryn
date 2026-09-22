@@ -164,6 +164,9 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
 
 const FEELS = [{ id: "easy", label: "Easy" }, { id: "medium", label: "Medium" }, { id: "hard", label: "Hard" }];
 /** "3 sets × 8-10 reps · 40 kg", or "3 sets · 12/10/8 reps · 60–70 kg" when the sets differ. */
+// "3 sets · 1 warm-up · drop set": each piece stays on one line when the row wraps.
+const keepBits = (s) => String(s || "").split(" · ").flatMap((b, i) => [i ? " · " : null, <span key={i} className="lk-nb">{b}</span>]).filter(Boolean);
+
 function planMeta(e, full, unit) {
   const rest = e.rest ? `rest ${restLabel(e.rest)}` : "";
   // With warm-up, drop or AMRAP sets, the same wording the coach sees:
@@ -481,7 +484,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                       : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{chip}{e.name}</div>
-                      <div className="lk-ex-meta">{planMeta(e, full, unit)}</div>
+                      <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
                       {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                     </div>
@@ -749,7 +752,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
           <>
             <div className="lk-ring" role="img" aria-label={`${st.current} workouts in a row`}>
               <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke="var(--cx-a)" strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
-              <div className="lk-ring-in"><Icon.Flame size={28} /><b>{shown}</b><span>workouts in a row</span></div>
+              <div className="lk-ring-in"><Icon.Flame size={28} /><b>{shown}</b><span>{st.current === 1 ? "workout" : "workouts"}<br />in a row</span></div>
             </div>
             <div className="lk-small">{newBest ? "That's your best streak yet." : `${st.best - st.current} more day${st.best - st.current === 1 ? "" : "s"} to match your best of ${st.best}.`}</div>
           </>

@@ -305,9 +305,9 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         <div className="cx-tablet-search"><div className="cx-search"><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div></div>
       )}
       {vp === "phone" && tab === "clients" && !selectedClient && (
-        <div className="cx-row" style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 4px", gap: 8 }}>
+        <div className="cx-row cx-phonebar" style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 4px", gap: 8 }}>
           <button type="button" className="cx-avatar-btn" data-tour="profile" onClick={actions.profile} aria-label="Your profile and settings"><Avatar name={data.coachName} /></button>
-          <div className="cx-search" style={{ flex: 1, maxWidth: "none", width: "auto", height: 44 }}><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>
+          <div className="cx-search" style={{ flex: 1, minWidth: 0, maxWidth: "none", width: "auto", height: 44 }}><Icon.Search /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients" aria-label="Search clients" /></div>
           <NotificationsButton unread={notifUnread} onClick={openNotifications} />
           <Button variant="primary" icon={<Icon.Plus />} aria-label="Add client" onClick={actions.addClient} data-tour="add-client" />
         </div>

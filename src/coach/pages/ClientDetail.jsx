@@ -201,7 +201,7 @@ function PlanTab({ data, row, actions }) {
             <div key={d} className="cx-daycard">
               <button type="button" className="hd" style={{ background: "none", border: "none", padding: 0, width: "100%", minHeight: 32 }} onClick={() => setOpen(isOpen ? null : d)} aria-expanded={isOpen}>
                 <b>{DAY_LONG[d]}</b>
-                <span className="cx-row">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>{latestByDay[d].byCoach ? "Logged by you" : "Done via link"}</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
+                <span className="cx-row cx-dayhd-r">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>{latestByDay[d].byCoach ? "Logged by you" : "Done via link"}</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
               </button>
               {isOpen && latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && (
                 <div className="cx-small" style={{ color: "var(--cx-tx2)" }}>
@@ -301,7 +301,7 @@ function ProgressTab({ data, row, actions }) {
             <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
               <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
                 <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
-                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-row" style={{ gap: 8, flexWrap: "wrap" }}><b style={{ whiteSpace: "nowrap" }}>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
                   <span className="cx-small cx-muted">{workoutSummary(w)}{w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
                 </span>
                 <Icon.Down />
