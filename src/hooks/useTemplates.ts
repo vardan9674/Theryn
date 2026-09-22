@@ -40,6 +40,8 @@ export interface TemplateExercise {
   target_reps: string;
   /** Target weight in weight_unit (needs migration 20260919120000). */
   target_weight?: number | null;
+  /** Timed exercises and supersets: { mode: "time", secs, superset } (needs migration 20260922120000). */
+  extra?: { mode?: "time"; secs?: number; superset?: string } | null;
   /** Per-set targets when the sets differ: [{ reps, weight }]. */
   set_list?: Array<{ reps?: string; weight?: number }> | null;
   weight_unit?: "kg" | "lb" | null;
@@ -167,6 +169,11 @@ let weightColumnsMissing = false;
 export const templateWeightsMissing = () => weightColumnsMissing;
 const WEIGHT_COLS = ["target_weight", "set_list", "weight_unit"];
 const isMissingColumn = (err: any) => /target_weight|set_list|weight_unit/.test(String(err?.message || "")) && /column|schema cache/i.test(String(err?.message || ""));
+// Timed exercises and supersets live in `extra` (migration 20260922120000).
+// Until it has been run, saves leave it out and this says so.
+let extraColumnMissing = false;
+export const templateExtrasMissing = () => extraColumnMissing;
+const isMissingExtra = (err: any) => /\bextra\b/.test(String(err?.message || "")) && /column|schema cache/i.test(String(err?.message || ""));
 
 export async function saveTemplateTree(templateId: string, days: TemplateDay[]): Promise<number> {
   // Validate: must have at least one day with at least one exercise
@@ -213,15 +220,23 @@ export async function saveTemplateTree(templateId: string, days: TemplateDay[]):
           set_list: ex.set_list ?? null,
           weight_unit: ex.weight_unit ?? null,
         }),
+        ...(extraColumnMissing ? {} : { extra: ex.extra ?? null }),
       }));
 
+      let rows: any[] = exRows;
       let { error: exErr } = await supabase
         .from("routine_template_exercises")
-        .insert(exRows);
+        .insert(rows);
+
+      if (exErr && !extraColumnMissing && isMissingExtra(exErr)) {
+        extraColumnMissing = true;
+        rows = rows.map((r: any) => { const o = { ...r }; delete o.extra; return o; });
+        ({ error: exErr } = await supabase.from("routine_template_exercises").insert(rows));
+      }
 
       if (exErr && !weightColumnsMissing && isMissingColumn(exErr)) {
         weightColumnsMissing = true;
-        const bare = exRows.map((r: any) => { const o = { ...r }; for (const k of WEIGHT_COLS) delete o[k]; return o; });
+        const bare = rows.map((r: any) => { const o = { ...r }; for (const k of WEIGHT_COLS) delete o[k]; return o; });
         ({ error: exErr } = await supabase.from("routine_template_exercises").insert(bare));
       }
       if (exErr) throw new Error(`Could not save ${day.label}'s exercises: ${exErr.message}`);

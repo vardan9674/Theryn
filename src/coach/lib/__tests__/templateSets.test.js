@@ -72,3 +72,22 @@ describe("empty saved plans can't be given to clients", () => {
     expect(templateHasWorkouts([{ workout_type: "Push", exercises: [{ exercise_name: "Bench Press" }] }])).toBe(true);
   });
 });
+
+describe("saved plans keep timed exercises and supersets", () => {
+  it("round-trips mode, seconds and the superset letter through template rows", () => {
+    const plan = { Mon: { type: "Push", exercises: [
+      { name: "Bench Press", sets: 3, reps: "8", superset: "A" },
+      { name: "Barbell Row", sets: 3, reps: "10", superset: "A" },
+      { name: "Plank", mode: "time", sets: 3, secs: 45 },
+      { name: "Side Plank", mode: "time", sets: 2, secs: 30, setList: [{ secs: 30 }, { secs: 40 }] },
+    ] } };
+    const rows = planToTemplateDays(plan, "metric");
+    const mon = rows[0].exercises;
+    expect(mon[0].extra).toEqual({ superset: "A" });
+    expect(mon[2].extra).toEqual({ mode: "time", secs: 45 });
+    const back = templateDaysToPlan(rows, "metric").Mon.exercises;
+    expect(back[0].superset).toBe("A");
+    expect(back[2]).toMatchObject({ name: "Plank", mode: "time", secs: 45 });
+    expect(back[3].setList).toEqual([{ secs: 30 }, { secs: 40 }]);
+  });
+});

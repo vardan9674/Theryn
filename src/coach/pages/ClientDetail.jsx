@@ -11,6 +11,7 @@ import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
+import { supersetInfo } from "../lib/exerciseKinds.js";
 
 const TABS = [
   { id: "plan", label: "Plan" },
@@ -207,16 +208,16 @@ function PlanTab({ data, row, actions }) {
                   {latestByDay[d].note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)" }}>{row.name.split(" ")[0]}: "{latestByDay[d].note}"</div>}
                 </div>
               )}
-              {isOpen && day.exercises.map((ex, i) => {
+              {isOpen && (() => { const ssi = supersetInfo(day.exercises); return day.exercises.map((ex, i) => {
                 const o = normalizeExercise(ex);
                 return (
                   <div key={i}>
-                    <div className="cx-exrow"><span>{exerciseName(ex)}</span><span>{setsReps(ex, unit)}</span></div>
+                    <div className="cx-exrow"><span>{ssi[i] && <span className="pe-ss" title={`Superset ${ssi[i].letter}: back to back, then rest`}>{ssi[i].letter}{ssi[i].pos}</span>}{exerciseName(ex)}</span><span>{setsReps(ex, unit)}</span></div>
                     {(() => { const last = lastSetsFor(data.history, exerciseName(ex)); return last ? <div className="cx-small cx-muted" style={{ marginTop: 2 }}>Last time ({shortDate(last.date)}): {setsLine(last.sets)}{last.sets.some((x) => x.w) ? ` ${unit}` : " reps"}</div> : null; })()}
                     {o.coachNote && <div className="cx-note">Note: {o.coachNote}</div>}
                   </div>
                 );
-              })}
+              }); })()}
             </div>
           );
         })}
@@ -303,8 +304,8 @@ function ProgressTab({ data, row, actions }) {
                       <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                              {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
-                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}`} title={s.changed ? "Different from the plan" : undefined}>{s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
+                              {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
+                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}`} title={s.changed ? "Different from the plan" : undefined}>{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
                             </span>
                           : <>
                               <b style={{ color: e.skipped ? "var(--cx-mu)" : "var(--cx-tx)" }}>{e.done}{e.planned ? `/${e.planned}` : ""}</b> sets

@@ -3,6 +3,7 @@ import { Sheet, Icon, useToast } from "../ui/primitives.jsx";
 import { DAY_LONG } from "../lib/format.js";
 import { todayFromPlan, workoutPayload, dayKeyOf } from "../lib/clientLinks.js";
 import { planSets } from "../lib/planSets.js";
+import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -51,7 +52,7 @@ export default function LogWorkoutSheet({ open, firstName, routine, history, uni
   // Tapping set k marks sets 1..k done; tapping the last done set again unticks it.
   const tapSet = (i, k) => setTicks((t) => ({ ...t, [i]: (t[i] || 0) === k + 1 ? k : k + 1 }));
   const setVal = (i, si, f, raw) => {
-    const v = f === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    const v = f === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "s" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [f]: v } } }));
   };
 
@@ -112,7 +113,9 @@ export default function LogWorkoutSheet({ open, firstName, routine, history, uni
                         {rows.map((s, si) => (
                           <div key={si} className="lw-set">
                             <button type="button" className={`lw-setno ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} ${si < n ? "done" : "not done"}`} onClick={() => tapSet(i, si)}>{si < n ? <Icon.Check size={12} /> : si + 1}</button>
-                            <label><input inputMode="numeric" value={log[i]?.[si]?.r ?? ""} placeholder={String(s.reps || e.reps || "–").split(/[-–]/)[0]} onChange={(ev) => setVal(i, si, "r", ev.target.value)} aria-label={`Set ${si + 1} reps`} /><span>reps</span></label>
+                            {e.mode === "time"
+                              ? <label><input inputMode="numeric" value={log[i]?.[si]?.s ?? ""} placeholder={durationInput(s.secs ?? e.secs) || "00:00"} onChange={(ev) => setVal(i, si, "s", ev.target.value)} onBlur={(ev) => { const t = tidyDuration(ev.target.value); if (t && t !== ev.target.value) setVal(i, si, "s", t); }} aria-label={`Set ${si + 1} time`} /><span>time</span></label>
+                              : <label><input inputMode="numeric" value={log[i]?.[si]?.r ?? ""} placeholder={String(s.reps || e.reps || "–").split(/[-–]/)[0]} onChange={(ev) => setVal(i, si, "r", ev.target.value)} aria-label={`Set ${si + 1} reps`} /><span>reps</span></label>}
                             <label><input inputMode="decimal" value={log[i]?.[si]?.w ?? ""} placeholder={s.weight != null ? String(s.weight) : "–"} onChange={(ev) => setVal(i, si, "w", ev.target.value)} aria-label={`Set ${si + 1} weight in ${unit}`} /><span>{unit}</span></label>
                           </div>
                         ))}

@@ -219,3 +219,23 @@ button.lk-srow-tick:active .lk-srow-circle { transform: scale(0.9); }
 }
 button.lk-badge { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.08s, background 0.12s; }
 button.lk-badge:active { transform: scale(0.92); }
+
+/* ── Timed sets: a clock and a Start / Pause button in the set row ───────── */
+.lk-timerbtn { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 52px; height: 100%; padding: 0 14px; border: none; border-left: 1px solid #262626; background: none; color: var(--cx-tx2); font-family: inherit; font-size: 14px; font-weight: 800; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.lk-timerbtn.go { color: var(--cx-a); }
+.lk-timerbtn.done { color: var(--cx-a); }
+.lk-timerbtn:active { background: rgba(255, 255, 255, 0.05); }
+.lk-timerbtns { flex: none; display: flex; height: 100%; }
+.lk-timerbtns .lk-timerbtn { min-width: 48px; padding: 0 12px; }
+.lk-clock { cursor: default; }
+.lk-clock b { flex: 1 1 0; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--cx-tx); }
+.lk-clock.running b { color: var(--cx-a); }
+.lk-srow.on .lk-timerbtn { border-left-color: #2C3A08; }
+
+/* ── Supersets: a header over the group and a bar joining its cards ──────── */
+.lk-ssbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 4px 0 -6px; padding: 0 2px; font-size: 13px; color: var(--cx-tx2); }
+.lk-ssbar b { color: #9DB8F5; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.lk-ss { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding: 0 6px; margin-right: 8px; border-radius: 6px; background: rgba(143, 184, 255, 0.14); color: #9DB8F5; font-size: 12px; font-weight: 800; vertical-align: 2px; }
+.lk-ex.ss, .lk-fold.ss { border-left: 3px solid rgba(143, 184, 255, 0.55); }
+.lk-ex.ss:not(.ss-last), .lk-fold.ss:not(.ss-last) { margin-bottom: -10px; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+.lk-ex.ss:not(.ss-first), .lk-fold.ss:not(.ss-first) { border-top-left-radius: 6px; border-top-right-radius: 6px; }

@@ -8,6 +8,7 @@ import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { lastSetsFor, setsLine as historyLine } from "../lib/workouts.js";
 import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
 import { planSets, packSets, setsAreSame, setsLine } from "../lib/planSets.js";
+import { defaultMode, defaultSecs, parseDuration, durationInput, maskDuration, tidyDuration, formatDuration, supersetInfo, normalizeSupersets } from "../lib/exerciseKinds.js";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { useBackHandler } from "../../lib/backStack.ts";
@@ -17,8 +18,11 @@ const mkKey = (p = "k") => `${p}_${Date.now().toString(36)}_${keyCounter++}`;
 const DEFAULT_REPS = "8-12";
 
 // ── Plan JSON ⇄ editor state ───────────────────────────────────────────────
-// Editor state per exercise: { _key, name, coachNote, same, rows: [{ _k, reps, weight }] }.
+// Editor state per exercise:
+//   { _key, name, coachNote, same, mode: "reps" | "time", superset: token | null,
+//     rows: [{ _k, reps, weight, secs }] }   (secs is what was typed: "45", "1:30")
 // `same`: typing in set 1 fills every set. It turns itself off when a later set is changed.
+// `superset`: exercises in a row sharing a token are a superset (lettered on save).
 
 function toEditable(templates) {
   const out = {};
@@ -28,8 +32,9 @@ function toEditable(templates) {
       type: day.type || "Rest",
       exercises: (day.exercises || []).map((ex) => {
         const o = normalizeExercise(ex);
-        const rows = planSets(o).map((s) => ({ _k: mkKey("s"), reps: s.reps, weight: s.weight == null ? "" : String(s.weight) }));
-        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", rows, same: setsAreSame(rows) };
+        const mode = o.mode === "time" ? "time" : "reps";
+        const rows = planSets(o).map((s) => ({ _k: mkKey("s"), reps: s.reps, weight: s.weight == null ? "" : String(s.weight), secs: s.secs ? durationInput(s.secs) : "" }));
+        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", rows, same: setsAreSame(rows.map((r) => ({ ...r, secs: parseDuration(r.secs) }))), mode, superset: o.superset || null };
       }),
     };
   }
@@ -42,13 +47,15 @@ export function toTemplates(days, units) {
   const out = {};
   for (const d of DAYS) {
     const day = days[d];
-    const exercises = day.type === "Rest" ? [] : day.exercises
+    const exercises = day.type === "Rest" ? [] : normalizeSupersets(day.exercises
       .filter((e) => e.name && e.name.trim())
       .map((e) => {
-        const o = { name: e.name.trim(), ...packSets(e.rows) };
+        const mode = e.mode === "time" ? "time" : "reps";
+        const o = { name: e.name.trim(), ...packSets(e.rows.map((r) => ({ ...r, secs: parseDuration(r.secs) })), mode) };
         if (e.coachNote && e.coachNote.trim()) o.coachNote = e.coachNote.trim();
+        if (e.superset) o.superset = e.superset;
         return o;
-      });
+      }));
     out[d] = { type: day.type === "Rest" ? "Rest" : day.type, exercises };
     if (units) out[d].units = units;
   }
@@ -56,8 +63,13 @@ export function toTemplates(days, units) {
 }
 
 const newExercise = (name, lastW) => {
-  const rows = Array.from({ length: 3 }, () => ({ _k: mkKey("s"), reps: DEFAULT_REPS, weight: lastW != null ? String(lastW) : "" }));
-  return { _key: mkKey("ex"), name, coachNote: "", rows, same: true, _new: true };
+  // Planks, runs and the like start as timed; everything else as reps.
+  const mode = defaultMode(name);
+  const count = mode === "time" && defaultSecs(name) >= 600 ? 1 : 3;
+  const rows = Array.from({ length: count }, () => (mode === "time"
+    ? { _k: mkKey("s"), reps: "", weight: "", secs: durationInput(defaultSecs(name)) }
+    : { _k: mkKey("s"), reps: DEFAULT_REPS, weight: lastW != null ? String(lastW) : "", secs: "" }));
+  return { _key: mkKey("ex"), name, coachNote: "", rows, same: true, _new: true, mode, superset: null };
 };
 const cleanReps = (v) => v.replace(/[^0-9\-–/ ]/g, "").replace(/\s+/g, "").slice(0, 7);
 const cleanWeight = (v) => v.replace(/[^0-9.]/g, "").slice(0, 6);
@@ -124,7 +136,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     note: (d, k, v) => update((next) => { const e = exOf(next, d, k); if (e) e.coachNote = v; return next; }),
     setRow: (d, k, ri, field, raw) => update((next) => {
       const e = exOf(next, d, k); if (!e) return next;
-      const v = field === "reps" ? cleanReps(raw) : cleanWeight(raw);
+      const v = field === "reps" ? cleanReps(raw) : field === "secs" ? maskDuration(raw) : cleanWeight(raw);
       if (e.same && ri === 0) e.rows.forEach((r) => { r[field] = v; });
       else { if (e.same && ri > 0) e.same = false; e.rows[ri][field] = v; }
       e.rows.forEach((r) => { delete r._new; });
@@ -133,17 +145,37 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     addSet: (d, k) => update((next) => {
       const e = exOf(next, d, k); if (!e || e.rows.length >= 20) return next;
       e.rows.forEach((r) => { delete r._new; });
-      const last = e.rows[e.rows.length - 1] || { reps: DEFAULT_REPS, weight: "" };
-      e.rows.push({ _k: mkKey("s"), reps: last.reps, weight: last.weight, _new: true });
+      const last = e.rows[e.rows.length - 1] || { reps: DEFAULT_REPS, weight: "", secs: "" };
+      e.rows.push({ _k: mkKey("s"), reps: last.reps, weight: last.weight, secs: last.secs || "", _new: true });
       return next;
     }),
     removeSet: (d, k, ri) => update((next) => { const e = exOf(next, d, k); if (e && e.rows.length > 1) e.rows.splice(ri, 1); return next; }),
     toggleSame: (d, k) => update((next) => {
       const e = exOf(next, d, k); if (!e) return next;
       e.same = !e.same;
-      if (e.same) e.rows.forEach((r) => { r.reps = e.rows[0].reps; r.weight = e.rows[0].weight; });
+      if (e.same) e.rows.forEach((r) => { r.reps = e.rows[0].reps; r.weight = e.rows[0].weight; r.secs = e.rows[0].secs; });
       return next;
     }),
+    // Reps ⇄ time. Switching to time gives each set a starting time (45 s, or 20 min for a run).
+    setMode: (d, k, mode) => update((next) => {
+      const e = exOf(next, d, k); if (!e || e.mode === mode) return next;
+      e.mode = mode;
+      if (mode === "time") e.rows.forEach((r) => { if (!r.secs) r.secs = durationInput(defaultSecs(e.name)); });
+      else e.rows.forEach((r) => { if (!r.reps) r.reps = DEFAULT_REPS; });
+      return next;
+    }),
+    // Superset: join this exercise with the one after it (or grow the group it's in).
+    linkNext: (d, k) => update((next) => {
+      const list = next[d].exercises; const i = list.findIndex((e) => e._key === k);
+      if (i < 0 || i >= list.length - 1) return next;
+      const tok = list[i].superset || list[i + 1].superset || mkKey("ss");
+      const old = list[i + 1].superset;
+      list[i].superset = tok;
+      // Pull the next exercise's whole group in, so linking two supersets merges them.
+      for (let j = i + 1; j < list.length && (j === i + 1 || (old && list[j].superset === old)); j++) list[j].superset = tok;
+      return next;
+    }),
+    unlink: (d, k) => update((next) => { const e = exOf(next, d, k); if (e) e.superset = null; return next; }),
     remove: (d, k) => update((next) => { next[d].exercises = next[d].exercises.filter((e) => e._key !== k); return next; }),
     reorder: (d, from, to) => update((next) => { next[d].exercises = arrayMove(next[d].exercises, from, to); return next; }),
   };
@@ -291,6 +323,7 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const ids = day.exercises.map((e) => e._key);
+  const ss = supersetInfo(day.exercises);
   const onDragEnd = ({ active, over }) => { if (over && active.id !== over.id) act.reorder(dayKey, ids.indexOf(active.id), ids.indexOf(over.id)); };
 
   return (
@@ -314,6 +347,8 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
             <SortableContext items={ids} strategy={verticalListSortingStrategy}>
               {day.exercises.map((ex, i) => (
                 <ExerciseCard key={ex._key} ex={ex} index={i} unit={unit} firstName={firstName} history={history} open={openKey === ex._key}
+                  ss={ss[i]} hasNext={i < day.exercises.length - 1} nextName={day.exercises[i + 1]?.name}
+                  onMode={(m) => act.setMode(dayKey, ex._key, m)} onLinkNext={() => act.linkNext(dayKey, ex._key)} onUnlink={() => act.unlink(dayKey, ex._key)}
                   onToggle={() => setOpenKey(openKey === ex._key ? null : ex._key)}
                   onRename={(v) => act.rename(dayKey, ex._key, v)} onNote={(v) => act.note(dayKey, ex._key, v)}
                   onRow={(ri, f, v) => act.setRow(dayKey, ex._key, ri, f, v)} onAddSet={() => act.addSet(dayKey, ex._key)} onRemoveSet={(ri) => act.removeSet(dayKey, ex._key, ri)}
@@ -328,22 +363,25 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
   );
 }
 
-function ExerciseCard({ ex, index, unit, firstName, history, open, onToggle, onRename, onNote, onRow, onAddSet, onRemoveSet, onSame, onRemove }) {
+function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, nextName, onToggle, onRename, onNote, onRow, onAddSet, onRemoveSet, onSame, onRemove, onMode, onLinkNext, onUnlink }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ex._key });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const list = ex.rows.map((r) => ({ reps: r.reps, weight: r.weight }));
-  const noWeight = ex.rows.every((r) => !r.weight);
+  const timed = ex.mode === "time";
+  const list = ex.rows.map((r) => ({ reps: r.reps, weight: r.weight, secs: parseDuration(r.secs) }));
+  const noWeight = !timed && ex.rows.every((r) => !r.weight);
+  const ssCls = ss ? `ss ${ss.pos === 1 ? "ss-first" : ""} ${ss.pos === ss.size ? "ss-last" : ""}` : "";
+  const ssChip = ss ? <span className="pe-ss" title={`Superset ${ss.letter}: do these back to back, then rest`}>{ss.letter}{ss.pos}</span> : null;
   const last = React.useMemo(() => (history && ex.name ? lastSetsFor(history, ex.name) : null), [history, ex.name]);
   const grip = <span className="pe-grip" {...attributes} {...listeners} aria-label={`Drag ${ex.name || "exercise"} to reorder`}><Icon.Grip /></span>;
 
   if (!open) {
     return (
-      <div ref={setNodeRef} style={style} className={`pe-card closed ${isDragging ? "dragging" : ""} ${ex._new ? "new" : ""}`}>
+      <div ref={setNodeRef} style={style} className={`pe-card closed ${ssCls} ${isDragging ? "dragging" : ""} ${ex._new ? "new" : ""}`}>
         {grip}
         <button type="button" className="pe-cardhit" onClick={onToggle} aria-expanded={false}>
           <span className="pe-cardtext">
-            <b>{ex.name || <em>Unnamed exercise</em>}</b>
-            <span>{setsLine(list, unit)}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}</span>
+            <b>{ssChip}{ex.name || <em>Unnamed exercise</em>}{timed && <span className="pe-timed" aria-label="timed"><Icon.Clock size={12} /></span>}</b>
+            <span>{setsLine(list, unit, ex.mode)}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}</span>
           </span>
           <Icon.Down size={16} />
         </button>
@@ -352,19 +390,27 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, onToggle, onR
   }
 
   return (
-    <div ref={setNodeRef} style={style} className={`pe-card open ${isDragging ? "dragging" : ""}`}>
+    <div ref={setNodeRef} style={style} className={`pe-card open ${ssCls} ${isDragging ? "dragging" : ""}`}>
       <div className="pe-cardtop">
         {grip}
+        {ssChip}
         <div className="pe-name"><ExerciseSearch value={ex.name} autoFocus={!ex.name} onChange={onRename} /></div>
         <button type="button" className="pe-iconbtn ghost" onClick={onToggle} aria-label="Close" aria-expanded={true}><span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><Icon.Down size={16} /></span></button>
       </div>
 
+      <div className="pe-mode" role="group" aria-label="Count this exercise in">
+        <button type="button" aria-pressed={!timed} onClick={() => onMode("reps")}>Reps</button>
+        <button type="button" aria-pressed={timed} onClick={() => onMode("time")}><Icon.Clock size={13} />Time</button>
+      </div>
+
       <div className="pe-sets" role="group" aria-label={`Sets for ${ex.name || "this exercise"}`}>
-        <div className="pe-sethead"><span>Set</span><span>Reps</span><span>{unit}</span><span /></div>
+        <div className="pe-sethead"><span>Set</span><span>{timed ? "Time" : "Reps"}</span><span>{unit}</span><span /></div>
         {ex.rows.map((r, ri) => (
           <div key={r._k} className={`pe-set ${r._new ? "new" : ""} ${ex.same && ri > 0 ? "follows" : ""}`}>
             <span className="pe-setno">{ri + 1}</span>
-            <input className="pe-in" inputMode="text" value={r.reps} placeholder={DEFAULT_REPS} onChange={(e) => onRow(ri, "reps", e.target.value)} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} reps`} />
+            {timed
+              ? <input className="pe-in" inputMode="numeric" value={r.secs || ""} placeholder="00:45" onChange={(e) => onRow(ri, "secs", e.target.value)} onBlur={(e) => { const t = tidyDuration(e.target.value); if (t && t !== e.target.value) onRow(ri, "secs", t); }} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} time`} />
+              : <input className="pe-in" inputMode="text" value={r.reps} placeholder={DEFAULT_REPS} onChange={(e) => onRow(ri, "reps", e.target.value)} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} reps`} />}
             <input className="pe-in" inputMode="decimal" value={r.weight} placeholder="—" onChange={(e) => onRow(ri, "weight", e.target.value)} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} weight in ${unit}`} />
             {ex.rows.length > 1
               ? <button type="button" className="pe-x" onClick={() => onRemoveSet(ri)} aria-label={`Remove set ${ri + 1}`}><Icon.Close size={14} /></button>
@@ -373,9 +419,19 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, onToggle, onR
         ))}
       </div>
 
+      {timed && <div className="pe-hint">Type it like a timer: 45 is 00:45, 130 is 01:30, 2000 is 20:00. {firstName === "your client" ? "Clients" : firstName} get{firstName === "your client" ? "" : "s"} a timer for each set.</div>}
+
       <div className="pe-setactions">
         <button type="button" className="pe-addset" onClick={onAddSet} disabled={ex.rows.length >= 20}><Icon.Plus size={14} />Add set</button>
         <button type="button" className={`pe-same ${ex.same ? "on" : ""}`} aria-pressed={ex.same} onClick={onSame} title="When on, typing in set 1 fills every set">Same for all{ex.same && <Icon.Check size={12} />}</button>
+      </div>
+
+      <div className="pe-ssrow">
+        {ss
+          ? <><span>Superset {ss.letter}: do {ss.size === 2 ? "both" : `all ${ss.size}`} back to back, then rest.</span><button type="button" className="pe-chipbtn" onClick={onUnlink}>Leave superset</button></>
+          : hasNext
+          ? <button type="button" className="pe-chipbtn" onClick={onLinkNext}><Icon.Link size={13} />Superset with {nextName ? nextName : "next"}</button>
+          : null}
       </div>
 
       <input className={`pe-note ${ex.coachNote ? "has" : ""}`} value={ex.coachNote} placeholder={`Note for ${firstName} (optional)`} onChange={(e) => onNote(e.target.value.slice(0, 200))} aria-label="Coach note" />
@@ -494,7 +550,9 @@ function ClientPreview({ dayKey, day, unit, firstName, forClient }) {
             <b>{e.name}</b>
             {e.coachNote && <span className="pe-pv-note">{e.coachNote}</span>}
             {e.rows.map((r, i) => (
-              <div key={r._k} className="pe-pv-set"><i /><small>Set {i + 1}</small><b>{r.reps || DEFAULT_REPS}</b><small>reps</small>{r.weight && <><b>{r.weight}</b><small>{unit}</small></>}</div>
+              <div key={r._k} className="pe-pv-set"><i /><small>Set {i + 1}</small>{e.mode === "time"
+                ? <><b>{formatDuration(parseDuration(r.secs)) || "—"}</b><small>timer</small></>
+                : <><b>{r.reps || DEFAULT_REPS}</b><small>reps</small></>}{r.weight && <><b>{r.weight}</b><small>{unit}</small></>}</div>
             ))}
           </div>
         ))}

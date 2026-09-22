@@ -1,3 +1,4 @@
+import { formatDuration } from "./exerciseKinds.js";
 // Small, pure formatting helpers for the coach dashboard.
 
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -100,6 +101,17 @@ export function parseWeight(v) {
 /** "4 × 8 · 40 lb" for the plan view, tolerant of missing values. */
 export function setsReps(ex, unit) {
   const o = normalizeExercise(ex);
+  // Timed: "3 × 45 s", or "3 × 30 s–1 min" when the sets differ.
+  if (o.mode === "time" || o.secs != null) {
+    const list = Array.isArray(o.setList) && o.setList.length ? o.setList : null;
+    const n = list ? list.length : Number(o.sets) || 1;
+    const ts = (list ? list.map((s) => s?.secs ?? o.secs) : [o.secs]).map(Number).filter((x) => x > 0);
+    const lo = ts.length ? Math.min(...ts) : null, hi = ts.length ? Math.max(...ts) : null;
+    let out = `${n} × ${lo == null ? "timed" : lo === hi ? formatDuration(lo) : `${formatDuration(lo)}–${formatDuration(hi)}`}`;
+    const w = parseWeight(o.weight);
+    if (w != null) out += ` · ${w} ${unit || "lb"}`;
+    return out;
+  }
   if (Array.isArray(o.setList) && o.setList.length) {
     // Different sets: "3 × 12/10/8 · 60–70 kg"
     const r = o.setList.map((s) => (s?.reps ? String(s.reps) : "–"));

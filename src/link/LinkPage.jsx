@@ -10,6 +10,7 @@ import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
+import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock } from "../coach/lib/exerciseKinds.js";
 
 const APP_URL = "https://theryn.fit";
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -151,6 +152,12 @@ const FEELS = [{ id: "easy", label: "Easy" }, { id: "medium", label: "Medium" },
 /** "3 sets × 8-10 reps · 40 kg", or "3 sets · 12/10/8 reps · 60–70 kg" when the sets differ. */
 function planMeta(e, full, unit) {
   const setWord = `${full} ${full === 1 ? "set" : "sets"}`;
+  if (e.mode === "time") {
+    const ts = (e.setList?.length ? e.setList.map((x) => x.secs ?? e.secs) : [e.secs]).filter((x) => x != null);
+    const lo = ts.length ? Math.min(...ts) : null, hi = ts.length ? Math.max(...ts) : null;
+    const t = lo == null ? "" : lo === hi ? ` × ${formatDuration(lo)}` : ` · ${formatDuration(lo)}–${formatDuration(hi)}`;
+    return `${setWord}${t}${e.weight != null ? ` · ${e.weight} ${unit}` : ""}`;
+  }
   if (e.setList?.length) {
     const r = e.setList.map((s) => s.reps || "–");
     const ws = e.setList.map((s) => s.weight).filter((w) => w != null);
@@ -249,9 +256,60 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
   // Typing only edits the number. Ticking is a separate tap, so reaching for a value never ticks a set.
   const setSetValue = (i, si, field, raw) => {
-    const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : field === "s" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [field]: v } } }));
   };
+
+  // ── Timer for timed sets (planks, runs) ──────────────────────────────────
+  // One timer at a time. It counts down to the coach's time, or up when there
+  // isn't one. At zero it buzzes, beeps and ticks the set. Time is taken from
+  // the clock, not by counting ticks, so it stays right if the phone sleeps.
+  const [timer, setTimer] = React.useState(null); // { i, si, target, base, startedAt }
+  const [, redraw] = React.useState(0);
+  const audioRef = React.useRef(null);
+  const wakeRef = React.useRef(null);
+  const running = Boolean(timer?.startedAt);
+  React.useEffect(() => { if (!running) return undefined; const id = setInterval(() => redraw((x) => x + 1), 250); return () => clearInterval(id); }, [running]);
+  const elapsedOf = (t) => (t ? t.base + (t.startedAt ? (Date.now() - t.startedAt) / 1000 : 0) : 0);
+  const keepAwake = async (on) => {
+    try {
+      if (on && !wakeRef.current && navigator.wakeLock) wakeRef.current = await navigator.wakeLock.request("screen");
+      if (!on && wakeRef.current) { await wakeRef.current.release(); wakeRef.current = null; }
+    } catch { /* not supported, or the page is hidden */ }
+  };
+  React.useEffect(() => () => { keepAwake(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const cue = () => {
+    try { navigator.vibrate?.([220, 120, 220, 120, 360]); } catch { /* no vibration */ }
+    const ac = audioRef.current; if (!ac) return;
+    try {
+      [0, 0.28, 0.56].forEach((at) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0.0001, ac.currentTime + at);
+        g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + at + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + at + 0.2);
+        o.start(ac.currentTime + at); o.stop(ac.currentTime + at + 0.22);
+      });
+    } catch { /* no sound */ }
+  };
+  const startTimer = (i, si, target) => {
+    // The first tap unlocks sound on iPhone; make the audio context now.
+    try { if (!audioRef.current) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioRef.current = new AC(); } audioRef.current?.resume?.(); } catch { /* no sound */ }
+    setTimer((t) => (t && t.i === i && t.si === si ? { ...t, startedAt: Date.now() } : { i, si, target: target || null, base: 0, startedAt: Date.now() }));
+    keepAwake(true);
+  };
+  const pauseTimer = () => { setTimer((t) => (t && t.startedAt ? { ...t, base: elapsedOf(t), startedAt: null } : t)); keepAwake(false); };
+  const finishTimer = (auto) => {
+    const t = timer; if (!t) return;
+    const secs = Math.max(1, Math.round(auto && t.target ? t.target : elapsedOf(t)));
+    setSetValue(t.i, t.si, "s", timerClock(secs));
+    setSets(t.i, Math.max(ticks[t.i] || 0, t.si + 1));
+    if (auto) cue();
+    setTimer(null); keepAwake(false);
+  };
+  // Reaching zero finishes the set on its own.
+  React.useEffect(() => { if (timer?.startedAt && timer.target && elapsedOf(timer) >= timer.target) finishTimer(true); });
+  const ss = React.useMemo(() => supersetInfo(today.exercises), [today.exercises]);
 
   async function send() {
     setBusy(true); setError(null);
@@ -336,39 +394,49 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               // The coach's numbers for set `si`: its own when the sets differ.
               const planR = (si) => e.setList?.[si]?.reps ?? e.reps;
               const planW = (si) => e.setList?.[si]?.weight ?? e.weight;
+              const timed = e.mode === "time";
+              const planS = (si) => e.setList?.[si]?.secs ?? e.secs ?? null;
               const rows = Array.from({ length: full }, (_, si) => {
                 const x = log[i]?.[si] || {};
                 const isDone = si < n;
-                const rChanged = x.r !== "" && x.r != null && !repsWithin(x.r, planR(si));
+                const rChanged = !timed && x.r !== "" && x.r != null && !repsWithin(x.r, planR(si));
                 const wChanged = x.w !== "" && x.w != null && planW(si) != null && Number(x.w) !== Number(planW(si));
-                return { si, isDone, r: x.r || "", w: x.w || "", changed: isDone && (rChanged || wChanged) };
+                const typedS = timed ? parseDuration(x.s) : null;
+                const sChanged = timed && typedS != null && planS(si) != null && Math.abs(typedS - planS(si)) > 5;
+                // A time saved in an older draft ("1", "45") is shown in the 00:00 form.
+                return { si, isDone, r: x.r || "", w: x.w || "", s: x.s ? (String(x.s).includes(":") ? x.s : tidyDuration(x.s)) : "", changed: isDone && (rChanged || wChanged || sChanged) };
               });
-              const summary = rows.filter((x) => x.isDone).map((x) => ({ text: `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}`, changed: x.changed }));
+              const summary = rows.filter((x) => x.isDone).map((x) => ({ text: timed
+                ? (formatDuration(parseDuration(x.s) ?? planS(x.si)) || "done")
+                : `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}`, changed: x.changed }));
+              const chip = ss[i] ? <span className="lk-ss" title={`Superset ${ss[i].letter}`}>{ss[i].letter}{ss[i].pos}</span> : null;
+              const ssHead = ss[i]?.pos === 1 ? <div className="lk-ssbar" key={`ss${i}`}><b>Superset {ss[i].letter}</b><span>Do {ss[i].size === 2 ? "both" : `all ${ss[i].size}`} back to back, then rest.</span></div> : null;
+              const ssCls = ss[i] ? `ss ${ss[i].pos === 1 ? "ss-first" : ""} ${ss[i].pos === ss[i].size ? "ss-last" : ""}` : "";
               const folded = !upcoming && (done || skipped[i]) && !reopened[i];
 
               if (folded) {
-                return (
-                  <button key={i} type="button" className={`lk-fold ${skipped[i] && !done ? "skipped" : ""}`} onClick={() => setReopened((o) => ({ ...o, [i]: true }))} aria-expanded={false} aria-label={`${e.name}, ${done ? "done" : "skipped"}, tap to open`}>
+                return (<React.Fragment key={i}>{ssHead}
+                  <button type="button" className={`lk-fold ${ssCls} ${skipped[i] && !done ? "skipped" : ""}`} onClick={() => setReopened((o) => ({ ...o, [i]: true }))} aria-expanded={false} aria-label={`${e.name}, ${done ? "done" : "skipped"}, tap to open`}>
                     <span className={`lk-badge ${done ? "on" : ""}`}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</span>
                     <span className="lk-fold-body">
-                      <span className="lk-fold-name">{e.name}</span>
+                      <span className="lk-fold-name">{chip}{e.name}</span>
                       <span className="lk-fold-sum">{done
-                        ? <>{full} {full === 1 ? "set" : "sets"} · {summary.map((x, k) => <React.Fragment key={k}>{k > 0 && ", "}<span className={x.changed ? "changed" : ""}>{x.text}</span></React.Fragment>)} {unit}</>
+                        ? <>{full} {full === 1 ? "set" : "sets"} · {summary.map((x, k) => <React.Fragment key={k}>{k > 0 && ", "}<span className={x.changed ? "changed" : ""}>{x.text}</span></React.Fragment>)}{timed ? "" : ` ${unit}`}</>
                         : "Skipped · tap to undo"}</span>
                     </span>
                     <Icon.Down size={18} />
                   </button>
-                );
+                </React.Fragment>);
               }
 
-              return (
-                <div key={i} className={`lk-card lk-ex ${done ? "done" : ""} ${isCurrent ? "current" : ""}`}>
+              return (<React.Fragment key={i}>{ssHead}
+                <div className={`lk-card lk-ex ${ssCls} ${done ? "done" : ""} ${isCurrent ? "current" : ""}`}>
                   <div className="lk-ex-head">
                     {upcoming
                       ? <span className="lk-badge">{String(i + 1).padStart(2, "0")}</span>
                       : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-                      <div className="lk-ex-name">{e.name}</div>
+                      <div className="lk-ex-name">{chip}{e.name}</div>
                       <div className="lk-ex-meta">{planMeta(e, full, unit)}</div>
                       {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
@@ -386,6 +454,25 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                         {upcoming
                           ? <span className="lk-srow-tick">{tick}</span>
                           : <button type="button" className="lk-srow-tick" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)}>{tick}</button>}
+                        {timed ? (() => {
+                          const active = timer && timer.i === i && timer.si === x.si;
+                          const left = active ? (timer.target ? Math.max(0, timer.target - elapsedOf(timer)) : elapsedOf(timer)) : null;
+                          return <>
+                            {active
+                              ? <span className={`lk-srow-cell lk-clock ${timer.startedAt ? "running" : ""}`} aria-live="polite" aria-label={`${timer.target ? "Time left" : "Time"} ${timerClock(left)}`}><b>{timerClock(left)}</b><span className="lk-srow-unit">{timer.target ? "left" : "so far"}</span></span>
+                              : <label className="lk-srow-cell">
+                                  <input className="lk-sin" inputMode="numeric" placeholder={planS(x.si) ? timerClock(planS(x.si)) : "0:00"} value={x.s} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "s", ev.target.value)} onBlur={(ev) => { const t = tidyDuration(ev.target.value); if (t && t !== ev.target.value) setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [x.si]: { ...(l[i]?.[x.si] || {}), s: t } } })); }} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} time${planS(x.si) ? `, plan ${formatDuration(planS(x.si))}` : ""}`} />
+                                  <span className="lk-srow-unit">time</span>
+                                </label>}
+                            {upcoming
+                              ? <span className="lk-srow-cell lk-timerbtn" aria-hidden="true"><Icon.Clock size={16} /></span>
+                              : active && timer.startedAt
+                              ? <span className="lk-timerbtns"><button type="button" className="lk-timerbtn" onClick={pauseTimer} aria-label="Pause timer"><Icon.Pause size={16} /></button><button type="button" className="lk-timerbtn done" onClick={() => finishTimer(false)} aria-label="Stop and save this time"><Icon.Check size={16} /></button></span>
+                              : active
+                              ? <span className="lk-timerbtns"><button type="button" className="lk-timerbtn go" onClick={() => startTimer(i, x.si, planS(x.si))} aria-label="Resume timer"><Icon.Play size={16} /></button><button type="button" className="lk-timerbtn done" onClick={() => finishTimer(false)} aria-label="Save this time"><Icon.Check size={16} /></button></span>
+                              : <button type="button" className="lk-timerbtn go" onClick={() => startTimer(i, x.si, planS(x.si))} aria-label={`Start timer for set ${x.si + 1}`}><Icon.Play size={16} /><span>Start</span></button>}
+                          </>;
+                        })() : <>
                         <label className="lk-srow-cell">
                           <input className="lk-sin" inputMode="numeric" placeholder={planR(x.si) || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${planR(x.si) ? `, plan ${planR(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">reps</span>
@@ -394,6 +481,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                           <input className="lk-sin" inputMode="decimal" placeholder={planW(x.si) != null ? String(planW(x.si)) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} weight in ${unit}${planW(x.si) != null ? `, plan ${planW(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">{unit}</span>
                         </label>
+                        </>}
                       </div>
                     );
                   })}
@@ -406,7 +494,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                       : <button type="button" className="lk-linkbtn danger" onClick={() => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); setReopened((o) => ({ ...o, [i]: false })); }}>Skip exercise</button>}
                   </div>}
                 </div>
-              );
+              </React.Fragment>);
             })}
 
             {!upcoming && <>

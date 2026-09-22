@@ -3,7 +3,7 @@ import { Button, Icon, Empty, Spinner, Sheet, Confirm, useToast, useViewport, Av
 import { shortDate, plural } from "../lib/format.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import PlanEditor from "./PlanEditor.jsx";
-import { templateWeightsMissing } from "../../hooks/useTemplates.ts";
+import { templateWeightsMissing, templateExtrasMissing } from "../../hooks/useTemplates.ts";
 import AssignAthletesSheet from "../../components/templates/AssignAthletesSheet.jsx";
 import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 
@@ -155,7 +155,9 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     finally { setBusy(false); }
   }
 
-  // Save from the editor, then offer to send it to the clients on the plan.
+  const DAYS_WITH_EXTRAS = (plan) => Object.values(plan || {}).some((d) => (d?.exercises || []).some((e) => e && (e.mode === "time" || e.superset)));
+
+// Save from the editor, then offer to send it to the clients on the plan.
   async function saveEditing(plan) {
     const { template } = editing;
     const days = planToTemplateDays(plan, data.unitSystem, editing.days);
@@ -168,6 +170,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
     setEditing((p) => (p ? { ...p, clientCount: assignments.length } : null));
     if (assignments.length) setPushing({ template: saved, assignments });
     if (templateWeightsMissing()) return "Saved. Weights and per-set targets need the database update before they're kept.";
+    if (templateExtrasMissing() && DAYS_WITH_EXTRAS(plan)) return "Saved. Supersets and timed exercises need the database update before a saved plan keeps them.";
     return assignments.length ? null : "Plan saved";
   }
 
