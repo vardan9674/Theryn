@@ -3,14 +3,34 @@ import { parseDuration } from "./exerciseKinds.js";
 import { planUnits, convertSubmission, normUnits } from "./units.js";
 export { planUnits };
 
+// Every measurement a coach can ask for, top of the body to the bottom.
+//   id    — the key in a link submission (older ones: arm = left arm, thigh = left thigh)
+//   key   — the name the dashboard uses for it (the app's body tables use the same)
+//   group — how the coach's list is grouped
+// All of them are optional for the client; the coach picks which ones the
+// link shows first ("requested"), and the client can add any of the others.
 export const MEASUREMENT_FIELDS = [
-  { id: "chest", label: "Chest", hint: "Wrap the tape around the fullest part of your chest. Keep it level and breathe normally." },
-  { id: "waist", label: "Waist", hint: "Measure around your natural waist, between your lowest rib and the top of your hips. Keep the tape snug, without pulling it tight." },
-  { id: "hips", label: "Hips", hint: "Stand with your feet together and measure around the fullest part of your hips." },
-  { id: "arm", label: "Left arm", hint: "Let your left arm relax at your side. Measure around the middle of your upper arm." },
-  { id: "thigh", label: "Left thigh", hint: "Measure around the fullest part of your left thigh, standing with your weight evenly balanced." },
+  { id: "neck", key: "neck", group: "Upper body", label: "Neck", hint: "Look straight ahead. Measure around the middle of your neck, just below the Adam's apple." },
+  { id: "shoulders", key: "shoulders", group: "Upper body", label: "Shoulders", hint: "Arms relaxed at your sides. Measure around the widest part of your shoulders." },
+  { id: "chest", key: "chest", group: "Upper body", label: "Chest", hint: "Wrap the tape around the fullest part of your chest. Keep it level and breathe normally." },
+  { id: "back", key: "back", group: "Upper body", label: "Upper back", hint: "Arms relaxed. Measure around your back and under your arms, at the widest part of your shoulder blades." },
+  { id: "arm", key: "lArm", group: "Arms", label: "Left arm", hint: "Let your left arm relax at your side. Measure around the middle of your upper arm." },
+  { id: "arm_r", key: "rArm", group: "Arms", label: "Right arm", hint: "Let your right arm relax at your side. Measure around the middle of your upper arm." },
+  { id: "forearm_l", key: "lForearm", group: "Arms", label: "Left forearm", hint: "Arm relaxed and straight. Measure around the thickest part of your left forearm." },
+  { id: "forearm_r", key: "rForearm", group: "Arms", label: "Right forearm", hint: "Arm relaxed and straight. Measure around the thickest part of your right forearm." },
+  { id: "waist", key: "waist", group: "Middle", label: "Waist", hint: "Measure around your natural waist, between your lowest rib and the top of your hips. Keep the tape snug, without pulling it tight." },
+  { id: "belly", key: "belly", group: "Middle", label: "Belly", hint: "Relax your stomach. Measure around your belly at the level of your belly button." },
+  { id: "hips", key: "hips", group: "Middle", label: "Hips", hint: "Stand with your feet together and measure around the fullest part of your hips." },
+  { id: "thigh", key: "lThigh", group: "Legs", label: "Left thigh", hint: "Measure around the fullest part of your left thigh, standing with your weight evenly balanced." },
+  { id: "thigh_r", key: "rThigh", group: "Legs", label: "Right thigh", hint: "Measure around the fullest part of your right thigh, standing with your weight evenly balanced." },
+  { id: "calf_l", key: "lCalf", group: "Legs", label: "Left calf", hint: "Stand straight. Measure around the widest part of your left calf." },
+  { id: "calf_r", key: "rCalf", group: "Legs", label: "Right calf", hint: "Stand straight. Measure around the widest part of your right calf." },
+  { id: "body_fat", key: "bodyFat", group: "Other", label: "Body fat", unit: "%", hint: "Only if you have a reading from a scale or a test. Leave it blank otherwise." },
 ];
+export const MEASUREMENT_GROUPS = ["Upper body", "Arms", "Middle", "Legs", "Other"];
 export const ALL_FIELD_IDS = MEASUREMENT_FIELDS.map((f) => f.id);
+/** What a link asks for when the coach hasn't chosen (and what every link asked for before). */
+export const DEFAULT_FIELD_IDS = ["chest", "waist", "hips", "arm", "thigh"];
 
 /** 32 random bytes as base64url. */
 export function generateToken() {
@@ -108,26 +128,35 @@ export function todayFromPlan(plan, now = new Date()) {
  * is still on the page, optional); a missing list means the pre-2026-09-18
  * default of all of them.
  */
-export function requiredFields(requested) {
-  if (!Array.isArray(requested)) return ALL_FIELD_IDS;
-  return requested.filter((id) => ALL_FIELD_IDS.includes(id));
+/**
+ * The measurements the coach asked for, in body order: shown first on the
+ * client's link. None of them are required. No choice (or an empty one)
+ * means the usual five.
+ */
+export function askedFields(requested) {
+  const ids = Array.isArray(requested) ? ALL_FIELD_IDS.filter((id) => requested.includes(id)) : [];
+  return ids.length ? ids : DEFAULT_FIELD_IDS;
 }
+/** Kept for older callers: the asked-for list. Nothing is required any more. */
+export const requiredFields = askedFields;
 
-/** Client-side validation mirroring link_submit. Returns { ok, error, field }. */
-export function validateMeasurements(values, unit, requested) {
+/**
+ * Client-side checks (link_submit repeats the ones for the original five).
+ * Everything is optional: at least one number, and each one sensible.
+ * Returns { ok, error, field }.
+ */
+export function validateMeasurements(values, unit, asked = DEFAULT_FIELD_IDS) {
   const metric = unit === "metric";
   const filled = (id) => values[id] != null && String(values[id]).trim() !== "";
-  if (!["weight", ...ALL_FIELD_IDS].some(filled)) return { ok: false, error: "Add at least one measurement to send.", field: requested[0] || ALL_FIELD_IDS[0] };
-  for (const id of requested) {
-    const v = values[id];
-    if (v == null || String(v).trim() === "") return { ok: false, error: "Please add each measurement your coach asked for.", field: id };
-  }
+  if (!["weight", ...ALL_FIELD_IDS].some(filled)) return { ok: false, error: "Add at least one measurement to send.", field: (asked && asked[0]) || ALL_FIELD_IDS[0] };
   for (const [id, raw] of Object.entries(values)) {
     if (raw == null || String(raw).trim() === "") continue;
     const n = Number(raw);
     if (!Number.isFinite(n)) return { ok: false, error: "That doesn't look like a number.", field: id };
     if (id === "weight") {
       if (metric ? n < 20 || n > 400 : n < 44 || n > 880) return { ok: false, error: `Weight should be between ${metric ? "20 and 400 kg" : "44 and 880 lb"}.`, field: id };
+    } else if (id === "body_fat") {
+      if (n < 2 || n > 70) return { ok: false, error: "Body fat should be between 2 and 70%.", field: id };
     } else if (metric ? n < 10 || n > 250 : n < 4 || n > 100) {
       return { ok: false, error: `That should be between ${metric ? "10 and 250 cm" : "4 and 100 in"}.`, field: id };
     }
@@ -233,7 +262,9 @@ export function submissionToMeasurement(sub) {
   const metric = p.unit === "metric";
   return {
     id: sub.id, date: submissionDate(sub), unit: metric ? "cm" : "in", weightUnit: metric ? "kg" : "lb",
-    weight: p.weight ?? undefined, chest: p.chest ?? undefined, waist: p.waist ?? undefined, hips: p.hips ?? undefined, lArm: p.arm ?? undefined, lThigh: p.thigh ?? undefined,
+    weight: p.weight ?? undefined,
+    // Every measurement under the dashboard's name for it (arm → lArm, thigh_r → rThigh…).
+    ...Object.fromEntries(MEASUREMENT_FIELDS.filter((f) => p[f.id] != null && p[f.id] !== "").map((f) => [f.key, Number(p[f.id])])),
     source: "link",
   };
 }

@@ -257,3 +257,7 @@ button.lk-badge:active { transform: scale(0.92); }
 .lk-rest-skip { flex: none; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A4D00; background: none; color: var(--cx-a); font-family: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
 .lk-kind { white-space: nowrap; }
 .lk-srow-label:has(.lk-kind) { width: auto; min-width: 36px; }
+/* ── More measurements ───────────────────────────────────────────────────── */
+.lk-moregroup { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.lk-morebtn { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; width: 100%; min-height: 52px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--cx-bd2); background: none; color: var(--cx-a); font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.lk-morebtn small { flex-basis: 100%; font-size: 12px; font-weight: 500; color: var(--cx-mu); }

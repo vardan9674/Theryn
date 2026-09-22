@@ -7,7 +7,7 @@ import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel } from "../coach/lib/exerciseKinds.js";
@@ -584,9 +584,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
 
 // ── Measurements ───────────────────────────────────────────────────────────
 function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
-  // Every measurement is on the page. The ones the coach ticked are required;
-  // the rest are optional. An empty list means everything is optional.
-  const requested = requiredFields(d.requested);
+  // The coach's picks come first; any other measurement is one tap away.
+  // Everything is optional: at least one number is all it takes to send.
+  const requested = askedFields(d.requested);
+  const [more, setMore] = React.useState(false);
   // One kg/lb choice for the whole page (the byline switch and this one are the same setting).
   const [localUnit, setLocalUnit] = React.useState(d.unit_system === "metric" ? "metric" : "imperial");
   const unit = d.onUnits ? (d.unit_system === "metric" ? "metric" : "imperial") : localUnit;
@@ -601,9 +602,20 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
   const first = d.first_name;
   const lenUnit = unit === "metric" ? "cm" : "in";
   const wUnit = unit === "metric" ? "kg" : "lb";
-  const fields = MEASUREMENT_FIELDS;
+  const hasValue = (id) => values[id] != null && String(values[id]).trim() !== "";
+  const askedList = MEASUREMENT_FIELDS.filter((f) => requested.includes(f.id));
+  // Extra ones stay on screen once they have a number, even with "more" closed.
+  const extraList = MEASUREMENT_FIELDS.filter((f) => !requested.includes(f.id) && (more || hasValue(f.id)));
+  const fields = [...askedList, ...extraList];
   const guide = MEASUREMENT_FIELDS.find((f) => f.id === selected) || fields[0];
-  const added = fields.filter((f) => values[f.id] != null && String(values[f.id]).trim() !== "").length;
+  const added = MEASUREMENT_FIELDS.filter((f) => hasValue(f.id)).length;
+  const unitOf = (f) => (f.unit === "%" ? "%" : lenUnit);
+  const fieldBox = (f) => (
+    <div key={f.id} className={`lk-numfield ${selected === f.id ? "on" : ""} ${error?.field === f.id ? "bad" : ""}`} onClick={() => pick(f.id)}>
+      <span className="lab">{f.label}</span>
+      <span className="val"><input ref={(el) => { inputs.current[f.id] = el; }} inputMode="decimal" placeholder="—" value={values[f.id] || ""} onChange={(e) => setVal(f.id, e.target.value)} onFocus={() => setSelected(f.id)} aria-label={`${f.label} in ${unitOf(f)}`} /><span className="unit">{unitOf(f)}</span></span>
+    </div>
+  );
 
   // Tapping a label on the figure only changes the guide; it must not focus the
   // field, which would scroll the figure away and open the keyboard on a phone.
@@ -630,7 +642,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
         <div className="lk-intro">
           <div className="lk-eyebrow">Body check-in</div>
           <h1 className="lk-h1">Body measurements.</h1>
-          <p className="lk-lede">Hi {first}. {requested.length ? "Add the measurements your coach asked for, and any others you like." : "Add whichever measurements you have."} No app or account needed.</p>
+          <p className="lk-lede">Hi {first}. Add the measurements your coach asked for, or any you have. Everything is optional. No app or account needed.</p>
         </div>
 
         <div className="lk-grid2">
@@ -643,7 +655,7 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
 
         <div className="lk-card">
           <div className="lk-row"><span className="lk-eyebrow">Where to measure</span><span className="lk-small">Measuring guide</span></div>
-          <BodyFigure requested={ALL_FIELD_IDS} selected={selected} onSelect={show} />
+          <BodyFigure requested={fields.map((f) => f.id)} selected={selected} onSelect={show} />
           <div className="lk-small" style={{ textAlign: "center" }}>Tap a label to see how to measure.</div>
           {guide && (
             <div className="lk-guide">
@@ -654,21 +666,28 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
         </div>
 
         <div>
-          <div className="lk-row" style={{ marginBottom: 12 }}><span style={{ fontSize: 20, fontWeight: 700 }}>Your measurements</span><span className="lk-small">{requested.length ? `${requested.filter((id) => values[id] != null && String(values[id]).trim() !== "").length} / ${requested.length} required added` : `${added} added`}</span></div>
+          <div className="lk-row" style={{ marginBottom: 12 }}><span style={{ fontSize: 20, fontWeight: 700 }}>Your measurements</span><span className="lk-small">{added ? `${added} added` : "All optional"}</span></div>
           <div className="lk-fields">
-            {fields.map((f) => (
-              <div key={f.id} className={`lk-numfield ${selected === f.id ? "on" : ""} ${error?.field === f.id ? "bad" : ""}`} onClick={() => pick(f.id)}>
-                <span className="lab">{f.label} {requested.includes(f.id) ? <em>*</em> : <small>Optional</small>}</span>
-                <span className="val"><input ref={(el) => { inputs.current[f.id] = el; }} inputMode="decimal" placeholder="—" value={values[f.id] || ""} onChange={(e) => setVal(f.id, e.target.value)} onFocus={() => setSelected(f.id)} aria-label={`${f.label} in ${lenUnit}`} /><span className="unit">{lenUnit}</span></span>
-              </div>
-            ))}
+            {askedList.map(fieldBox)}
             <div className={`lk-numfield ${selected === "weight" ? "on" : ""} ${error?.field === "weight" ? "bad" : ""}`} onClick={() => pick("weight")}>
-              <span className="lab">Body weight <small>Optional</small></span>
+              <span className="lab">Body weight</span>
               <span className="val"><input ref={(el) => { inputs.current.weight = el; }} inputMode="decimal" placeholder="—" value={values.weight || ""} onChange={(e) => setVal("weight", e.target.value)} onFocus={() => setSelected("weight")} aria-label={`Body weight in ${wUnit}`} /><span className="unit">{wUnit}</span></span>
             </div>
           </div>
+          {more ? (
+            MEASUREMENT_GROUPS.map((g) => {
+              const list = extraList.filter((f) => f.group === g);
+              if (!list.length) return null;
+              return <div key={g} className="lk-moregroup"><span className="lk-eyebrow">{g}</span><div className="lk-fields">{list.map(fieldBox)}</div></div>;
+            })
+          ) : extraList.length ? <div className="lk-fields" style={{ marginTop: 12 }}>{extraList.map(fieldBox)}</div> : null}
+          {MEASUREMENT_FIELDS.length > requested.length && (
+            <button type="button" className="lk-morebtn" onClick={() => setMore((x) => !x)} aria-expanded={more}>
+              {more ? "Show fewer" : <><Icon.Plus size={16} />Add more measurements<small>Neck, shoulders, right arm, calves, body fat…</small></>}
+            </button>
+          )}
         </div>
-        <div className="lk-small">{requested.length ? "* Asked for by your coach. " : ""}Measure without pulling the tape tight.</div>
+        <div className="lk-small">Measure without pulling the tape tight.</div>
         {error && <div className="lk-error" role="alert">{error.error}</div>}
         <div className="lk-note"><Icon.Lock size={16} /><span>Shared with Coach {d.coach_name} only. Your previous measurements aren't shown on this link.</span></div>
       </main>
@@ -737,7 +756,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
         ) : <div className="lk-mark"><Icon.Check size={34} /></div>}
         <h1>Sent to Coach {coach}.</h1>
         <p>{sent.kind === "measurements"
-          ? `Your ${s.count} measurement${s.count === 1 ? "" : "s"} from ${new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { day: "numeric", month: "long" })} are with your coach now.`
+          ? `Your ${s.count} measurement${s.count === 1 ? "" : "s"} from ${new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { day: "numeric", month: "long" })} ${s.count === 1 ? "is" : "are"} with your coach now.`
           : `${s.day}'s ${s.type} workout, ${s.done} of ${s.planned} ${s.what} done. Your coach can see it now.`}</p>
         {showStreak && (
           <div className="lk-tiles">
