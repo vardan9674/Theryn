@@ -94,8 +94,8 @@ export default function ShareLinkSheet({ open, onClose, client }) {
         </div>
       ) : (
         <div className="cx-form">
-          <div className="cx-row" style={{ height: 48, borderRadius: 10, border: "1px solid var(--cx-bd2)", background: "var(--cx-bg)", padding: "0 6px 0 12px", gap: 10 }}>
-            <span className="cx-ellipsis" style={{ flex: 1, fontSize: 14, color: "var(--cx-tx2)" }}>{url.replace(/^https?:\/\//, "")}</span>
+          <div className="cx-row" style={{ minHeight: 48, borderRadius: 10, border: "1px solid var(--cx-bd2)", background: "var(--cx-bg)", padding: "6px 6px 6px 12px", gap: 10 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.35, color: "var(--cx-tx2)", overflowWrap: "anywhere" }}>{url.replace(/^https?:\/\//, "")}</span>
             <Button size="sm" variant="soft" onClick={copy} style={{ color: "var(--cx-a)" }}>Copy</Button>
           </div>
           <div className="cx-actions-2">

@@ -166,12 +166,12 @@ export default function AssignAthletesSheet({ athletes, assignedAthleteIds = [],
                   </div>
 
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:TX, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                    <div style={{ fontSize:14, fontWeight:700, color:TX, overflowWrap:"anywhere" }}>
                       {link.athlete_name || "Client"}
-                      {link.manual && <span style={{ fontSize:11, fontWeight:600, color:SB, marginLeft:8 }}>· Not on app, gets it through their link</span>}
+                      {link.manual && <span style={{ display:"block", fontSize:11, fontWeight:600, color:SB, marginTop:1 }}>Not on app, gets it through their link</span>}
                     </div>
                     {locked ? (
-                      <div style={{ fontSize:11, color:SB, marginTop:1, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                      <div style={{ fontSize:11, color:SB, marginTop:1, fontWeight:600, overflowWrap:"anywhere" }}>
                         On "{lockInfo.template_name}"
                       </div>
                     ) : wasAssigned ? (

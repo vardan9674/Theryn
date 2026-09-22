@@ -185,7 +185,7 @@ button.lk-srow-tick:active .lk-srow-circle { transform: scale(0.9); }
 @keyframes lk-ring { from { stroke-dashoffset: var(--c); } }
 .lk-ring-in { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--cx-a); }
 .lk-ring-in b { font-size: 56px; font-weight: 800; letter-spacing: -2px; line-height: 1; color: var(--cx-tx); font-variant-numeric: tabular-nums; }
-.lk-ring-in span { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cx-mu); }
+.lk-ring-in span { max-width: 112px; margin-top: 2px; text-align: center; line-height: 1.3; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-mu); }
 .lk-tiles { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .lk-tiles div { background: var(--cx-s1); border: 1px solid var(--cx-bd); border-radius: 12px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
 .lk-tiles span { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-mu); }
@@ -261,3 +261,4 @@ button.lk-badge:active { transform: scale(0.92); }
 .lk-moregroup { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .lk-morebtn { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; width: 100%; min-height: 52px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--cx-bd2); background: none; color: var(--cx-a); font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
 .lk-morebtn small { flex-basis: 100%; font-size: 12px; font-weight: 500; color: var(--cx-mu); }
+.lk-nb { white-space: nowrap; }
