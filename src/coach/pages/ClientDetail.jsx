@@ -10,6 +10,7 @@ import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
+import { MEASUREMENT_FIELDS } from "../lib/clientLinks.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
 import { supersetInfo } from "../lib/exerciseKinds.js";
@@ -360,8 +361,9 @@ function BodyTab({ data }) {
   const bmi = current ? computeBMI(current.weight, profile?.height_cm, profile?.unit_system) : null;
   const cat = bmiCategory(bmi);
   // Latest entry that has tape measurements (a link check-in can be weight only).
-  const m = measurements?.find((x) => ["chest", "waist", "hips", "lArm", "rArm", "lThigh", "rThigh"].some((k) => x[k] != null));
-  const sites = m ? [["Chest", m.chest], ["Waist", m.waist], ["Hips", m.hips], ["Left arm", m.lArm], ["Right arm", m.rArm], ["Left thigh", m.lThigh], ["Right thigh", m.rThigh]].filter(([, v]) => v != null) : [];
+  const valueOf = (x, f) => x[f.key] ?? (f.key === "lCalf" ? x.calves : undefined); // the app calls the left calf "calves"
+  const m = measurements?.find((x) => MEASUREMENT_FIELDS.some((f) => valueOf(x, f) != null));
+  const sites = m ? MEASUREMENT_FIELDS.map((f) => [f.label, valueOf(m, f), f.unit === "%" ? "%" : null]).filter(([, v]) => v != null) : [];
 
   if (!current && !m) return <Empty title="No body data yet">Weight and measurements show up once the client logs them in their app or sends them through their link.</Empty>;
   return (
@@ -384,8 +386,8 @@ function BodyTab({ data }) {
       {m && (
         <div className="cx-card">
           <div className="cx-card-pad cx-row" style={{ borderBottom: "1px solid var(--cx-bd)", fontSize: 13, fontWeight: 600, justifyContent: "space-between" }}><span>Measurements · {shortDate(m.date)}</span>{m.source === "link" && <span className="cx-tag">via link</span>}</div>
-          {sites.map(([label, v]) => (
-            <div key={label} className="cx-exrow cx-card-pad" style={{ paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--cx-bd)" }}><span>{label}</span><span>{v} {mUnit}</span></div>
+          {sites.map(([label, v, u]) => (
+            <div key={label} className="cx-exrow cx-card-pad" style={{ paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--cx-bd)" }}><span>{label}</span><span>{v}{u ? u : ` ${mUnit}`}</span></div>
           ))}
         </div>
       )}

@@ -1,7 +1,7 @@
 import React from "react";
 import { Sheet, Button, Icon, Checkbox, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
-import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, requiredFields } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, ALL_FIELD_IDS, DEFAULT_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, askedFields } from "../lib/clientLinks.js";
 
 /**
  * "Share link" on a client page. One durable link per client; the coach
@@ -12,7 +12,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   const data = useCoachData();
   const toast = useToast();
   const [state, setState] = React.useState({ loading: true, link: null, token: null, error: null });
-  const [requested, setRequested] = React.useState(ALL_FIELD_IDS);
+  const [requested, setRequested] = React.useState(DEFAULT_FIELD_IDS);
   const [busy, setBusy] = React.useState(false);
   const [confirm, setConfirm] = React.useState(null); // "rotate" | "off"
   const first = (client?.athlete_name || "").split(" ")[0];
@@ -21,9 +21,9 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     if (!open || !client) return;
     let cancelled = false;
     setState({ loading: true, link: null, token: null, error: null });
-    setRequested(ALL_FIELD_IDS); // each client starts from "ask for everything"; never carry another client's choice over
+    setRequested(DEFAULT_FIELD_IDS); // each client starts from the usual five; never carry another client's choice over
     data.getClientLink(client.athlete_id)
-      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link ? requiredFields(r.link.requested) : ALL_FIELD_IDS); })
+      .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link ? askedFields(r.link.requested) : DEFAULT_FIELD_IDS); })
       .catch((e) => { if (!cancelled) setState({ loading: false, link: null, token: null, error: e.message }); });
     return () => { cancelled = true; };
   }, [open, client?.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -42,7 +42,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   }
   async function turnOff() {
     setBusy(true);
-    try { await data.revokeClientLink(client.athlete_id); setState({ loading: false, link: null, token: null, error: null }); setRequested(ALL_FIELD_IDS); toast("Link turned off"); }
+    try { await data.revokeClientLink(client.athlete_id); setState({ loading: false, link: null, token: null, error: null }); setRequested(DEFAULT_FIELD_IDS); toast("Link turned off"); }
     catch (e) { toast(e.message || "Could not turn off", "error"); }
     finally { setBusy(false); setConfirm(null); }
   }
@@ -107,11 +107,17 @@ export default function ShareLinkSheet({ open, onClose, client }) {
           </div>
 
           <div className="cx-col">
-            <div style={{ fontWeight: 700 }}>Required measurements</div>
-            <div className="cx-small cx-muted">{first} sees all five on their page. Ticked ones are required, the rest optional. Untick all to make everything optional. Body weight is always optional.</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
-              {MEASUREMENT_FIELDS.map((f) => <Checkbox key={f.id} checked={requested.includes(f.id)} onChange={() => toggle(f.id)}>{f.label}</Checkbox>)}
-            </div>
+            <div style={{ fontWeight: 700 }}>Measurements to ask for</div>
+            <div className="cx-small cx-muted">{first} sees these first on their link. Everything is optional, and they can add any of the others too. Body weight is always there.</div>
+            {MEASUREMENT_GROUPS.map((g) => (
+              <div key={g} className="cx-col" style={{ gap: 2 }}>
+                <span className="cx-small cx-muted" style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 11 }}>{g}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
+                  {MEASUREMENT_FIELDS.filter((f) => f.group === g).map((f) => <Checkbox key={f.id} checked={requested.includes(f.id)} onChange={() => toggle(f.id)}>{f.label}{f.unit === "%" ? " %" : ""}</Checkbox>)}
+                </div>
+              </div>
+            ))}
+            <div className="cx-small cx-muted">None ticked: {first} sees chest, waist, hips, left arm and left thigh.</div>
           </div>
 
           <div className="cx-row" style={{ justifyContent: "space-between", paddingTop: 4 }}>

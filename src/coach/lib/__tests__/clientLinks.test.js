@@ -47,7 +47,7 @@ describe("todayFromPlan", () => {
 });
 
 describe("measurements validation", () => {
-  it("requires the requested fields", () => {
+  it("needs at least one number, pointing at the first one asked for", () => {
     const r = validateMeasurements({ chest: "" }, "metric", ["chest"]);
     expect(r.ok).toBe(false); expect(r.field).toBe("chest");
   });
@@ -81,16 +81,39 @@ describe("workout payload and submission shapes", () => {
   });
 });
 
-describe("required measurements", () => {
-  it("coach's ticks are required; empty means all optional; missing means all required", async () => {
-    const { requiredFields } = await import("../clientLinks.js");
-    expect(requiredFields(["waist", "hips", "bogus"])).toEqual(["waist", "hips"]);
-    expect(requiredFields([])).toEqual([]);
-    expect(requiredFields(null)).toEqual(["chest", "waist", "hips", "arm", "thigh"]);
+describe("measurements the coach asks for (all optional)", () => {
+  it("shows the coach's picks in body order; no pick means the usual five", async () => {
+    const { askedFields } = await import("../clientLinks.js");
+    expect(askedFields(["hips", "neck", "bogus", "thigh_r"])).toEqual(["neck", "hips", "thigh_r"]);
+    expect(askedFields([])).toEqual(["chest", "waist", "hips", "arm", "thigh"]);
+    expect(askedFields(null)).toEqual(["chest", "waist", "hips", "arm", "thigh"]);
   });
-  it("optional fields can be sent alone, but not nothing", () => {
+  it("any one measurement can be sent on its own, even one not asked for", () => {
     expect(validateMeasurements({ arm: "13" }, "imperial", []).ok).toBe(true);
+    expect(validateMeasurements({ arm: "13" }, "imperial", ["waist"]).ok).toBe(true);
+    expect(validateMeasurements({ neck: "38" }, "metric", ["chest"]).ok).toBe(true);
     expect(validateMeasurements({}, "imperial", []).ok).toBe(false);
-    expect(validateMeasurements({ arm: "13" }, "imperial", ["waist"])).toMatchObject({ ok: false, field: "waist" });
+  });
+  it("checks body fat as a percentage", () => {
+    expect(validateMeasurements({ body_fat: "18" }, "metric").ok).toBe(true);
+    expect(validateMeasurements({ body_fat: "95" }, "metric")).toMatchObject({ ok: false, field: "body_fat" });
+  });
+  it("new measurements reach the dashboard under its names", async () => {
+    const { submissionToMeasurement } = await import("../clientLinks.js");
+    const m = submissionToMeasurement({ id: "s", submitted_at: "2026-09-22T10:00:00Z", payload: { unit: "metric", date: "2026-09-22", neck: 38, arm: 33, arm_r: 34, thigh_r: 55, calf_l: 36, body_fat: 18 } });
+    expect(m).toMatchObject({ neck: 38, lArm: 33, rArm: 34, rThigh: 55, lCalf: 36, bodyFat: 18, unit: "cm" });
+  });
+});
+
+describe("new measurements convert between cm and in", () => {
+  it("every tape measurement converts, body fat doesn't", async () => {
+    const { MEASUREMENT_FIELDS } = await import("../clientLinks.js");
+    const { LENGTH_KEYS, convertSubmission } = await import("../units.js");
+    expect([...LENGTH_KEYS].sort()).toEqual(MEASUREMENT_FIELDS.filter((f) => f.unit !== "%").map((f) => f.id).sort());
+    const sub = { kind: "measurements", payload: { unit: "metric", neck: 38, thigh_r: 57, body_fat: 19 } };
+    const out = convertSubmission(sub, "imperial").payload;
+    expect(out.neck).toBe(15);      // 38 cm
+    expect(out.thigh_r).toBe(22.4); // 57 cm
+    expect(out.body_fat).toBe(19);  // a percentage stays as it is
   });
 });

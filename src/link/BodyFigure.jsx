@@ -2,16 +2,28 @@ import React from "react";
 import { MEASUREMENT_FIELDS } from "../coach/lib/clientLinks.js";
 
 // Front-view figure with callout labels. Drawing from mockups/share-links.
+// ly: where the label sits, so labels on the same side never overlap.
+// The figure faces you: the client's left arm is on your right.
 const REGIONS = {
+  neck: { x: 160, y: 80, rx: 13, ry: 5, side: "left", ly: 60 },
+  shoulders: { x: 160, y: 100, rx: 50, ry: 8, side: "left", ly: 94 },
   chest: { x: 160, y: 127, rx: 40, ry: 10, side: "left" },
-  waist: { x: 160, y: 176, rx: 30, ry: 8, side: "left" },
-  hips: { x: 160, y: 214, rx: 39, ry: 10, side: "left" },
+  back: { x: 160, y: 142, rx: 44, ry: 9, side: "right", ly: 112, dashed: true },
+  arm_r: { x: 103, y: 146, rx: 12, ry: 23, side: "left", ly: 156 },
   arm: { x: 217, y: 146, rx: 12, ry: 23, side: "right" },
+  forearm_r: { x: 88, y: 190, rx: 9, ry: 14, side: "left", ly: 254 },
+  forearm_l: { x: 232, y: 190, rx: 9, ry: 14, side: "right", ly: 186 },
+  waist: { x: 160, y: 176, rx: 30, ry: 8, side: "left", ly: 180 },
+  belly: { x: 160, y: 196, rx: 33, ry: 7, side: "left", ly: 204 },
+  hips: { x: 160, y: 214, rx: 39, ry: 10, side: "left", ly: 228 },
+  thigh_r: { x: 138, y: 287, rx: 18, ry: 11, side: "left" },
   thigh: { x: 182, y: 287, rx: 18, ry: 11, side: "right" },
+  calf_r: { x: 141, y: 352, rx: 11, ry: 10, side: "left" },
+  calf_l: { x: 179, y: 352, rx: 11, ry: 10, side: "right" },
 };
 
 export default function BodyFigure({ requested, selected, onSelect }) {
-  const fields = MEASUREMENT_FIELDS.filter((f) => requested.includes(f.id));
+  const fields = MEASUREMENT_FIELDS.filter((f) => requested.includes(f.id) && REGIONS[f.id]);
   return (
     <svg className="lk-body" viewBox="0 0 320 440" role="group" aria-label="Body measurement diagram">
       <defs>
@@ -34,11 +46,11 @@ export default function BodyFigure({ requested, selected, onSelect }) {
         const left = r.side === "left";
         const active = selected === f.id;
         const sx = left ? r.x - r.rx : r.x + r.rx;
-        const labelY = f.id === "arm" ? 146 : r.y;
+        const labelY = r.ly ?? r.y;
         return (
           <g key={f.id} className={`lk-region ${active ? "on" : ""}`} role="button" tabIndex={0} aria-pressed={active} aria-label={`Show how to measure ${f.label.toLowerCase()}`}
             onClick={() => onSelect(f.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(f.id); } }}>
-            <ellipse className="lk-band" cx={r.x} cy={r.y} rx={r.rx} ry={r.ry} />
+            <ellipse className="lk-band" cx={r.x} cy={r.y} rx={r.rx} ry={r.ry} strokeDasharray={r.dashed ? "4 3" : undefined} />
             <path className="lk-callout" d={`M${sx} ${r.y} H${left ? 86 : 240} L${left ? 75 : 246} ${labelY} H${left ? 10 : 310}`} />
             <rect x={left ? 0 : 236} y={labelY - 30} width="84" height="54" fill="transparent" />
             <text x={left ? 6 : 314} y={labelY - 8} textAnchor={left ? "start" : "end"}>{f.label}</text>

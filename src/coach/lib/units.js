@@ -74,6 +74,13 @@ export function convertPlan(plan, to, { assumeFrom = to } = {}) {
  * workouts say `weight_unit` (older ones don't, so `workoutFrom` is what the
  * link page showed them in).
  */
+/**
+ * Every tape measurement a link can send (clientLinks MEASUREMENT_FIELDS,
+ * minus body fat, which is a percentage). Listed here rather than imported to
+ * avoid a circular import; a test checks the two lists agree.
+ */
+export const LENGTH_KEYS = ["neck", "shoulders", "chest", "back", "arm", "arm_r", "forearm_l", "forearm_r", "waist", "belly", "hips", "thigh", "thigh_r", "calf_l", "calf_r"];
+
 export function convertSubmission(sub, to, { workoutFrom = to } = {}) {
   const p = sub?.payload;
   if (!p || typeof p !== "object") return sub;
@@ -83,7 +90,7 @@ export function convertSubmission(sub, to, { workoutFrom = to } = {}) {
     if (from === target) return sub;
     const next = { ...p, unit: target };
     if (p.weight != null) next.weight = convertWeight(p.weight, from, target, 0.1);
-    for (const k of ["chest", "waist", "hips", "arm", "thigh"]) if (p[k] != null) next[k] = convertLength(p[k], from, target);
+    for (const k of LENGTH_KEYS) if (p[k] != null) next[k] = convertLength(p[k], from, target);
     return { ...sub, payload: next };
   }
   if (sub.kind === "workout") {
