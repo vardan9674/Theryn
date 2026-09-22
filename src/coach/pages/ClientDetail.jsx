@@ -11,6 +11,7 @@ import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
+import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
 import { supersetInfo } from "../lib/exerciseKinds.js";
 
 const TABS = [
@@ -238,6 +239,8 @@ function ProgressTab({ data, row, actions }) {
   const firstName = row.name.split(" ")[0];
   const [logging, setLogging] = React.useState(false);
   const [removing, setRemoving] = React.useState(null);
+  const [editing, setEditing] = React.useState(null); // the workout being corrected
+  const canEdit = row.link.manual && typeof coachData.updateSubmission === "function";
   const canLog = row.link.manual && typeof coachData.logWorkoutForClient === "function" && routine && DAYS.some((d) => routine[d]?.type && routine[d].type !== "Rest" && (routine[d].exercises || []).length);
   const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
   const sheet = canLog ? (
@@ -261,10 +264,16 @@ function ProgressTab({ data, row, actions }) {
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const editSheet = canEdit && editing ? (
+    <EditWorkoutSheet open={Boolean(editing)} workout={editing} firstName={firstName} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
+      onClose={() => setEditing(null)}
+      onSave={async (payload) => { await coachData.updateSubmission(editing.submissionId, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
+  ) : null;
   if (!history || history.length === 0) return <><Empty title="No workouts yet" action={logButton}>{row.link.manual ? `Workouts they tick off through their link show up here. If ${firstName} trained but didn't tick it off, you can log it for them.` : "Workouts they log in the app or tick off through their link show up here."}</Empty>{sheet}</>;
   return (
     <>
       {sheet}
+      {editSheet}
       {logButton && <div className="cx-row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="cx-small cx-muted" style={{ flex: "1 1 180px" }}>Trained but didn't tick it off? Log it for them.</span>{logButton}</div>}
       <div className="cx-stats" style={{ marginBottom: 0 }}>
         <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
@@ -291,7 +300,7 @@ function ProgressTab({ data, row, actions }) {
             <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
               <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
                 <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
-                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-row" style={{ gap: 8 }}><b>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
                   <span className="cx-small cx-muted">{workoutSummary(w)}{w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
                 </span>
                 <Icon.Down />
@@ -305,7 +314,7 @@ function ProgressTab({ data, row, actions }) {
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                               {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
-                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}`} title={s.changed ? "Different from the plan" : undefined}>{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
+                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Fix numbers to correct it." : s.changed ? "Different from the plan" : undefined}>{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
                             </span>
                           : <>
                               <b style={{ color: e.skipped ? "var(--cx-mu)" : "var(--cx-tx)" }}>{e.done}{e.planned ? `/${e.planned}` : ""}</b> sets
@@ -317,7 +326,15 @@ function ProgressTab({ data, row, actions }) {
                   ))}
                   {w.feel && <div className="cx-small" style={{ marginTop: 6 }}><span className="cx-muted">Felt </span><b className={`cx-feel ${w.feel}`}>{w.feel}</b></div>}
                   {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{w.byCoach ? "Your note" : row.name.split(" ")[0]}: "{w.note}"</div>}
-                  {w.byCoach && w.submissionId && <div className="cx-row" style={{ justifyContent: "space-between", marginTop: 8 }}><span className="cx-small cx-muted">You logged this for {firstName}.</span><Button size="sm" onClick={() => removeLogged(w)} disabled={removing === w.id}>{removing === w.id ? "Removing…" : "Remove"}</Button></div>}
+                  {w.submissionId && (canEdit || w.byCoach) && (
+                    <div className="cx-row" style={{ justifyContent: "space-between", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+                      <span className="cx-small cx-muted" style={{ flex: "1 1 160px" }}>{w.exercises.some((e) => e.sets.some((s) => s.suspect)) ? <span style={{ color: "#F5A742" }}>A number looks off. Fix it if it's a typo.</span> : w.byCoach ? `You logged this for ${firstName}.` : w.editedByCoach ? "You fixed numbers in this workout." : `Sent by ${firstName}.`}</span>
+                      <span className="cx-row" style={{ gap: 8 }}>
+                        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Fix numbers</Button>}
+                        {w.byCoach && <Button size="sm" onClick={() => removeLogged(w)} disabled={removing === w.id}>{removing === w.id ? "Removing…" : "Remove"}</Button>}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

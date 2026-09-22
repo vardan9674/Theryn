@@ -605,6 +605,18 @@
 .pe-ssrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--cx-tx2); }
 .pe-ssrow:empty { display: none; }
 .pe-ssrow .pe-chipbtn { display: inline-flex; align-items: center; gap: 6px; }
+/* Fix a client's workout */
+.cx-setchip.suspect { color: #F5A742; border-color: rgba(245, 167, 66, 0.55); background: rgba(245, 167, 66, 0.1); }
+.ew { display: flex; flex-direction: column; gap: 14px; }
+.ew-ex { display: flex; flex-direction: column; gap: 6px; }
+.ew-name { font-size: 15px; }
+.ew-set { display: grid; grid-template-columns: 28px 1fr 1fr auto; gap: 8px; align-items: center; }
+.ew-no { width: 28px; height: 28px; border-radius: 50%; background: var(--cx-s2); color: var(--cx-tx2); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.ew-set label { display: flex; align-items: center; gap: 6px; min-width: 0; height: 44px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-bg); }
+.ew-set input { flex: 1; min-width: 0; width: 100%; min-height: 40px; background: none; border: 0; outline: none; color: var(--cx-tx); font: inherit; font-size: 16px; font-weight: 700; }
+.ew-set label span { font-size: 12px; color: var(--cx-mu); }
+.ew-set.off label:last-of-type { border-color: #F5A742; }
+.ew-flag { font-style: normal; font-size: 11px; font-weight: 800; color: #F5A742; }
 .pe-scope { display: flex; gap: 8px; align-items: flex-start; padding: 10px 16px; font-size: 13px; line-height: 1.4; color: var(--cx-tx2); background: rgba(200, 255, 0, 0.06); border-bottom: 1px solid var(--cx-bd); }
 .pe-scope svg { flex: none; margin-top: 2px; color: var(--cx-a); }
 .pe-shell { position: fixed; inset: 0; z-index: 60; overflow-y: auto; background: var(--cx-bg); }

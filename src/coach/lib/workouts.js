@@ -3,6 +3,7 @@
 import { toClientId } from "./manualClients.js";
 import { submissionDate } from "./clientLinks.js";
 import { formatDuration } from "./exerciseKinds.js";
+import { weightLooksOff } from "./editWorkout.js";
 
 /** Which dashboard client a submission row belongs to. Mock rows carry clientId; real rows carry the two ids. */
 export function clientIdOfSubmission(sub) {
@@ -77,6 +78,8 @@ function setsDetail(e, done) {
         w: w != null ? String(w) : "",
         r: r != null ? String(r) : repsLabel(planR(i)),
         changed: (x.weight != null && planW(i) != null && Number(x.weight) !== Number(planW(i))) || (r != null && !repsWithin(r, planR(i))),
+        // 75 for a planned 7.5: probably a typo the coach will want to fix.
+        ...(x.weight != null && weightLooksOff(x.weight, planW(i)) ? { suspect: true } : {}),
       };
     });
   }
@@ -109,6 +112,7 @@ export function workoutDetail(entry) {
     });
     return {
       id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true, byCoach: p.logged_by === "coach", submissionId: sub.id,
+      payload: p, editedByCoach: Boolean(p.edited_by_coach_at),
       note: (p.note || entry.note || "").trim(),
       feel: ["easy", "medium", "hard"].includes(p.feel) ? p.feel : null,
       durationMin: null,

@@ -430,6 +430,13 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const { error } = await supabase.from("client_submissions").insert({ coach_id: coachId, manual_client_id: mid, athlete_id: null, link_id: null, kind: "workout", payload, user_agent: "coach dashboard" });
       if (error) throw new Error(/row-level security|permission denied/i.test(error.message) ? "Logging workouts for clients needs a quick database update: run supabase/migrations/20260919160000_coach_logs_workouts.sql in the Supabase SQL editor." : error.message);
     },
+    // The coach corrects a workout's numbers (75 kg that should be 7.5).
+    async updateSubmission(id, payload) {
+      const { data, error } = await supabase.from("client_submissions").update({ payload }).eq("id", id).eq("coach_id", coachId).eq("kind", "workout").select("id");
+      if (error) throw new Error(/row-level security|permission denied/i.test(error.message) ? "Fixing a client's workout needs a quick database update: run supabase/migrations/20260922130000_coach_edits_workouts.sql in the Supabase SQL editor." : error.message);
+      // Without the update policy PostgREST changes nothing and returns no rows.
+      if (!data || !data.length) throw new Error("Fixing a client's workout needs a quick database update: run supabase/migrations/20260922130000_coach_edits_workouts.sql in the Supabase SQL editor.");
+    },
     async deleteSubmission(id) {
       const { error } = await supabase.from("client_submissions").delete().eq("id", id).eq("coach_id", coachId);
       if (error) throw new Error(error.message);
