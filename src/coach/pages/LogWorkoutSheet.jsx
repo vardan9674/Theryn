@@ -112,7 +112,7 @@ export default function LogWorkoutSheet({ open, firstName, routine, history, uni
                       <div className="lw-sets">
                         {rows.map((s, si) => (
                           <div key={si} className="lw-set">
-                            <button type="button" className={`lw-setno ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} ${si < n ? "done" : "not done"}`} onClick={() => tapSet(i, si)}>{si < n ? <Icon.Check size={12} /> : si + 1}</button>
+                            <button type="button" className={`lw-setno ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} ${si < n ? "done" : "not done"}`} onClick={() => tapSet(i, si)}>{si < n ? <Icon.Check size={12} /> : s.kind === "warmup" ? "W" : s.kind === "drop" ? "D" : s.kind === "amrap" ? "A" : si + 1}</button>
                             {e.mode === "time"
                               ? <label><input inputMode="numeric" value={log[i]?.[si]?.s ?? ""} placeholder={durationInput(s.secs ?? e.secs) || "00:00"} onChange={(ev) => setVal(i, si, "s", ev.target.value)} onBlur={(ev) => { const t = tidyDuration(ev.target.value); if (t && t !== ev.target.value) setVal(i, si, "s", t); }} aria-label={`Set ${si + 1} time`} /><span>time</span></label>
                               : <label><input inputMode="numeric" value={log[i]?.[si]?.r ?? ""} placeholder={String(s.reps || e.reps || "–").split(/[-–]/)[0]} onChange={(ev) => setVal(i, si, "r", ev.target.value)} aria-label={`Set ${si + 1} reps`} /><span>reps</span></label>}

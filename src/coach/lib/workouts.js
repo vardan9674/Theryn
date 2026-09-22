@@ -75,6 +75,7 @@ function setsDetail(e, done) {
       const w = x.weight ?? planW(i) ?? e.weight_used ?? null; // blank = the planned weight
       const r = x.reps ?? null;
       return {
+        ...(ps?.[i]?.k ? { k: ps[i].k } : {}),
         w: w != null ? String(w) : "",
         r: r != null ? String(r) : repsLabel(planR(i)),
         changed: (x.weight != null && planW(i) != null && Number(x.weight) !== Number(planW(i))) || (r != null && !repsWithin(r, planR(i))),

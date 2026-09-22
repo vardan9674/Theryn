@@ -1,4 +1,5 @@
-import { formatDuration } from "./exerciseKinds.js";
+import { formatDuration, restLabel } from "./exerciseKinds.js";
+import { planSets, setsLine } from "./planSets.js";
 // Small, pure formatting helpers for the coach dashboard.
 
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -100,7 +101,15 @@ export function parseWeight(v) {
 
 /** "4 × 8 · 40 lb" for the plan view, tolerant of missing values. */
 export function setsReps(ex, unit) {
+  const base = setsRepsBase(ex, unit);
   const o = normalizeExercise(ex);
+  const rest = Number(o.rest) > 0 ? `rest ${restLabel(o.rest)}` : "";
+  return [base, rest].filter(Boolean).join(" · ");
+}
+function setsRepsBase(ex, unit) {
+  const o = normalizeExercise(ex);
+  // Warm-up, drop or AMRAP sets: "2 sets · 8 reps · 45–60 kg · 1 warm-up · drop set"
+  if (o.mode !== "time" && Array.isArray(o.setList) && o.setList.some((s) => s && s.kind)) return setsLine(planSets(o), unit || "lb");
   // Timed: "3 × 45 s", or "3 × 30 s–1 min" when the sets differ.
   if (o.mode === "time" || o.secs != null) {
     const list = Array.isArray(o.setList) && o.setList.length ? o.setList : null;

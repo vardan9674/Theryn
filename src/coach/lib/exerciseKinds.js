@@ -120,3 +120,59 @@ export function normalizeSupersets(exercises) {
     return o;
   });
 }
+
+// ── Set types ──────────────────────────────────────────────────────────────
+// A set in a plan can be a normal working set (no `kind`), or:
+//   warmup — lighter, before the working sets
+//   drop   — straight after the set before it, no rest, lighter weight
+//   amrap  — as many reps as possible; the client types what they got
+// Stored per set in setList: [{ reps, weight, kind: "drop" }].
+export const SET_KINDS = {
+  warmup: { short: "W", label: "Warm-up", hint: "Lighter, to get ready" },
+  drop: { short: "D", label: "Drop set", hint: "Straight after the last set, no rest, lighter" },
+  amrap: { short: "A", label: "AMRAP", hint: "As many reps as you can" },
+};
+export const setKind = (s) => (s && SET_KINDS[s.kind] ? s.kind : null);
+
+/** Round a weight to what's on the rack: 2.5 kg or 5 lb steps (at least one step). */
+export function rackRound(w, unit) {
+  const n = Number(w);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const step = unit === "kg" || unit === "metric" ? 2.5 : 5;
+  return Math.max(step, Math.round(n / step) * step);
+}
+/** A drop set starts about 25% lighter than the set before it. */
+export const dropWeight = (w, unit) => rackRound(Number(w) * 0.75, unit);
+/** A warm-up set starts at about half the working weight. */
+export const warmupWeight = (w, unit) => rackRound(Number(w) * 0.5, unit);
+
+/** "1 warm-up · drop set · AMRAP last set" — the extras in a list of sets ("" when none). */
+export function setKindsSummary(list) {
+  const kinds = (list || []).map(setKind);
+  const bits = [];
+  const w = kinds.filter((k) => k === "warmup").length;
+  if (w) bits.push(`${w} warm-up`);
+  const d = kinds.filter((k) => k === "drop").length;
+  if (d) bits.push(d === 1 ? "drop set" : `${d} drop sets`);
+  const a = kinds.filter((k) => k === "amrap").length;
+  if (a) bits.push(a === 1 && kinds[kinds.length - 1] === "amrap" ? "AMRAP last set" : a === 1 ? "1 AMRAP set" : `${a} AMRAP sets`);
+  return bits.join(" · ");
+}
+
+// ── Rest between sets ──────────────────────────────────────────────────────
+// Per exercise: { rest: 90 } seconds. The client gets a countdown after each
+// set (not before a drop set, which has no rest).
+export const REST_OPTIONS = [30, 60, 90, 120, 180];
+
+// ── Groups of exercises ────────────────────────────────────────────────────
+/** What a group of exercises done back to back is called: 2 superset, 3 tri-set, 4+ giant set. */
+export function groupName(size) {
+  return size >= 4 ? "Giant set" : size === 3 ? "Tri-set" : "Superset";
+}
+
+/** A rest time for reading: "30 s", "90 s", "2 min". */
+export function restLabel(secs) {
+  const n = Math.round(Number(secs));
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return n < 120 ? `${n} s` : n % 60 ? formatDuration(n) : `${n / 60} min`;
+}

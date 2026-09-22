@@ -8,7 +8,7 @@ import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { lastSetsFor, setsLine as historyLine } from "../lib/workouts.js";
 import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
 import { planSets, packSets, setsAreSame, setsLine } from "../lib/planSets.js";
-import { defaultMode, defaultSecs, parseDuration, durationInput, maskDuration, tidyDuration, formatDuration, supersetInfo, normalizeSupersets } from "../lib/exerciseKinds.js";
+import { defaultMode, defaultSecs, parseDuration, durationInput, maskDuration, tidyDuration, formatDuration, supersetInfo, normalizeSupersets, SET_KINDS, dropWeight, warmupWeight, REST_OPTIONS, groupName, restLabel } from "../lib/exerciseKinds.js";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { useBackHandler } from "../../lib/backStack.ts";
@@ -33,8 +33,8 @@ function toEditable(templates) {
       exercises: (day.exercises || []).map((ex) => {
         const o = normalizeExercise(ex);
         const mode = o.mode === "time" ? "time" : "reps";
-        const rows = planSets(o).map((s) => ({ _k: mkKey("s"), reps: s.reps, weight: s.weight == null ? "" : String(s.weight), secs: s.secs ? durationInput(s.secs) : "" }));
-        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", rows, same: setsAreSame(rows.map((r) => ({ ...r, secs: parseDuration(r.secs) }))), mode, superset: o.superset || null };
+        const rows = planSets(o).map((s) => ({ _k: mkKey("s"), reps: s.reps, weight: s.weight == null ? "" : String(s.weight), secs: s.secs ? durationInput(s.secs) : "", kind: s.kind || null }));
+        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", rows, same: setsAreSame(rows.map((r) => ({ ...r, secs: parseDuration(r.secs) }))), mode, superset: o.superset || null, rest: Number(o.rest) > 0 ? Number(o.rest) : null };
       }),
     };
   }
@@ -54,6 +54,7 @@ export function toTemplates(days, units) {
         const o = { name: e.name.trim(), ...packSets(e.rows.map((r) => ({ ...r, secs: parseDuration(r.secs) })), mode) };
         if (e.coachNote && e.coachNote.trim()) o.coachNote = e.coachNote.trim();
         if (e.superset) o.superset = e.superset;
+        if (e.rest) o.rest = e.rest;
         return o;
       }));
     out[d] = { type: day.type === "Rest" ? "Rest" : day.type, exercises };
@@ -137,7 +138,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     setRow: (d, k, ri, field, raw) => update((next) => {
       const e = exOf(next, d, k); if (!e) return next;
       const v = field === "reps" ? cleanReps(raw) : field === "secs" ? maskDuration(raw) : cleanWeight(raw);
-      if (e.same && ri === 0) e.rows.forEach((r) => { r[field] = v; });
+      if (e.same && ri === 0) e.rows.forEach((r) => { if (!r.kind || r === e.rows[0]) r[field] = v; });
       else { if (e.same && ri > 0) e.same = false; e.rows[ri][field] = v; }
       e.rows.forEach((r) => { delete r._new; });
       return next;
@@ -176,6 +177,36 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
       return next;
     }),
     unlink: (d, k) => update((next) => { const e = exOf(next, d, k); if (e) e.superset = null; return next; }),
+    // Set types: warm-up, drop set, AMRAP (null = a normal working set).
+    setKind: (d, k, ri, kind) => update((next) => {
+      const e = exOf(next, d, k); if (!e || !e.rows[ri]) return next;
+      e.rows[ri].kind = kind || null;
+      if (kind) e.same = false;
+      if (kind === "amrap") e.rows[ri].reps = "";
+      else if (!e.rows[ri].reps && e.mode !== "time") e.rows[ri].reps = DEFAULT_REPS;
+      return next;
+    }),
+    // A drop set straight after the last set: same reps, about 25% lighter.
+    addDrop: (d, k) => update((next) => {
+      const e = exOf(next, d, k); if (!e || e.rows.length >= 20) return next;
+      e.rows.forEach((r) => { delete r._new; });
+      const last = e.rows[e.rows.length - 1] || { reps: DEFAULT_REPS, weight: "" };
+      const w = last.weight ? dropWeight(last.weight, unit) : null;
+      e.rows.push({ _k: mkKey("s"), reps: last.kind === "amrap" ? DEFAULT_REPS : last.reps, weight: w != null ? String(w) : "", secs: "", kind: "drop", _new: true });
+      e.same = false;
+      return next;
+    }),
+    // A warm-up set at the start: about half the first working weight.
+    addWarmup: (d, k) => update((next) => {
+      const e = exOf(next, d, k); if (!e || e.rows.length >= 20) return next;
+      e.rows.forEach((r) => { delete r._new; });
+      const first = e.rows.find((r) => !r.kind) || e.rows[0] || { reps: DEFAULT_REPS, weight: "" };
+      const w = first.weight ? warmupWeight(first.weight, unit) : null;
+      e.rows.unshift({ _k: mkKey("s"), reps: first.reps || "10", weight: w != null ? String(w) : "", secs: "", kind: "warmup", _new: true });
+      e.same = false;
+      return next;
+    }),
+    setRest: (d, k, secs) => update((next) => { const e = exOf(next, d, k); if (e) e.rest = secs || null; return next; }),
     remove: (d, k) => update((next) => { next[d].exercises = next[d].exercises.filter((e) => e._key !== k); return next; }),
     reorder: (d, from, to) => update((next) => { next[d].exercises = arrayMove(next[d].exercises, from, to); return next; }),
   };
@@ -349,6 +380,7 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
                 <ExerciseCard key={ex._key} ex={ex} index={i} unit={unit} firstName={firstName} history={history} open={openKey === ex._key}
                   ss={ss[i]} hasNext={i < day.exercises.length - 1} nextName={day.exercises[i + 1]?.name}
                   onMode={(m) => act.setMode(dayKey, ex._key, m)} onLinkNext={() => act.linkNext(dayKey, ex._key)} onUnlink={() => act.unlink(dayKey, ex._key)}
+                  onKind={(ri, kind) => act.setKind(dayKey, ex._key, ri, kind)} onAddDrop={() => act.addDrop(dayKey, ex._key)} onAddWarmup={() => act.addWarmup(dayKey, ex._key)} onRest={(secs) => act.setRest(dayKey, ex._key, secs)}
                   onToggle={() => setOpenKey(openKey === ex._key ? null : ex._key)}
                   onRename={(v) => act.rename(dayKey, ex._key, v)} onNote={(v) => act.note(dayKey, ex._key, v)}
                   onRow={(ri, f, v) => act.setRow(dayKey, ex._key, ri, f, v)} onAddSet={() => act.addSet(dayKey, ex._key)} onRemoveSet={(ri) => act.removeSet(dayKey, ex._key, ri)}
@@ -363,14 +395,17 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
   );
 }
 
-function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, nextName, onToggle, onRename, onNote, onRow, onAddSet, onRemoveSet, onSame, onRemove, onMode, onLinkNext, onUnlink }) {
+function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, nextName, onToggle, onRename, onNote, onRow, onAddSet, onRemoveSet, onSame, onRemove, onMode, onLinkNext, onUnlink, onKind, onAddDrop, onAddWarmup, onRest }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ex._key });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const timed = ex.mode === "time";
-  const list = ex.rows.map((r) => ({ reps: r.reps, weight: r.weight, secs: parseDuration(r.secs) }));
+  const list = ex.rows.map((r) => ({ reps: r.reps, weight: r.weight, secs: parseDuration(r.secs), kind: r.kind || undefined }));
   const noWeight = !timed && ex.rows.every((r) => !r.weight);
   const ssCls = ss ? `ss ${ss.pos === 1 ? "ss-first" : ""} ${ss.pos === ss.size ? "ss-last" : ""}` : "";
-  const ssChip = ss ? <span className="pe-ss" title={`Superset ${ss.letter}: do these back to back, then rest`}>{ss.letter}{ss.pos}</span> : null;
+  const ssChip = ss ? <span className="pe-ss" title={`${groupName(ss.size)} ${ss.letter}: do these back to back, then rest`}>{ss.letter}{ss.pos}</span> : null;
+  // Working sets are numbered 1, 2, 3; warm-ups show W and drop sets D.
+  let working = 0;
+  const setLabel = ex.rows.map((r) => (r.kind === "warmup" || r.kind === "drop" ? SET_KINDS[r.kind].short : String(++working)));
   const last = React.useMemo(() => (history && ex.name ? lastSetsFor(history, ex.name) : null), [history, ex.name]);
   const grip = <span className="pe-grip" {...attributes} {...listeners} aria-label={`Drag ${ex.name || "exercise"} to reorder`}><Icon.Grip /></span>;
 
@@ -381,7 +416,7 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
         <button type="button" className="pe-cardhit" onClick={onToggle} aria-expanded={false}>
           <span className="pe-cardtext">
             <b>{ssChip}{ex.name || <em>Unnamed exercise</em>}{timed && <span className="pe-timed" aria-label="timed"><Icon.Clock size={12} /></span>}</b>
-            <span>{setsLine(list, unit, ex.mode)}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}</span>
+            <span>{setsLine(list, unit, ex.mode)}{ex.rest ? ` · rest ${restLabel(ex.rest)}` : ""}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}</span>
           </span>
           <Icon.Down size={16} />
         </button>
@@ -406,10 +441,20 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
       <div className="pe-sets" role="group" aria-label={`Sets for ${ex.name || "this exercise"}`}>
         <div className="pe-sethead"><span>Set</span><span>{timed ? "Time" : "Reps"}</span><span>{unit}</span><span /></div>
         {ex.rows.map((r, ri) => (
-          <div key={r._k} className={`pe-set ${r._new ? "new" : ""} ${ex.same && ri > 0 ? "follows" : ""}`}>
-            <span className="pe-setno">{ri + 1}</span>
+          <div key={r._k} className={`pe-set ${r._new ? "new" : ""} ${ex.same && ri > 0 && !r.kind ? "follows" : ""} ${r.kind ? `kind-${r.kind}` : ""}`}>
+            <label className={`pe-setno ${r.kind ? `kind-${r.kind}` : ""}`} title={r.kind ? SET_KINDS[r.kind].hint : "Tap to make this a warm-up, drop set or AMRAP"}>
+              {r.kind === "amrap" ? "A" : setLabel[ri]}
+              <select value={r.kind || ""} onChange={(e) => onKind(ri, e.target.value || null)} aria-label={`Set ${ri + 1} type`}>
+                <option value="">Normal set</option>
+                <option value="warmup">Warm-up</option>
+                <option value="drop">Drop set</option>
+                {!timed && <option value="amrap">AMRAP (as many as possible)</option>}
+              </select>
+            </label>
             {timed
               ? <input className="pe-in" inputMode="numeric" value={r.secs || ""} placeholder="00:45" onChange={(e) => onRow(ri, "secs", e.target.value)} onBlur={(e) => { const t = tidyDuration(e.target.value); if (t && t !== e.target.value) onRow(ri, "secs", t); }} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} time`} />
+              : r.kind === "amrap"
+              ? <span className="pe-in pe-max" title="As many reps as they can">max</span>
               : <input className="pe-in" inputMode="text" value={r.reps} placeholder={DEFAULT_REPS} onChange={(e) => onRow(ri, "reps", e.target.value)} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} reps`} />}
             <input className="pe-in" inputMode="decimal" value={r.weight} placeholder="—" onChange={(e) => onRow(ri, "weight", e.target.value)} onFocus={(e) => e.target.select()} aria-label={`Set ${ri + 1} weight in ${unit}`} />
             {ex.rows.length > 1
@@ -426,9 +471,25 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
         <button type="button" className={`pe-same ${ex.same ? "on" : ""}`} aria-pressed={ex.same} onClick={onSame} title="When on, typing in set 1 fills every set">Same for all{ex.same && <Icon.Check size={12} />}</button>
       </div>
 
+      {!timed && (
+        <div className="pe-extras">
+          <button type="button" className="pe-chipbtn" onClick={onAddDrop} disabled={ex.rows.length >= 20}><Icon.Plus size={13} />Drop set</button>
+          <button type="button" className="pe-chipbtn" onClick={onAddWarmup} disabled={ex.rows.length >= 20}><Icon.Plus size={13} />Warm-up</button>
+          <span className="pe-hint">Tap a set's number to make it a warm-up, drop set or AMRAP.</span>
+        </div>
+      )}
+
+      <div className="pe-rest" role="group" aria-label="Rest between sets">
+        <span>Rest between sets</span>
+        <div className="pe-restopts">
+          <button type="button" aria-pressed={!ex.rest} onClick={() => onRest(null)}>None</button>
+          {REST_OPTIONS.map((sec) => <button key={sec} type="button" aria-pressed={ex.rest === sec} onClick={() => onRest(sec)}>{sec < 120 ? `${sec}s` : `${sec / 60}m`}</button>)}
+        </div>
+      </div>
+
       <div className="pe-ssrow">
         {ss
-          ? <><span>Superset {ss.letter}: do {ss.size === 2 ? "both" : `all ${ss.size}`} back to back, then rest.</span><button type="button" className="pe-chipbtn" onClick={onUnlink}>Leave superset</button></>
+          ? <><span>{groupName(ss.size)} {ss.letter}: do {ss.size === 2 ? "both" : `all ${ss.size}`} back to back, then rest.</span><button type="button" className="pe-chipbtn" onClick={onUnlink}>Leave superset</button></>
           : hasNext
           ? <button type="button" className="pe-chipbtn" onClick={onLinkNext}><Icon.Link size={13} />Superset with {nextName ? nextName : "next"}</button>
           : null}
@@ -550,9 +611,9 @@ function ClientPreview({ dayKey, day, unit, firstName, forClient }) {
             <b>{e.name}</b>
             {e.coachNote && <span className="pe-pv-note">{e.coachNote}</span>}
             {e.rows.map((r, i) => (
-              <div key={r._k} className="pe-pv-set"><i /><small>Set {i + 1}</small>{e.mode === "time"
+              <div key={r._k} className="pe-pv-set"><i /><small>{r.kind ? SET_KINDS[r.kind].label : `Set ${i + 1}`}</small>{e.mode === "time"
                 ? <><b>{formatDuration(parseDuration(r.secs)) || "—"}</b><small>timer</small></>
-                : <><b>{r.reps || DEFAULT_REPS}</b><small>reps</small></>}{r.weight && <><b>{r.weight}</b><small>{unit}</small></>}</div>
+                : <><b>{r.kind === "amrap" ? "max" : r.reps || DEFAULT_REPS}</b><small>reps</small></>}{r.weight && <><b>{r.weight}</b><small>{unit}</small></>}</div>
             ))}
           </div>
         ))}
