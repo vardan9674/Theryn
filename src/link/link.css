@@ -239,3 +239,21 @@ button.lk-badge:active { transform: scale(0.92); }
 .lk-ex.ss, .lk-fold.ss { border-left: 3px solid rgba(143, 184, 255, 0.55); }
 .lk-ex.ss:not(.ss-last), .lk-fold.ss:not(.ss-last) { margin-bottom: -10px; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
 .lk-ex.ss:not(.ss-first), .lk-fold.ss:not(.ss-first) { border-top-left-radius: 6px; border-top-right-radius: 6px; }
+
+/* ── Set types on the link: warm-up, drop, AMRAP ────────────────────────── */
+.lk-kind { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; }
+.lk-kind.warmup { color: #9DB8F5; }
+.lk-kind.drop { color: #F5A742; }
+.lk-kind.amrap { color: var(--cx-a); }
+.lk-srow.kind-drop { margin-left: 14px; }
+.lk-srow.kind-warmup { opacity: 0.9; }
+
+/* ── Rest countdown above Finish ─────────────────────────────────────────── */
+.lk-rest { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 10px 12px; border-radius: 14px; background: #141A06; border: 1px solid #3A4D00; }
+.lk-rest-ring { flex: none; width: 28px; height: 28px; border-radius: 50%; background: conic-gradient(var(--cx-a) var(--p, 0%), #2C3A08 0); }
+.lk-rest-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.lk-rest-text b { font-size: 17px; font-variant-numeric: tabular-nums; color: var(--cx-tx); }
+.lk-rest-text small { font-size: 12px; color: var(--cx-tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lk-rest-skip { flex: none; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A4D00; background: none; color: var(--cx-a); font-family: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.lk-kind { white-space: nowrap; }
+.lk-srow-label:has(.lk-kind) { width: auto; min-width: 36px; }

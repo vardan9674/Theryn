@@ -59,6 +59,7 @@ export function normalizeExercise(ex) {
     ? ex.setList.slice(0, 20).map((s) => {
         const o = { reps: s?.reps != null && s.reps !== "" ? String(s.reps) : null, weight: s?.weight != null && s.weight !== "" && Number.isFinite(Number(s.weight)) ? Number(s.weight) : null };
         if (s?.secs != null) o.secs = secsOf(s.secs);
+        if (["warmup", "drop", "amrap"].includes(s?.kind)) o.kind = s.kind;
         return o;
       })
     : null;
@@ -73,6 +74,7 @@ export function normalizeExercise(ex) {
   // Timed exercises (planks, runs) and supersets; absent on everything else.
   if (ex.mode === "time" || ex.secs != null || (setList || []).some((s) => s.secs != null)) { out.mode = "time"; out.secs = secsOf(ex.secs); }
   if (ex.superset) out.superset = String(ex.superset);
+  if (Number(ex.rest) > 0) out.rest = Math.round(Number(ex.rest));
   return out;
 }
 
@@ -186,7 +188,7 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       };
       // What the coach asked for, set by set, when the sets differ.
       if (Array.isArray(e.setList) && e.setList.length) {
-        out.plan_sets = e.setList.map((s) => { const o = {}; if (s.reps) o.r = String(s.reps); if (s.secs != null) o.s = s.secs; if (s.weight != null) o.w = s.weight; return o; });
+        out.plan_sets = e.setList.map((s) => { const o = {}; if (s.kind) o.k = s.kind; if (s.reps) o.r = String(s.reps); if (s.secs != null) o.s = s.secs; if (s.weight != null) o.w = s.weight; return o; });
       }
       if (timed) { out.mode = "time"; if (e.secs != null) out.secs_target = e.secs; }
       if (e.superset) out.superset = e.superset;

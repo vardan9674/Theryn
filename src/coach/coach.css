@@ -767,3 +767,20 @@
 @media (prefers-reduced-motion: reduce) {
   .pe-save.dirty, .pe-card.open, .pe-card.new, .pe-set.new { animation: none; }
 }
+
+/* ── Set types: the set number is a picker (normal / warm-up / drop / AMRAP) ── */
+.pe-setno { position: relative; cursor: pointer; }
+.pe-setno select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.pe-setno::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--cx-bd2); }
+.pe-setno.kind-warmup { background: rgba(157, 184, 245, 0.16); color: #9DB8F5; }
+.pe-setno.kind-drop { background: rgba(245, 167, 66, 0.16); color: #F5A742; }
+.pe-setno.kind-amrap { background: rgba(200, 255, 0, 0.14); color: var(--cx-a); }
+.pe-set.kind-drop { padding-left: 10px; }
+.pe-max { display: flex; align-items: center; justify-content: center; color: var(--cx-a); font-weight: 800; }
+.pe-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pe-extras .pe-chipbtn { display: inline-flex; align-items: center; gap: 5px; }
+.pe-extras .pe-hint { flex: 1 1 100%; }
+.pe-rest { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--cx-tx2); }
+.pe-restopts { display: flex; flex-wrap: wrap; gap: 6px; }
+.pe-restopts button { min-height: 32px; min-width: 44px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); color: var(--cx-tx2); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pe-restopts button[aria-pressed="true"] { border-color: var(--cx-a); color: var(--cx-a); background: rgba(200, 255, 0, 0.08); }

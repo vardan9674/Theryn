@@ -32,12 +32,13 @@ export function templateDaysToPlan(days, units) {
         const o = { name: e.exercise_name, sets: e.target_sets, reps: e.target_reps };
         if (e.target_weight != null) o.weight = w(e.target_weight);
         if (Array.isArray(e.set_list) && e.set_list.length) {
-          o.setList = e.set_list.map((s) => { const x = {}; if (s?.reps) x.reps = String(s.reps); if (s?.secs != null) x.secs = Number(s.secs); if (s?.weight != null) x.weight = w(s.weight); return x; });
+          o.setList = e.set_list.map((s) => { const x = {}; if (["warmup", "drop", "amrap"].includes(s?.kind)) x.kind = s.kind; if (s?.reps) x.reps = String(s.reps); if (s?.secs != null) x.secs = Number(s.secs); if (s?.weight != null) x.weight = w(s.weight); return x; });
         }
         // Timed exercises and supersets.
         const extra = e.extra && typeof e.extra === "object" ? e.extra : null;
         if (extra?.mode === "time") { o.mode = "time"; if (extra.secs != null) o.secs = Number(extra.secs); delete o.reps; }
         if (extra?.superset) o.superset = String(extra.superset);
+        if (Number(extra?.rest) > 0) o.rest = Number(extra.rest);
         if (e.notes) o.coachNote = e.notes;
         return o;
       }),
@@ -71,7 +72,7 @@ export function planToTemplateDays(plan, units, previous = []) {
         target_weight: o.weight ?? null,
         set_list: Array.isArray(o.setList) && o.setList.length ? o.setList : null,
         weight_unit: hasWeight ? unit : null,
-        extra: o.mode === "time" || o.superset ? { ...(o.mode === "time" ? { mode: "time", ...(o.secs != null ? { secs: o.secs } : {}) } : {}), ...(o.superset ? { superset: o.superset } : {}) } : null,
+        extra: o.mode === "time" || o.superset || o.rest ? { ...(o.mode === "time" ? { mode: "time", ...(o.secs != null ? { secs: o.secs } : {}) } : {}), ...(o.superset ? { superset: o.superset } : {}), ...(o.rest ? { rest: o.rest } : {}) } : null,
         notes: o.coachNote || "",
       };
     });

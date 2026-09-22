@@ -10,7 +10,21 @@ import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
-import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock } from "../coach/lib/exerciseKinds.js";
+import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel } from "../coach/lib/exerciseKinds.js";
+import { planSets, setsLine } from "../coach/lib/planSets.js";
+
+/** "Set 1", "Set 2"… for working sets; "Warm-up", "Drop", "AMRAP" for the rest. */
+function setNames(e) {
+  const full = e.sets || 1;
+  let n = 0;
+  return Array.from({ length: full }, (_, i) => {
+    const k = e.setList?.[i]?.kind;
+    if (k === "warmup") return "Warm-up";
+    if (k === "drop") return "Drop";
+    n += 1;
+    return k === "amrap" ? "AMRAP" : `Set ${n}`;
+  });
+}
 
 const APP_URL = "https://theryn.fit";
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -151,6 +165,13 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
 const FEELS = [{ id: "easy", label: "Easy" }, { id: "medium", label: "Medium" }, { id: "hard", label: "Hard" }];
 /** "3 sets × 8-10 reps · 40 kg", or "3 sets · 12/10/8 reps · 60–70 kg" when the sets differ. */
 function planMeta(e, full, unit) {
+  const rest = e.rest ? `rest ${restLabel(e.rest)}` : "";
+  // With warm-up, drop or AMRAP sets, the same wording the coach sees:
+  // "2 sets · 5 reps · 60–80 kg · 1 warm-up · drop set".
+  const base = e.mode !== "time" && e.setList?.some((x) => x.kind) ? setsLine(planSets(e), unit) : planMetaBase(e, full, unit);
+  return [base, rest].filter(Boolean).join(" · ");
+}
+function planMetaBase(e, full, unit) {
   const setWord = `${full} ${full === 1 ? "set" : "sets"}`;
   if (e.mode === "time") {
     const ts = (e.setList?.length ? e.setList.map((x) => x.secs ?? e.secs) : [e.secs]).filter((x) => x != null);
@@ -303,13 +324,36 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
     const t = timer; if (!t) return;
     const secs = Math.max(1, Math.round(auto && t.target ? t.target : elapsedOf(t)));
     setSetValue(t.i, t.si, "s", timerClock(secs));
-    setSets(t.i, Math.max(ticks[t.i] || 0, t.si + 1));
+    const doneNow = Math.max(ticks[t.i] || 0, t.si + 1);
+    setSets(t.i, doneNow);
+    maybeRest(t.i, doneNow);
     if (auto) cue();
     setTimer(null); keepAwake(false);
   };
   // Reaching zero finishes the set on its own.
   React.useEffect(() => { if (timer?.startedAt && timer.target && elapsedOf(timer) >= timer.target) finishTimer(true); });
   const ss = React.useMemo(() => supersetInfo(today.exercises), [today.exercises]);
+
+  // ── Rest between sets ───────────────────────────────────────────────────
+  // After ticking a set of an exercise with a rest time, a countdown shows
+  // above Finish. Not before a drop set (no rest), and not between the
+  // exercises of a superset (rest comes after the last one).
+  const [rest, setRest] = React.useState(null); // { until, total, label }
+  React.useEffect(() => { if (!rest) return undefined; const id = setInterval(() => redraw((x) => x + 1), 250); return () => clearInterval(id); }, [rest]);
+  const restLeft = rest ? Math.max(0, (rest.until - Date.now()) / 1000) : 0;
+  React.useEffect(() => { if (rest && restLeft <= 0) { cue(); setRest(null); } });
+  const maybeRest = (i, doneNow) => {
+    const e = today.exercises[i]; const full = e.sets || 1;
+    if (!e.rest || controlledTicks) return;
+    const g = ss[i];
+    if (g && g.pos < g.size) return;                                      // mid-superset: straight to the next exercise
+    if (doneNow < full && e.setList?.[doneNow]?.kind === "drop") return;  // a drop set follows with no rest
+    if (doneNow >= full && i >= today.exercises.length - 1) return;       // that was the last set of the day
+    try { if (!audioRef.current) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioRef.current = new AC(); } audioRef.current?.resume?.(); } catch { /* no sound */ }
+    const next = doneNow < full ? `${e.name}, ${setNames(e)[doneNow].replace(/^Set/, "set")}` : today.exercises[i + 1]?.name || "";
+    setRest({ until: Date.now() + e.rest * 1000, total: e.rest, label: next });
+  };
+  const tickSet = (i, n) => { const before = ticks[i] || 0; setSets(i, n); if (n > before) maybeRest(i, n); else setRest(null); };
 
   async function send() {
     setBusy(true); setError(null);
@@ -409,8 +453,8 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               const summary = rows.filter((x) => x.isDone).map((x) => ({ text: timed
                 ? (formatDuration(parseDuration(x.s) ?? planS(x.si)) || "done")
                 : `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}`, changed: x.changed }));
-              const chip = ss[i] ? <span className="lk-ss" title={`Superset ${ss[i].letter}`}>{ss[i].letter}{ss[i].pos}</span> : null;
-              const ssHead = ss[i]?.pos === 1 ? <div className="lk-ssbar" key={`ss${i}`}><b>Superset {ss[i].letter}</b><span>Do {ss[i].size === 2 ? "both" : `all ${ss[i].size}`} back to back, then rest.</span></div> : null;
+              const chip = ss[i] ? <span className="lk-ss" title={`${groupName(ss[i].size)} ${ss[i].letter}`}>{ss[i].letter}{ss[i].pos}</span> : null;
+              const ssHead = ss[i]?.pos === 1 ? <div className="lk-ssbar" key={`ss${i}`}><b>{groupName(ss[i].size)} {ss[i].letter}</b><span>Do {ss[i].size === 2 ? "both" : `all ${ss[i].size}`} back to back, then rest.</span></div> : null;
               const ssCls = ss[i] ? `ss ${ss[i].pos === 1 ? "ss-first" : ""} ${ss[i].pos === ss[i].size ? "ss-last" : ""}` : "";
               const folded = !upcoming && (done || skipped[i]) && !reopened[i];
 
@@ -447,13 +491,16 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                   </div>
 
                   {rows.map((x) => {
-                    const tick = <><span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span><span className="lk-srow-label"><span><span className="w">Set </span>{x.si + 1}</span>{x.changed && <em>edited</em>}</span></>;
+                    const kind = e.setList?.[x.si]?.kind || null;
+                    const label = kind ? setNames(e)[x.si] : null;
+                    const setNo = setNames(e)[x.si].replace(/^Set /, "");
+                    const tick = <><span className="lk-srow-circle">{x.isDone && <Icon.Check size={16} />}</span><span className="lk-srow-label">{label ? <span className={`lk-kind ${kind}`} title={SET_KINDS[kind].hint}>{label}</span> : <span><span className="w">Set </span>{setNo}</span>}{x.changed && <em>edited</em>}</span></>;
                     return (
-                      <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""}`}>
+                      <div key={x.si} className={`lk-srow ${x.isDone ? "on" : ""} ${x.changed ? "changed" : ""} ${kind ? `kind-${kind}` : ""}`}>
                         {/* Only this part ticks. The number cells never do, so reaching for a value can't tick the set. */}
                         {upcoming
                           ? <span className="lk-srow-tick">{tick}</span>
-                          : <button type="button" className="lk-srow-tick" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => setSets(i, x.si + 1 === n ? x.si : x.si + 1)}>{tick}</button>}
+                          : <button type="button" className="lk-srow-tick" aria-pressed={x.isDone} aria-label={`Set ${x.si + 1}, ${x.isDone ? "done, tap to undo" : "tap when done"}`} onClick={() => tickSet(i, x.si + 1 === n ? x.si : x.si + 1)}>{tick}</button>}
                         {timed ? (() => {
                           const active = timer && timer.i === i && timer.si === x.si;
                           const left = active ? (timer.target ? Math.max(0, timer.target - elapsedOf(timer)) : elapsedOf(timer)) : null;
@@ -474,7 +521,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                           </>;
                         })() : <>
                         <label className="lk-srow-cell">
-                          <input className="lk-sin" inputMode="numeric" placeholder={planR(x.si) || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${planR(x.si) ? `, plan ${planR(x.si)}` : ""}`} />
+                          <input className="lk-sin" inputMode="numeric" placeholder={kind === "amrap" ? "max" : planR(x.si) || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${planR(x.si) ? `, plan ${planR(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">reps</span>
                         </label>
                         <label className="lk-srow-cell">
@@ -520,6 +567,13 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
       </main>
       {!today.isRest && !upcoming && (
         <div className="lk-footer"><div className="lk-footer-inner">
+          {rest && (
+            <div className="lk-rest" role="status" aria-live="polite">
+              <span className="lk-rest-ring" style={{ "--p": `${Math.round((1 - restLeft / rest.total) * 100)}%` }} aria-hidden="true" />
+              <span className="lk-rest-text"><b>Rest {timerClock(restLeft)}</b>{rest.label && <small>Next: {rest.label}</small>}</span>
+              <button type="button" className="lk-rest-skip" onClick={() => setRest(null)}>Skip</button>
+            </div>
+          )}
           <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>

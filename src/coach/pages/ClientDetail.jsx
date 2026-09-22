@@ -314,7 +314,7 @@ function ProgressTab({ data, row, actions }) {
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                               {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
-                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Fix numbers to correct it." : s.changed ? "Different from the plan" : undefined}>{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
+                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Fix numbers to correct it." : s.changed ? "Different from the plan" : undefined}>{s.k === "warmup" ? "W " : s.k === "drop" ? "D " : ""}{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
                             </span>
                           : <>
                               <b style={{ color: e.skipped ? "var(--cx-mu)" : "var(--cx-tx)" }}>{e.done}{e.planned ? `/${e.planned}` : ""}</b> sets

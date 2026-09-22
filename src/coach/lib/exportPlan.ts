@@ -3,7 +3,7 @@
 // The row-building is pure and unit-tested; the file writing uses SheetJS.
 import type { Templates, ExerciseItem } from "../../hooks/useRoutine";
 import type { WorkoutHistoryEntry } from "../../hooks/useWorkouts";
-import { formatDuration, supersetInfo } from "./exerciseKinds.js";
+import { formatDuration, supersetInfo, setKindsSummary, restLabel } from "./exerciseKinds.js";
 
 export interface ExportOptions {
   /** Fill blank Weight cells with the heaviest weight lifted in the most recent session containing that exercise. */
@@ -94,7 +94,10 @@ export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}):
         const last = lastLiftedWeight(opts.history, name);
         if (last != null) weight = last;
       }
-      const row: (string | number)[] = [i + 1, ssi[i] ? `${ssi[i].letter}${ssi[i].pos} · ${name}` : name, exField(ex, "sets"), exField(ex, "reps"), weight, exField(ex, "coachNote")];
+      const x: any = typeof ex === "string" ? {} : ex;
+      const extras = [setKindsSummary(x.setList || []), Number(x.rest) > 0 ? `rest ${restLabel(x.rest)}` : ""].filter(Boolean).join("; ");
+      const note = [exField(ex, "coachNote"), extras].filter(Boolean).join(" · ");
+      const row: (string | number)[] = [i + 1, ssi[i] ? `${ssi[i].letter}${ssi[i].pos} · ${name}` : name, exField(ex, "sets"), exField(ex, "reps"), weight, note];
       if (opts.blankColumns) row.push("", "", "", "");
       rows.push(row);
     });
