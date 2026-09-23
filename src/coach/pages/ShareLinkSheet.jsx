@@ -56,6 +56,20 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     try { await navigator.clipboard.writeText(url); toast("Link copied"); }
     catch { toast("Could not copy. Use Share instead.", "error"); }
   }
+  async function copyCode() {
+    try { await navigator.clipboard.writeText(state.link.connect_code); toast("Code copied"); }
+    catch { toast("Could not copy the code", "error"); }
+  }
+  async function newCode() {
+    if (typeof data.resetConnectCode !== "function") return;
+    setBusy(true);
+    try {
+      const code = await data.resetConnectCode(client.athlete_id);
+      setState((s) => ({ ...s, link: { ...s.link, connect_code: code, connect_tries: 0 } }));
+      toast("New code. The old one stopped working.");
+    } catch (e) { toast(e.message || "Could not make a new code", "error"); }
+    finally { setBusy(false); }
+  }
   async function share() {
     try {
       if (data.isNative) { const { Share } = await import("@capacitor/share"); await Share.share({ text }); }
@@ -104,6 +118,26 @@ export default function ShareLinkSheet({ open, onClose, client }) {
           </div>
           <div className="cx-card cx-card-pad" style={{ fontSize: 13, color: "var(--cx-tx2)", lineHeight: 1.45 }}>
             <span className="cx-muted">Message that goes with it</span><br />{text.replace(url, "").trim()}
+          </div>
+
+          {/* The second half of getting in: the link opens today, the code opens
+              the rest. Kept out of the message on purpose. */}
+          <div className="cx-col">
+            <div style={{ fontWeight: 700 }}>{state.link?.connected_at ? "Connected" : "Connect code"}</div>
+            {state.link?.connected_at ? (
+              <>
+                <div className="cx-small cx-muted">{state.link.connected_name || "They"} connected an account on {new Date(state.link.connected_at).toLocaleDateString("en-US", { day: "numeric", month: "long" })}. {first} can open every day of the plan and add their own sessions.{state.link.connected_email ? ` (${state.link.connected_email})` : ""}</div>
+              </>
+            ) : (
+              <>
+                <div className="cx-small cx-muted">Send this to {first} separately — a message, or read it out. With it they can open every day of the plan and add their own sessions. The link alone still only opens today.</div>
+                <div className="cx-row" style={{ minHeight: 48, borderRadius: 10, border: "1px solid var(--cx-bd2)", background: "var(--cx-bg)", padding: "6px 6px 6px 12px", gap: 10 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 800, letterSpacing: "0.22em" }}>{state.link?.connect_code || "—"}</span>
+                  {state.link?.connect_code && <Button size="sm" variant="soft" onClick={copyCode} style={{ color: "var(--cx-a)" }}>Copy</Button>}
+                </div>
+                <button type="button" className="cx-linkbtn cx-small" style={{ alignSelf: "flex-start" }} onClick={newCode} disabled={busy}>New code</button>
+              </>
+            )}
           </div>
 
           <div className="cx-col">

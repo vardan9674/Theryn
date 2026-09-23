@@ -41,6 +41,18 @@ export function generateToken() {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/**
+ * The code the coach sends on top of the link, so a forwarded link alone
+ * can't connect an account. Six characters from an alphabet with no O/0 or
+ * I/1 — it gets read out over the phone. Matches the database's own generator.
+ */
+export const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export function connectCode() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+}
+
 /** SHA-256 hex of the token, what the database stores. */
 export async function hashToken(token) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
@@ -221,6 +233,9 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       }
       if (timed) { out.mode = "time"; if (e.secs != null) out.secs_target = e.secs; }
       if (e.superset) out.superset = e.superset;
+      // Something the client added on top of the plan (a run, a swim). The
+      // coach's plan is untouched; their dashboard tags it as theirs.
+      if (e.addedByClient) out.added_by_client = true;
       if (typed.some((x) => x.r != null || x.w != null || x.s != null)) {
         out.sets = typed.map((x, s) => {
           const one = { n: s + 1, done: s < done };
