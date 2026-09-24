@@ -148,10 +148,15 @@ BEGIN
 END;
 $$;
 
--- It is a column default, so whoever inserts a link has to be able to run it.
+-- Connecting is for someone signed in, so anon never gets to call it. The
+-- explicit revokes matter: this project grants new functions to anon by
+-- default, which REVOKE ... FROM PUBLIC does not undo.
+-- gen_connect_code is a column default, so whoever inserts a link runs it.
 REVOKE ALL ON FUNCTION gen_connect_code() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION gen_connect_code() TO authenticated;
 REVOKE ALL ON FUNCTION link_connect(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION link_me(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION gen_connect_code() TO authenticated;
 GRANT EXECUTE ON FUNCTION link_connect(TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION link_me(TEXT) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION gen_connect_code() FROM anon;
+REVOKE EXECUTE ON FUNCTION link_connect(TEXT, TEXT) FROM anon;
