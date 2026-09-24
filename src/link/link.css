@@ -262,3 +262,33 @@ button.lk-badge:active { transform: scale(0.92); }
 .lk-morebtn { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; width: 100%; min-height: 52px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--cx-bd2); background: none; color: var(--cx-a); font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
 .lk-morebtn small { flex-basis: 100%; font-size: 12px; font-weight: 500; color: var(--cx-mu); }
 .lk-nb { white-space: nowrap; }
+
+/* ── Connecting an account ──────────────────────────────────────────────── */
+/* A day chip is a button once the client has connected. */
+button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.lk-day.picked { border: 1.5px solid var(--day, var(--cx-a)); background: var(--cx-s2); }
+.lk-weeknote .lk-connect { min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(200, 255, 0, 0.45); background: rgba(200, 255, 0, 0.1); color: var(--cx-a); font-size: 13px; font-weight: 700; cursor: pointer; }
+.lk-weeknote.joined span { display: inline-flex; align-items: center; gap: 5px; color: var(--cx-tx2); }
+.lk-weeknote.joined svg { color: var(--cx-a); }
+.lk-weeknote.joined .lk-linkbtn { min-height: 32px; font-size: 13px; }
+
+.lk-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.66); display: flex; align-items: flex-end; justify-content: center; padding: 0; }
+@media (min-width: 620px) { .lk-overlay { align-items: center; padding: 20px; } }
+.lk-sheet { position: relative; width: 100%; max-width: 480px; max-height: 92vh; overflow: auto; background: var(--cx-s1); border: 1px solid var(--cx-bd); border-radius: 16px 16px 0 0; padding: 22px 18px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 620px) { .lk-sheet { border-radius: 16px; } }
+.lk-sheet-x { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border: none; background: none; color: var(--cx-mu); border-radius: 50%; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.lk-sheet-h { margin: 0; padding-right: 40px; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; }
+.lk-sheet-p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--cx-tx2); }
+.lk-perks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lk-perks li { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 1.4; color: var(--cx-tx); }
+.lk-perks svg { color: var(--cx-a); flex: none; margin-top: 2px; }
+.lk-code { letter-spacing: 0.32em; text-transform: uppercase; font-size: 20px; text-align: center; }
+
+/* ── Their own exercises ────────────────────────────────────────────────── */
+.lk-addbtn { min-height: 52px; border-radius: 12px; border: 1px dashed var(--cx-bd2); background: none; color: var(--cx-tx2); font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; width: 100%; }
+.lk-addbtn:hover { border-color: var(--cx-a); color: var(--cx-tx); }
+.lk-addex { gap: 12px; }
+.lk-addrow { display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.lk-addex .lk-segment { height: 44px; }
+.lk-yours { margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8FB8FF; border: 1px solid rgba(143, 184, 255, 0.4); white-space: nowrap; }
+.lk-code::placeholder { letter-spacing: 0.12em; font-size: 16px; font-weight: 600; color: var(--cx-mu); }

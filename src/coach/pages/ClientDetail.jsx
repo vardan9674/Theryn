@@ -310,7 +310,7 @@ function ProgressTab({ data, row, actions }) {
                 <div className="cx-card-pad" style={{ paddingTop: 0 }}>
                   {w.exercises.map((e, i) => (
                     <div key={i} className="cx-exrow" style={{ alignItems: "flex-start", padding: "6px 0", opacity: e.skipped ? 0.55 : 1 }}>
-                      <span>{e.name}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
+                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
                       <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>

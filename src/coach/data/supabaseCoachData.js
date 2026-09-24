@@ -15,7 +15,7 @@ import {
   isManualId, manualIdOf, toClientId, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
-import { generateToken, hashToken, linkClientData } from "../lib/clientLinks.js";
+import { generateToken, hashToken, connectCode, linkClientData } from "../lib/clientLinks.js";
 import { convertPlan, normUnits } from "../lib/units.js";
 import { planTemplate, stampTemplate, manualPlanFromTemplate, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 import { isoDate } from "../lib/format.js";
@@ -444,7 +444,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
 
     async getClientLink(clientId) {
       const t = linkTarget(clientId);
-      let q = supabase.from("client_links").select("id, requested, opens, last_opened_at, submissions, created_at, label, token_hash").eq("coach_id", coachId).is("revoked_at", null);
+      let q = supabase.from("client_links").select("*").eq("coach_id", coachId).is("revoked_at", null);
       q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
       const { data, error } = await q.maybeSingle();
       if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
@@ -481,6 +481,16 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
       const { error } = await q;
       if (error) throw new Error(error.message);
+    },
+    // A fresh connect code: the old one stops working and wrong tries are forgiven.
+    async resetConnectCode(clientId) {
+      const t = linkTarget(clientId);
+      const code = connectCode();
+      let q = supabase.from("client_links").update({ connect_code: code, connect_tries: 0 }).eq("coach_id", coachId).is("revoked_at", null);
+      q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+      return code;
     },
     async updateClientLinkRequested(clientId, requested) {
       const t = linkTarget(clientId);

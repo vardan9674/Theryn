@@ -8,9 +8,9 @@ import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
-import { fetchLink as realFetch, submitLink as realSubmit } from "./linkApi.js";
+import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
-import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel } from "../coach/lib/exerciseKinds.js";
+import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
 
 /** "Set 1", "Set 2"… for working sets; "Warm-up", "Drop", "AMRAP" for the rest. */
@@ -30,6 +30,13 @@ const APP_URL = "https://theryn.fit";
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const isoToday = () => isoOf(new Date());
 const dateOf = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d, 12); };
+/** The date of "Mon".."Sun" in the week we're in now. */
+const weekIsoOf = (key, now = new Date()) => {
+  const mon = new Date(now); const js = mon.getDay();
+  mon.setDate(mon.getDate() - (js === 0 ? 6 : js - 1));
+  mon.setDate(mon.getDate() + Math.max(0, DAY_ORDER.indexOf(key)));
+  return isoOf(mon);
+};
 const clock = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
 /**
@@ -56,6 +63,12 @@ function linkStore(token) {
     last: (name) => read().last?.[String(name || "").toLowerCase()] || null,
     saveLast: (entries) => { const s = read(); const last = { ...(s.last || {}) }; for (const [k, v] of Object.entries(entries)) last[k] = v; const keep = Object.entries(last).sort(([, a], [, b]) => (a.date < b.date ? 1 : -1)).slice(0, 80); write({ ...s, last: Object.fromEntries(keep) }); },
     markSent: (date, info) => { const s = read(); const drafts = { ...s.drafts }; delete drafts[date]; write({ ...s, drafts, sent: keepRecent({ ...s.sent, [date]: info }) }); },
+    // Exercises the client added themselves for a day, on top of the coach's plan.
+    extras: (date) => read().extras?.[date] || [],
+    saveExtras: (date, list) => { const s = read(); write({ ...s, extras: keepRecent({ ...s.extras, [date]: list }) }); },
+    // The coach's code, kept only across the hop to Google and back.
+    pendingCode: () => read().code || null,
+    setPendingCode: (code) => { const s = read(); if (code) write({ ...s, code }); else { const { code: _drop, ...rest } = s; write(rest); } },
   };
 }
 
@@ -76,6 +89,10 @@ const weekRange = (d = new Date()) => {
 export default function LinkPage({ token, api }) {
   const fetchLink = api?.fetchLink || realFetch;
   const submitLink = api?.submitLink || realSubmit;
+  const fetchMe = api?.fetchMe || realMe;
+  const connectLink = api?.connectLink || realConnect;
+  const signIn = api?.signInWithGoogle || realSignIn;
+  const signOut = api?.signOutLink || realSignOut;
   const [state, setState] = React.useState({ loading: true, data: null, error: null });
   const [tab, setTab] = React.useState(() => (new URLSearchParams(window.location.search).get("tab") === "measurements" ? "measurements" : "workout"));
   const [sent, setSent] = React.useState(null); // { kind, summary }
@@ -83,6 +100,31 @@ export default function LinkPage({ token, api }) {
   // The client's own kg/lb, remembered on this phone. Until they pick, the plan's units.
   const [units, setUnitsState] = React.useState(() => linkStore(token).units());
   const setUnits = React.useCallback((u) => { setUnitsState(u); store.setUnits(u); }, [store]);
+  // Connecting is optional. Until they do, everything below behaves as before.
+  const [me, setMe] = React.useState(null);
+  const [connect, setConnect] = React.useState({ open: false, error: null, busy: false });
+  const [dayIso, setDayIso] = React.useState(null);        // a day they picked; null = today
+  const [extrasByDate, setExtrasByDate] = React.useState({}); // date → exercises they added
+
+  // Who is holding this link, and — coming back from Google with the coach's
+  // code — the last step of connecting.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        let m = await fetchMe(token);
+        const code = store.pendingCode();
+        if (m?.ok && m.signed_in && !m.you && code) {
+          const res = await connectLink(token, code);
+          store.setPendingCode(null);
+          if (res?.ok) m = await fetchMe(token);
+          else if (!cancelled) setConnect({ open: true, busy: false, error: connectError(res) });
+        }
+        if (!cancelled && m?.ok) setMe(m);
+      } catch { /* the page works whether or not this lands */ }
+    })();
+    return () => { cancelled = true; };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     let cancelled = false;
@@ -107,21 +149,71 @@ export default function LinkPage({ token, api }) {
   const clientUnits = units || coachUnits;
   const d = { ...state.data, plan: convertPlan(state.data.plan, clientUnits, { assumeFrom: coachUnits }), unit_system: clientUnits, onUnits: setUnits };
   d.doneDates = [...(Array.isArray(state.data.done_dates) ? state.data.done_dates : []), ...store.doneDates()];
-  const today = todayFromPlan(d.plan);
+  // Connected clients can open any day of the week; everyone else gets today.
+  const joined = Boolean(me?.you);
+  const date = (joined && dayIso) || isoToday();
+  const planDay = todayFromPlan(d.plan, dateOf(date));
+  const extras = extrasByDate[date] ?? store.extras(date);
+  const setExtras = (list) => { setExtrasByDate((m) => ({ ...m, [date]: list })); store.saveExtras(date, list); };
+  // What they added sits after the coach's exercises, and turns a rest day into
+  // a day with something on it.
+  const today = extras.length
+    ? { ...planDay, isRest: false, type: planDay.isRest ? "Extra" : planDay.type, exercises: [...planDay.exercises, ...extras.map((x) => ({ ...x, addedByClient: true }))] }
+    : planDay;
 
-  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} onBack={() => { setSent(null); setTab("workout"); window.scrollTo(0, 0); }} />;
+  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} joined={joined} onBack={() => { setSent(null); setTab("workout"); setDayIso(null); window.scrollTo(0, 0); }} />;
+
+  async function startConnect(code) {
+    setConnect((c) => ({ ...c, busy: true, error: null }));
+    try {
+      store.setPendingCode(code);
+      await signIn(token);
+      // The real flow leaves for Google here. The preview comes straight back.
+      const m = await fetchMe(token);
+      if (m?.signed_in) {
+        const res = await connectLink(token, code);
+        store.setPendingCode(null);
+        if (res?.ok) { setMe(await fetchMe(token)); setConnect({ open: false, busy: false, error: null }); return; }
+        setConnect({ open: true, busy: false, error: connectError(res) });
+      }
+    } catch (e) {
+      store.setPendingCode(null);
+      setConnect({ open: true, busy: false, error: e.message || "Could not connect. Try again." });
+    }
+  }
 
   return (
     <div className="lk-page cx-app">
       <div className="lk-tabs" role="tablist">
-        <button type="button" role="tab" className="lk-tab" aria-selected={tab === "workout"} onClick={() => setTab("workout")}>Today's workout</button>
+        <button type="button" role="tab" className="lk-tab" aria-selected={tab === "workout"} onClick={() => setTab("workout")}>{joined ? "Workouts" : "Today's workout"}</button>
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
       {tab === "workout"
-        ? <WorkoutTab key={clientUnits} d={d} today={today} store={store} onSubmit={(payload) => submitLink(token, "workout", payload)} onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+        ? <WorkoutTab key={`${clientUnits}-${date}`} d={d} today={today} date={date} store={store}
+            joined={joined} me={me}
+            /* Only once the server has answered: an older backend simply has no Connect. */
+            onConnect={me ? () => setConnect({ open: true, busy: false, error: null }) : null}
+            onSignOut={async () => { await signOut(); setMe(await fetchMe(token)); setDayIso(null); }}
+            onPickDay={joined ? (iso) => { setDayIso(iso === isoToday() ? null : iso); window.scrollTo(0, 0); } : null}
+            extras={extras} onExtras={joined ? setExtras : null}
+            onSubmit={(payload) => submitLink(token, "workout", payload)}
+            onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
+      {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
+        onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
     </div>
   );
+}
+
+/** Why a connect attempt was turned down, in the client's words. */
+function connectError(res) {
+  const r = res?.reason;
+  if (r === "code") return `That code doesn't match. Check it with your coach${res?.left ? ` — ${res.left} ${res.left === 1 ? "try" : "tries"} left` : ""}.`;
+  if (r === "taken") return "This link is already connected to another account. Ask your coach for a new link.";
+  if (r === "locked") return "Too many wrong codes. Ask your coach for a new code.";
+  if (r === "revoked") return "This link isn't active any more. Ask your coach for a new one.";
+  if (r === "signin") return "Sign in with Google didn't finish. Try again.";
+  return "Could not connect. Try again in a moment.";
 }
 
 // Marketing renders the real link UI using local sample data only.
@@ -225,8 +317,96 @@ function Byline({ coach, units, onUnits }) {
   );
 }
 
+// ── Connecting an account ──────────────────────────────────────────────────
+/**
+ * The link alone opens today's workout. Connecting a Google account — with the
+ * code the coach sends separately — opens the rest of the week and lets them
+ * add their own sessions. A forwarded link without the code gets nowhere.
+ */
+function ConnectSheet({ first, coach, busy, error, locked, onClose, onConnect }) {
+  const [code, setCode] = React.useState("");
+  const clean = code.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
+  return (
+    <div className="lk-overlay" role="dialog" aria-modal="true" aria-label="Connect your account" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="lk-sheet">
+        <button type="button" className="lk-sheet-x" aria-label="Close" onClick={onClose}><Icon.Close size={18} /></button>
+        <h2 className="lk-sheet-h">Connect your account</h2>
+        <p className="lk-sheet-p">{first ? `${first}, connecting` : "Connecting"} keeps this the same page — it just opens up more of it.</p>
+        <ul className="lk-perks">
+          <li><Icon.Check size={16} /><span>Every day of your plan, not only today</span></li>
+          <li><Icon.Check size={16} /><span>Add your own sessions — a run, a swim, anything extra</span></li>
+          <li><Icon.Check size={16} /><span>Your history and streak stay with you</span></li>
+        </ul>
+        <label className="lk-field">
+          <span>Code from {coach ? `Coach ${coach}` : "your coach"}</span>
+          <input className="lk-input lk-code" value={clean} onChange={(e) => setCode(e.target.value)} placeholder="ABC123"
+            autoCapitalize="characters" autoCorrect="off" spellCheck="false" inputMode="text" aria-label="Code from your coach" />
+        </label>
+        {error && <div className="lk-error" role="alert">{error}</div>}
+        <button type="button" className="lk-send" disabled={busy || locked || clean.length < 6} onClick={() => onConnect(clean)}>
+          {busy ? "Connecting…" : "Continue with Google"}
+        </button>
+        <small className="lk-small">Google only tells us your name and email, so your coach knows it's you. Ask your coach for the code if you don't have it.</small>
+      </div>
+    </div>
+  );
+}
+
+/** Adding something the coach didn't plan: a run, a swim, extra abs. */
+function AddExercise({ unit, dayLabel = "today", onAdd, onClose }) {
+  const [name, setName] = React.useState("");
+  const [timed, setTimed] = React.useState(false);
+  const [sets, setSets] = React.useState("3");
+  const [reps, setReps] = React.useState("10");
+  const [secs, setSecs] = React.useState("20:00");
+  const [weight, setWeight] = React.useState("");
+  // The name sets the shape: a run is one long timed set, a plank three short
+  // ones, a curl three sets of reps. All still editable.
+  const onName = (v) => {
+    setName(v);
+    if (!v.trim() || name.trim()) return;
+    const t = defaultMode(v) === "time";
+    setTimed(t);
+    if (!t) return;
+    const s = defaultSecs(v);
+    setSecs(durationInput(s));
+    setSets(s >= 300 ? "1" : "3");
+  };
+  const n = Math.min(20, Math.max(1, Number(sets) || 1));
+  const add = () => {
+    const nm = name.trim().slice(0, 60);
+    if (!nm) return;
+    onAdd(timed
+      ? { name: nm, sets: n, mode: "time", secs: parseDuration(secs) || 60 }
+      : { name: nm, sets: n, reps: reps.replace(/[^0-9–\-/]/g, "").slice(0, 12) || "10", ...(Number(weight) > 0 ? { weight: Number(weight) } : {}) });
+  };
+  return (
+    <div className="lk-card lk-addex">
+      <div className="lk-row"><span className="lk-eyebrow">Add your own</span><button type="button" className="lk-linkbtn" onClick={onClose}>Cancel</button></div>
+      <input className="lk-input" value={name} onChange={(e) => onName(e.target.value)} placeholder="What did you do? e.g. Treadmill run" aria-label="Exercise name" autoFocus />
+      <div className="lk-segment" role="group" aria-label="Reps or time">
+        <button type="button" aria-pressed={!timed} onClick={() => setTimed(false)}>Reps</button>
+        <button type="button" aria-pressed={timed} onClick={() => setTimed(true)}>Time</button>
+      </div>
+      <div className="lk-addrow">
+        <label className="lk-field"><span>Sets</span><input className="lk-input" inputMode="numeric" value={sets} onChange={(e) => setSets(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} aria-label="Sets" /></label>
+        {timed
+          ? <label className="lk-field"><span>Time each</span><input className="lk-input" inputMode="numeric" value={secs} onChange={(e) => setSecs(maskDuration(e.target.value))} onBlur={(e) => { const t = tidyDuration(e.target.value); if (t) setSecs(t); }} aria-label="Time for each set" /></label>
+          : <>
+            <label className="lk-field"><span>Reps</span><input className="lk-input" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/[^0-9–\-/]/g, "").slice(0, 12))} aria-label="Reps" /></label>
+            <label className="lk-field"><span>{unit}</span><input className="lk-input" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value.replace(/[^0-9.]/g, "").slice(0, 6))} placeholder="—" aria-label={`Weight in ${unit}`} /></label>
+          </>}
+      </div>
+      <button type="button" className="lk-send" disabled={!name.trim()} onClick={add}>Add to {dayLabel}</button>
+    </div>
+  );
+}
+
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks }) {
+function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks,
+  joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null }) {
+  const [adding, setAdding] = React.useState(false);
+  const planCount = today.exercises.length - extras.length; // the coach's, before theirs
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
@@ -278,6 +458,14 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
     setReopened((o) => ({ ...o, [i]: false }));
   };
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
+  // Taking one of their own exercises back out. Their other added exercises
+  // shift down, so what was ticked on those is cleared with it; the coach's
+  // exercises keep everything.
+  const removeExtra = (idx) => {
+    onExtras?.(extras.filter((_, k) => k !== idx));
+    const keepPlan = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => Number(k) < planCount));
+    setTicks(keepPlan); setLog(keepPlan); setSkipped(keepPlan); setReopened(keepPlan);
+  };
   // Typing only edits the number. Ticking is a separate tap, so reaching for a value never ticks a set.
   const setSetValue = (i, si, field, raw) => {
     const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : field === "s" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
@@ -403,7 +591,12 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               {DAY_ORDER.map((k) => {
                 const day = d.plan[k]; const t = day?.type && day.type !== "Rest" && (day.exercises || []).length ? day.type : "Rest";
                 const c = t === "Rest" ? undefined : TYPE_COLORS[t];
-                return <div key={k} className={`lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""}`} style={c ? { "--day": c } : undefined}><span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}</div>;
+                const cls = `lk-day ${t === "Rest" ? "rest" : ""} ${k === realToday ? "today" : ""} ${onPickDay && k === today.key ? "picked" : ""}`;
+                const inner = <><span>{k}</span><i /><b>{t}</b>{k === realToday && <small>Today</small>}</>;
+                // Connected clients can open any day; everyone else sees the shape of the week.
+                return onPickDay
+                  ? <button type="button" key={k} className={cls} style={c ? { "--day": c } : undefined} aria-pressed={k === today.key} aria-label={`${DAY_LONG[k]}, ${t}`} onClick={() => onPickDay(weekIsoOf(k))}>{inner}</button>
+                  : <div key={k} className={cls} style={c ? { "--day": c } : undefined}>{inner}</div>;
               })}
             </div>
             {isToday && st.days.some((x) => x.state === "done") && (
@@ -412,7 +605,17 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                 {st.days.slice(-7).map((x) => <i key={x.iso} className={x.state} />)}
               </div>
             )}
-            {!controlledTicks && <div className="lk-weeknote"><span>Every day's workout will be in the Theryn app.</span> <b className="soon">App coming soon</b></div>}
+            {!controlledTicks && (joined
+              ? <div className="lk-weeknote joined">
+                  <span><Icon.Check size={14} /> Connected{me?.name ? ` as ${me.name}` : ""}. Tap any day to see it{onExtras ? ", or add your own session" : ""}.</span>
+                  {onSignOut && <button type="button" className="lk-linkbtn" onClick={onSignOut}>Sign out</button>}
+                </div>
+              : onConnect
+              ? <div className="lk-weeknote">
+                  <span>Want the whole week, and your own sessions on top?</span>
+                  <button type="button" className="lk-connect" onClick={onConnect}>Connect</button>
+                </div>
+              : <div className="lk-weeknote"><span>Every day's workout will be in the Theryn app.</span> <b className="soon">App coming soon</b></div>)}
           </section>
         )}
 
@@ -483,7 +686,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                       ? <span className="lk-badge">{String(i + 1).padStart(2, "0")}</span>
                       : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-                      <div className="lk-ex-name">{chip}{e.name}</div>
+                      <div className="lk-ex-name">{chip}{e.name}{i >= planCount && <span className="lk-yours">Yours</span>}</div>
                       <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
                       {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
@@ -537,7 +740,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                   })}
 
                   {!upcoming && <div className="lk-ex-actions" style={{ justifyContent: "flex-end" }}>
-                    {done
+                    {i >= planCount && onExtras
+                      ? <button type="button" className="lk-linkbtn danger" onClick={() => removeExtra(i - planCount)}>Remove</button>
+                      : done
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => toggleExercise(i)}>Undo all</button>
                       : skipped[i]
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => setSkipped((s) => ({ ...s, [i]: false }))}>Undo skip</button>
@@ -546,6 +751,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                 </div>
               </React.Fragment>);
             })}
+
+            {onExtras && !upcoming && (adding
+              ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+              : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Add your own exercise</span></button>)}
 
             {!upcoming && <>
             <div>
@@ -560,6 +769,11 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}
+
+        {/* Trained anyway on a rest day? Connected clients can put it down. */}
+        {today.isRest && onExtras && !upcoming && (adding
+          ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+          : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Did something anyway? Add it</span></button>)}
 
         {today.isRest && (
           <div className="lk-card">
@@ -736,7 +950,7 @@ function nextTraining(plan, from = new Date()) {
   return null;
 }
 
-function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
+function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }) {
   const s = sent.summary;
   const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan) : null;
   const showStreak = Boolean(st && st.current >= 2);
@@ -773,7 +987,9 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack }) {
           : "Keep this link. Open it on training days to tick off your workout, and come back when your coach asks for measurements."}</span></div>
         <div style={{ flex: 1 }} />
         <button type="button" className="lk-send secondary" onClick={onBack}>{sent.kind === "measurements" && !today.isRest ? "Go to today's workout" : "Back"}</button>
-        <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <b className="soon">App coming soon</b></div>
+        {joined
+          ? <div className="lk-nudge"><span>Your plan stays open on this link — any day, any time.</span></div>
+          : <div className="lk-nudge"><span>Want your whole plan on your phone?</span> <b className="soon">App coming soon</b></div>}
       </div>
     </div>
   );

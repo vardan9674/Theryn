@@ -1,4 +1,6 @@
-// Network for the public link page. Only two calls, both anon-safe RPCs.
+// Network for the public link page. The two anon-safe RPCs every client uses,
+// plus the three calls behind "Connect": who the holder is, signing in with
+// Google, and tying this link to that account with the coach's code.
 import { supabase } from "../lib/supabase.ts";
 
 export async function fetchLink(token) {
@@ -11,6 +13,33 @@ export async function submitLink(token, kind, payload) {
   const { data, error } = await supabase.rpc("link_submit", { p_token: token, p_kind: kind, p_payload: payload });
   if (error) throw new Error(error.message);
   return data;
+}
+
+/** Whether this link is connected, whether it's connected to whoever is asking, and their history. */
+export async function fetchMe(token) {
+  const { data, error } = await supabase.rpc("link_me", { p_token: token });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/** Ties this link to the signed-in Google account. Needs the code the coach sent. */
+export async function connectLink(token, code) {
+  const { data, error } = await supabase.rpc("link_connect", { p_token: token, p_code: code });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/** Google, then straight back to this same link. */
+export async function signInWithGoogle(token) {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${window.location.origin}/f/${token}`, queryParams: { prompt: "select_account" } },
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function signOutLink() {
+  try { await supabase.auth.signOut(); } catch {}
 }
 
 /** In-memory stand-in for the dev preview: /f/preview */
@@ -26,11 +55,22 @@ export function createPreviewApi() {
     Sun: { type: "Rest", exercises: [] },
   };
   const submissions = [];
+  let connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] };
   return {
     async fetchLink() { await new Promise((r) => setTimeout(r, 300)); const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
       const done_dates = [1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14].map((n) => { const x = new Date(); x.setDate(x.getDate() - n); return iso(x); }).filter((d) => { const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00").getDay()]; return plan[k].type !== "Rest"; });
       return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips"], plan, done_dates }; },
     async submitLink(_t, kind, payload) { await new Promise((r) => setTimeout(r, 500)); submissions.push({ kind, payload }); return { ok: true, id: "preview", date: payload.date }; },
+    // The connect flow, without Google: the code is DEMO24 and signing in is instant.
+    async fetchMe() { await new Promise((r) => setTimeout(r, 120)); return { ok: true, ...connected }; },
+    async connectLink(_t, code) {
+      await new Promise((r) => setTimeout(r, 400));
+      if (String(code || "").trim().toUpperCase() !== "DEMO24") return { ok: false, reason: "code", left: 7 };
+      connected = { ...connected, connected: true, you: true, name: "Alex Preview" };
+      return { ok: true };
+    },
+    async signInWithGoogle() { await new Promise((r) => setTimeout(r, 300)); connected = { ...connected, signed_in: true }; },
+    async signOutLink() { connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] }; },
     submissions,
   };
 }
