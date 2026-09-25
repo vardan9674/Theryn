@@ -294,12 +294,21 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-code::placeholder { letter-spacing: 0.12em; font-size: 16px; font-weight: 600; color: var(--cx-mu); }
 
 /* ── A day already sent ─────────────────────────────────────────────────── */
-.lk-sent { align-items: center; text-align: center; gap: 10px; padding: 22px 16px; }
-.lk-sent-tick { width: 46px; height: 46px; border-radius: 50%; background: rgba(200, 255, 0, 0.12); color: var(--cx-a); display: inline-flex; align-items: center; justify-content: center; }
-.lk-sent-h { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.2; }
-.lk-sent-p { margin: 0; font-size: 14px; color: var(--cx-tx2); line-height: 1.45; }
-.lk-sent-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; margin-top: 4px; }
-.lk-sent-acts .lk-send { min-height: 48px; font-size: 15px; }
-@media (max-width: 360px) { .lk-sent-acts { grid-template-columns: minmax(0, 1fr); } }
 /* Long, coach-typed day names clip rather than break the seven columns. */
 @media (max-width: 360px) { .lk-day b { font-size: 11.5px; letter-spacing: -0.2px; } }
+
+/* ── A day already sent ─────────────────────────────────────────────────── */
+.lk-sent { align-items: center; text-align: center; gap: 0; padding: 26px 18px 18px; }
+.lk-sent-tick { width: 54px; height: 54px; border-radius: 50%; background: rgba(200, 255, 0, 0.12); box-shadow: 0 0 0 6px rgba(200, 255, 0, 0.05); color: var(--cx-a); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.lk-sent-h { margin: 0 0 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.2; }
+.lk-sent-p { margin: 0 0 18px; font-size: 14px; color: var(--cx-tx2); line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.lk-sent-p b { color: var(--cx-tx); font-weight: 700; }
+.lk-sent-when { font-size: 13px; color: var(--cx-mu); }
+.lk-sent-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+/* Theryn green: the two ways on from here, neither shouting over the other. */
+.lk-sendalt { min-height: 52px; width: 100%; border-radius: 12px; border: 1px solid rgba(200, 255, 0, 0.45); background: rgba(200, 255, 0, 0.09); color: var(--cx-a); font-size: 15px; white-space: nowrap; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; padding: 0 10px; }
+.lk-sendalt:hover { background: rgba(200, 255, 0, 0.16); border-color: rgba(200, 255, 0, 0.7); }
+.lk-sendalt:active { transform: scale(0.99); }
+.lk-sendalt svg { flex: none; }
+.lk-sent-note { margin-top: 12px; font-size: 12.5px; line-height: 1.45; color: var(--cx-mu); max-width: 34ch; }
+@media (max-width: 380px) { .lk-sent-acts { grid-template-columns: minmax(0, 1fr); } .lk-sent { padding: 24px 14px 16px; } }

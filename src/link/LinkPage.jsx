@@ -360,18 +360,20 @@ function Byline({ coach, units, onUnits }) {
  * down something else they did that day.
  */
 function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
-  const when = clock(sent.at);
   const sets = sent.planned > 0 ? `${sent.sets} of ${sent.planned} sets` : `${sent.exercises || 0} exercise${sent.exercises === 1 ? "" : "s"}`;
   return (
     <div className="lk-card lk-sent">
-      <span className="lk-sent-tick" aria-hidden="true"><Icon.Check size={22} /></span>
-      <h2 className="lk-sent-h">{isToday ? "Today's workout is with your coach." : `${dayLabel}'s workout is with your coach.`}</h2>
-      <p className="lk-sent-p">{sent.type && sent.type !== "Rest" ? `${sent.type} · ` : ""}{sets} · sent at {when}{coach ? ` to Coach ${coach}` : ""}.</p>
+      <span className="lk-sent-tick" aria-hidden="true"><Icon.Check size={26} /></span>
+      <h2 className="lk-sent-h">{isToday ? "Today's workout is done." : `${dayLabel} is done.`}</h2>
+      <p className="lk-sent-p">
+        <span>{sent.type && sent.type !== "Rest" ? <><b>{sent.type}</b> · </> : null}{sets}</span>
+        <span className="lk-sent-when">Sent to {coach ? `Coach ${coach}` : "your coach"} at {clock(sent.at)}</span>
+      </p>
       <div className="lk-sent-acts">
-        <button type="button" className="lk-send secondary" onClick={onEdit}>Change what I sent</button>
-        <button type="button" className="lk-send secondary" onClick={onAgain}>Add something else</button>
+        <button type="button" className="lk-sendalt" onClick={onEdit}><Icon.Edit size={16} />Edit workout</button>
+        <button type="button" className="lk-sendalt" onClick={onAgain}><Icon.Plus size={18} />Log another</button>
       </div>
-      <small className="lk-small">Changing replaces what your coach sees. Adding something else sends it as a second workout for {isToday ? "today" : dayLabel}.</small>
+      <small className="lk-sent-note">Editing replaces this workout. Logging another adds a second one for {isToday ? "today" : dayLabel}.</small>
     </div>
   );
 }
