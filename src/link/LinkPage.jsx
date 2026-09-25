@@ -9,6 +9,7 @@ import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
+import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
@@ -66,6 +67,11 @@ function linkStore(token) {
     // Exercises the client added themselves for a day, on top of the coach's plan.
     extras: (date) => read().extras?.[date] || [],
     saveExtras: (date, list) => { const s = read(); write({ ...s, extras: keepRecent({ ...s.extras, [date]: list }) }); },
+    // The key for the send in progress for that day. It outlives a reload, so
+    // finishing again after a dropped connection is the same workout, not a
+    // second one. Cleared once the coach has it.
+    key: (date) => read().keys?.[date] || null,
+    setKey: (date, k) => { const s = read(); const keys = { ...(s.keys || {}) }; if (k) keys[date] = k; else delete keys[date]; write({ ...s, keys: keepRecent(keys) }); },
     // The coach's code, kept only across the hop to Google and back.
     pendingCode: () => read().code || null,
     setPendingCode: (code) => { const s = read(); if (code) write({ ...s, code }); else { const { code: _drop, ...rest } = s; write(rest); } },
@@ -198,7 +204,7 @@ export default function LinkPage({ token, api }) {
             extras={extras} onExtras={joined ? setExtras : null}
             onSubmit={(payload) => submitLink(token, "workout", payload)}
             onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
-        : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
+        : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
       {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
     </div>
@@ -293,14 +299,44 @@ function repsWithin(r, planned) {
 }
 /** "Mon 14" from an ISO date. */
 function shortDay(iso) { const x = dateOf(iso); return `${dayKeyOf(x)} ${x.getDate()}`; }
-/** "8×40, 7×40, 6×37.5 kg": what they did last time, in today's units. */
+/** "8×40, 7×40, 6×37.5 kg" — or "20:00, 18:30" when timed: last time, in today's units. */
 function lastLine(last, units) {
-  const sets = (last.sets || []).map((x) => {
+  const rows = last.sets || [];
+  if (rows.every((x) => x.s != null)) return rows.map((x) => timerClock(x.s)).join(", ");
+  const sets = rows.map((x) => {
     const w = x.w !== "" && x.w != null ? convertWeight(x.w, last.units || units, units) : null;
     return `${x.r || "?"}${w != null ? `×${w}` : ""}`;
   });
-  const any = (last.sets || []).some((x) => x.w !== "" && x.w != null);
+  const any = rows.some((x) => x.w !== "" && x.w != null);
   return `${sets.join(", ")}${any ? ` ${units === "metric" ? "kg" : "lb"}` : " reps"}`;
+}
+
+/**
+ * The boxes start on what they did last time for that exercise — their own
+ * reps, weight and time, not the coach's targets — so a client repeating last
+ * week only has to change what actually changed. Exercises they have never
+ * done stay empty, showing the coach's plan as a hint.
+ */
+function seedFromLast(exercises, store, units) {
+  const log = {};
+  (exercises || []).forEach((e, i) => {
+    const last = store?.last(e.name);
+    if (!last?.sets?.length) return;
+    const per = {};
+    last.sets.forEach((s, si) => {
+      const v = {};
+      if (e.mode === "time") {
+        if (s.s != null) v.s = durationInput(s.s);
+      } else {
+        if (s.r) v.r = String(s.r);
+        const w = s.w !== "" && s.w != null ? convertWeight(s.w, last.units || units, units) : null;
+        if (w != null) v.w = String(w);
+      }
+      if (Object.keys(v).length) per[si] = v;
+    });
+    if (Object.keys(per).length) log[i] = per;
+  });
+  return log;
 }
 
 function Byline({ coach, units, onUnits }) {
@@ -420,8 +456,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
-  // exerciseIndex → setIndex → { r, w }: reps and weight the client typed (blank = as planned)
-  const [log, setLog] = React.useState(() => draft?.log || {});
+  // exerciseIndex → setIndex → { r, w }: the numbers in the boxes. A half-done
+  // draft wins; otherwise they start on last time's, so the client edits what
+  // changed instead of typing everything again.
+  const [log, setLog] = React.useState(() => draft?.log || seedFromLast(today.exercises, store, d.unit_system));
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [feel, setFeel] = React.useState(() => draft?.feel || null); // "easy" | "medium" | "hard"
@@ -458,6 +496,15 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
     setReopened((o) => ({ ...o, [i]: false }));
   };
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
+  // One of their own exercises. If they have done it before, its boxes start
+  // on last time's numbers, like everything else on the page.
+  const addExtra = (ex) => {
+    const i = today.exercises.length;
+    onExtras?.([...extras, ex]);
+    const seeded = seedFromLast([ex], store, d.unit_system)[0];
+    if (seeded) setLog((l) => ({ ...l, [i]: seeded }));
+    setAdding(false);
+  };
   // Taking one of their own exercises back out. Their other added exercises
   // shift down, so what was ticked on those is cleared with it; the coach's
   // exercises keep everything.
@@ -549,9 +596,14 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, log, note, date, d.unit_system, feel);
-      const res = await onSubmit(payload);
-      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      // The same key until the coach has it, so finishing again after a dropped
+      // connection — even after a reload — is this workout, not a second one.
+      let key = store?.key(date);
+      if (!key) { key = sendKey(); store?.setKey(date, key); }
+      const payload = { ...workoutPayload(today, ticks, log, note, date, d.unit_system, feel), client_key: key };
+      const res = await sendWithRetry(onSubmit, payload);
+      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent several workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      store?.setKey(date, null);
       const before = streakStats(d.doneDates || [], d.plan).current;
       store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
       store?.addDone(date);
@@ -561,7 +613,11 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
       onSent({ date, streakBefore: before, ...(setsPlanned > 0
         ? { day: DAY_LONG[today.key], type: today.type, done: setsDone, planned: setsPlanned, what: "sets" }
         : { day: DAY_LONG[today.key], type: today.type, done: payload.exercises.filter((e) => e.sets_done > 0).length, planned: payload.exercises.length, what: "exercises" }) });
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      // Nothing is lost: every tick is on this phone, and tapping again sends
+      // the same workout rather than a second one.
+      setError(isNetworkError(e) ? "No connection just now. Your workout is safe on this phone — tap Finish again when you have signal." : e.message);
+    }
     finally { setBusy(false); }
   }
 
@@ -688,7 +744,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{chip}{e.name}{i >= planCount && <span className="lk-yours">Yours</span>}</div>
                       <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
-                      {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
+                      {last && <div className="lk-ex-meta">Last time{draft?.log ? "" : " (already in the boxes)"}: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                     </div>
                     {done && !upcoming
@@ -753,7 +809,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             })}
 
             {onExtras && !upcoming && (adding
-              ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+              ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={addExtra} onClose={() => setAdding(false)} />
               : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Add your own exercise</span></button>)}
 
             {!upcoming && <>
@@ -772,7 +828,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
 
         {/* Trained anyway on a rest day? Connected clients can put it down. */}
         {today.isRest && onExtras && !upcoming && (adding
-          ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+          ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={addExtra} onClose={() => setAdding(false)} />
           : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Did something anyway? Add it</span></button>)}
 
         {today.isRest && (
@@ -800,7 +856,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
 }
 
 // ── Measurements ───────────────────────────────────────────────────────────
-function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
+function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }) {
   // The coach's picks come first; any other measurement is one tap away.
   // Everything is optional: at least one number is all it takes to send.
   const requested = askedFields(d.requested);
@@ -845,10 +901,13 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
     if (!v.ok) { setError(v); if (v.field) { setSelected(v.field); inputs.current[v.field]?.focus(); } return; }
     setBusy(true); setError(null);
     try {
-      const res = await onSubmit(measurementsPayload(values, unit, date));
+      let key = store?.key(`m:${date}`);
+      if (!key) { key = sendKey(); store?.setKey(`m:${date}`, key); }
+      const res = await sendWithRetry(onSubmit, { ...measurementsPayload(values, unit, date), client_key: key });
+      store?.setKey(`m:${date}`, null);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent measurements a few times today already. Your coach has them." : res?.reason === "out_of_range" ? "One of the numbers looks off. Please check it." : "Could not send. Try again in a moment.");
       onSent({ count: added + (values.weight ? 1 : 0), date });
-    } catch (e) { setError({ error: e.message }); }
+    } catch (e) { setError({ error: isNetworkError(e) ? "No connection just now. Your numbers are still here — tap Send again when you have signal." : e.message }); }
     finally { setBusy(false); }
   }
 
