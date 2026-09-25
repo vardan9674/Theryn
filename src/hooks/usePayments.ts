@@ -1,5 +1,13 @@
 import { supabase } from "../lib/supabase";
 
+/**
+ * Today where the coach is standing. `toISOString()` is UTC, which is
+ * yesterday for a coach in India before 5:30am — enough to file a payment
+ * against the wrong day, or anchor a fee a day early.
+ */
+const todayLocalIso = (d: Date = new Date()): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // ── Types ───────────────────────────────────────────────────────────────
 export type Cadence = "weekly" | "monthly" | "quarterly" | "yearly";
 
@@ -94,7 +102,7 @@ export async function upsertClientFee(
     amount: Number(input.amount),
     currency: input.currency || "USD",
     cadence: input.cadence || "monthly",
-    start_date: input.start_date || new Date().toISOString().split("T")[0],
+    start_date: input.start_date || todayLocalIso(),
     active: input.active !== false,
     notes: input.notes ?? null,
     updated_at: new Date().toISOString(),
@@ -148,7 +156,7 @@ export async function savePayment(
     athlete_id: athleteId,
     amount: Number(input.amount),
     currency: input.currency || "USD",
-    received_date: input.received_date || new Date().toISOString().split("T")[0],
+    received_date: input.received_date || todayLocalIso(),
     notes: input.notes ?? null,
   };
   const { data, error } = await supabase
@@ -171,34 +179,42 @@ export async function deletePayment(id: string): Promise<void> {
 // DST/timezone edges.
 function atMidday(iso: string): Date { return new Date(iso + "T12:00:00"); }
 
+/**
+ * `base` moved on by whole months, keeping the day of the month and clamping
+ * to the last day where the target month is shorter: the 31st of January plus
+ * one month is the 28th of February, not the 3rd of March.
+ */
+function addMonths(base: Date, months: number): Date {
+  const d = new Date(base.getFullYear(), base.getMonth() + months, 1, 12, 0, 0, 0);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(base.getDate(), lastDay));
+  return d;
+}
+
+/** How many whole cycles of `stepMonths` have passed between the anchor and `ref`. */
+function cyclesElapsed(anchor: Date, ref: Date, stepMonths: number): number {
+  const months = (ref.getFullYear() - anchor.getFullYear()) * 12 + (ref.getMonth() - anchor.getMonth());
+  let n = Math.max(0, Math.floor(months / stepMonths));
+  while (n > 0 && addMonths(anchor, n * stepMonths) > ref) n--;
+  while (addMonths(anchor, (n + 1) * stepMonths) <= ref) n++;
+  return n;
+}
+
 export function cycleStartForDate(cadence: Cadence, anchorIso: string, refDate: Date = new Date()): Date {
   const anchor = atMidday(anchorIso);
   const ref = new Date(refDate);
   ref.setHours(12, 0, 0, 0);
+  // The fee hasn't started yet. Its first cycle is the anchor itself — never
+  // invent cycles before the coach's date, or every future fee reads as late.
+  if (anchor > ref) return anchor;
   switch (cadence) {
     case "weekly": {
       const weeks = Math.floor((ref.getTime() - anchor.getTime()) / (7 * 86400000));
       return new Date(anchor.getTime() + weeks * 7 * 86400000);
     }
-    case "monthly": {
-      const start = new Date(ref.getFullYear(), ref.getMonth(), anchor.getDate(), 12, 0, 0, 0);
-      if (start > ref) start.setMonth(start.getMonth() - 1);
-      return start;
-    }
-    case "quarterly": {
-      const monthsSince =
-        (ref.getFullYear() - anchor.getFullYear()) * 12 + (ref.getMonth() - anchor.getMonth());
-      const quarters = Math.floor(monthsSince / 3);
-      const start = new Date(anchor);
-      start.setMonth(anchor.getMonth() + quarters * 3);
-      return start;
-    }
-    case "yearly": {
-      const start = new Date(anchor);
-      start.setFullYear(ref.getFullYear());
-      if (start > ref) start.setFullYear(start.getFullYear() - 1);
-      return start;
-    }
+    case "monthly":   return addMonths(anchor, cyclesElapsed(anchor, ref, 1));
+    case "quarterly": return addMonths(anchor, cyclesElapsed(anchor, ref, 3) * 3);
+    case "yearly":    return addMonths(anchor, cyclesElapsed(anchor, ref, 12) * 12);
   }
 }
 
@@ -214,7 +230,7 @@ export function cycleEndForStart(cadence: Cadence, start: Date): Date {
   return end;
 }
 
-export type AthleteStatus = "paid" | "due" | "overdue" | "paused" | "no_fee";
+export type AthleteStatus = "paid" | "due" | "upcoming" | "overdue" | "paused" | "no_fee";
 
 export interface AthleteStatusInfo {
   status: AthleteStatus;
@@ -225,16 +241,19 @@ export interface AthleteStatusInfo {
   fee: ClientFee | null;
   /** Whole days since the current cycle began (0 = the cycle started today). */
   daysIntoCycle: number | null;
+  /** Whole days until the first cycle starts, for a fee that hasn't begun. */
+  daysUntilDue?: number | null;
 }
 
 /**
  * A fee is expected on the day each billing cycle starts (the anchor date,
  * repeated by cadence). For a given athlete:
- *   paid    — a payment landed inside the current cycle
- *   due     — the cycle started today and nothing has been paid yet
- *   overdue — the cycle started 1+ days ago with no payment
- *   paused  — a fee exists but is switched off
- *   no_fee  — no fee configured
+ *   paid     — a payment landed inside the current cycle
+ *   due      — the cycle started today and nothing has been paid yet
+ *   upcoming — the first payment isn't expected until a later date
+ *   overdue  — the cycle started 1+ days ago with no payment
+ *   paused   — a fee exists but is switched off
+ *   no_fee   — no fee configured
  */
 export function athletePaymentStatus(
   fee: ClientFee | null,
@@ -258,7 +277,12 @@ export function athletePaymentStatus(
   ref.setHours(12, 0, 0, 0);
   const daysIntoCycle = Math.max(0, Math.round((ref.getTime() - cycleStart.getTime()) / 86400000));
   if (matching) {
-    return { status: "paid", label: "Paid", lastPayment: matching, cycleStart, cycleEnd, fee, daysIntoCycle };
+    return { status: "paid", label: "Paid", lastPayment: matching, cycleStart, cycleEnd, fee, daysIntoCycle, daysUntilDue: null };
+  }
+  // A fee that starts later isn't late, and isn't due today either.
+  if (cycleStart > ref) {
+    const daysUntilDue = Math.max(1, Math.round((cycleStart.getTime() - ref.getTime()) / 86400000));
+    return { status: "upcoming", label: daysUntilDue === 1 ? "Due tomorrow" : `Due in ${daysUntilDue} days`, lastPayment, cycleStart, cycleEnd, fee, daysIntoCycle: 0, daysUntilDue };
   }
   if (daysIntoCycle >= 1) {
     return { status: "overdue", label: `Late by ${daysIntoCycle} day${daysIntoCycle === 1 ? "" : "s"}`, lastPayment, cycleStart, cycleEnd, fee, daysIntoCycle };
