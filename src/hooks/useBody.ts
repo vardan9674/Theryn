@@ -1,7 +1,11 @@
 import { supabase } from "../lib/supabase";
 
-import { enqueueAction } from "../lib/offlineQueue";
+import { enqueueAction, shouldQueueForLater } from "../lib/offlineQueue";
 import { registerActionHandler } from "../lib/actionRegistry";
+
+// Keep the database's error code so a refusal is told apart from being offline (#109).
+const saveError = (what: string, error: any) =>
+  Object.assign(new Error(`Failed to save ${what}: ${error?.message}`), { code: error?.code, status: error?.status });
 
 // ── Body Weight ──────────────────────────────────────────────────────────────
 
@@ -81,10 +85,10 @@ export async function saveBodyWeight(
       .select("id")
       .single();
 
-    if (error || !data?.id) throw new Error(`Failed to save body weight: ${error?.message}`);
+    if (error || !data?.id) throw saveError("body weight", error);
     return data.id;
   } catch (err: any) {
-    if (!isBackgroundSync) {
+    if (!isBackgroundSync && shouldQueueForLater(err)) {
       enqueueAction({ type: "SAVE_WEIGHT", userId, payload: { weight, date } });
       return "offline_saved";
     }
@@ -102,28 +106,45 @@ export async function deleteBodyWeight(id: string): Promise<void> {
 
 // ── Body Measurements ────────────────────────────────────────────────────────
 
+// Which body_measurements column each field lands in (#110). The athlete's
+// Body screen names fields "l_arm", "r_calf", "neck" (toKey of the label);
+// the coach dashboard uses "lArm", "rCalf". Both spellings are accepted on the
+// way in and both are given back on the way out. Before this, only chest,
+// waist, hips and calves were ever saved: "l_arm" never matched "lArm".
+const COLUMN_OF: Record<string, string> = {
+  chest: "chest", waist: "waist", hips: "hips", neck: "neck", shoulders: "shoulders",
+  lArm: "bicep_l", l_arm: "bicep_l", rArm: "bicep_r", r_arm: "bicep_r",
+  lThigh: "thigh_l", l_thigh: "thigh_l", rThigh: "thigh_r", r_thigh: "thigh_r",
+  calves: "calf_l", lCalf: "calf_l", l_calf: "calf_l", rCalf: "calf_r", r_calf: "calf_r",
+  forearm: "forearm_l", lForearm: "forearm_l", l_forearm: "forearm_l", rForearm: "forearm_r", r_forearm: "forearm_r",
+};
+// Column → every key a screen may read it by.
+const KEYS_OF: Record<string, string[]> = {
+  chest: ["chest"], waist: ["waist"], hips: ["hips"], neck: ["neck"], shoulders: ["shoulders"],
+  bicep_l: ["lArm", "l_arm"], bicep_r: ["rArm", "r_arm"], thigh_l: ["lThigh", "l_thigh"], thigh_r: ["rThigh", "r_thigh"],
+  calf_l: ["calves", "lCalf", "l_calf"], calf_r: ["rCalf", "r_calf"], forearm_l: ["forearm", "lForearm", "l_forearm"], forearm_r: ["rForearm", "r_forearm"],
+};
+const MEASURE_COLUMNS = Object.keys(KEYS_OF);
+
+/** A field key the database has a column for. */
+export function hasMeasurementColumn(key: string): boolean { return key in COLUMN_OF; }
+
 export interface MeasurementEntry {
   id: string;
   date: string;    // YYYY-MM-DD
-  chest?: number;
-  waist?: number;
-  hips?: number;
-  lArm?: number;   // bicep_l
-  rArm?: number;   // bicep_r
-  lThigh?: number; // thigh_l
-  rThigh?: number; // thigh_r
-  calves?: number; // calf_l
+  [key: string]: number | string | undefined;
 }
 
-export interface MeasurementInput {
-  chest?: number | string;
-  waist?: number | string;
-  hips?: number | string;
-  lArm?: number | string;
-  rArm?: number | string;
-  lThigh?: number | string;
-  rThigh?: number | string;
-  calves?: number | string;
+export type MeasurementInput = Record<string, number | string | undefined>;
+
+function rowToEntry(row: any): MeasurementEntry {
+  const out: MeasurementEntry = { id: row.id, date: row.logged_at };
+  for (const col of MEASURE_COLUMNS) {
+    if (row[col] == null) continue;
+    const v = parseFloat(row[col]);
+    for (const k of KEYS_OF[col]) out[k] = v;
+  }
+  return out;
 }
 
 /** Fetches up to 20 measurement entries, newest first. `fresh` skips the local cache (coach reads). */
@@ -138,7 +159,7 @@ export async function loadMeasurements(userId: string, opts: { fresh?: boolean }
   const fetchNetwork = async () => {
     const { data, error } = await supabase
       .from("body_measurements")
-      .select("id, logged_at, chest, waist, hips, bicep_l, bicep_r, thigh_l, thigh_r, calf_l")
+      .select("id, logged_at, chest, waist, hips, neck, shoulders, bicep_l, bicep_r, thigh_l, thigh_r, calf_l, calf_r, forearm_l, forearm_r")
       .eq("user_id", userId)
       .order("logged_at", { ascending: false })
       .limit(20);
@@ -148,18 +169,7 @@ export async function loadMeasurements(userId: string, opts: { fresh?: boolean }
       return [];
     }
 
-    const formatted = (data || []).map((row) => ({
-      id: row.id,
-      date: row.logged_at,
-      chest: row.chest != null ? parseFloat(row.chest) : undefined,
-      waist: row.waist != null ? parseFloat(row.waist) : undefined,
-      hips: row.hips != null ? parseFloat(row.hips) : undefined,
-      lArm: row.bicep_l != null ? parseFloat(row.bicep_l) : undefined,
-      rArm: row.bicep_r != null ? parseFloat(row.bicep_r) : undefined,
-      lThigh: row.thigh_l != null ? parseFloat(row.thigh_l) : undefined,
-      rThigh: row.thigh_r != null ? parseFloat(row.thigh_r) : undefined,
-      calves: row.calf_l != null ? parseFloat(row.calf_l) : undefined,
-    }));
+    const formatted = (data || []).map(rowToEntry);
 
     if (formatted.length > 0) localStorage.setItem(cacheKey, JSON.stringify(formatted));
     return formatted;
@@ -184,6 +194,15 @@ export async function saveMeasurement(
     const n = typeof v === "string" ? parseFloat(v) : v;
     return isNaN(n) ? null : n;
   };
+  // Every known field → its column; unknown custom fields stay on the phone.
+  const columnsFrom = (input: MeasurementInput) => {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(input || {})) {
+      const col = COLUMN_OF[k]; const n = toNum(v as any);
+      if (col && n != null) out[col] = n;
+    }
+    return out;
+  };
 
   if (!isBackgroundSync) {
     const cacheKey = `theryn_measurements_${userId}`;
@@ -191,18 +210,7 @@ export async function saveMeasurement(
       const existingText = localStorage.getItem(cacheKey);
       let arr = existingText ? JSON.parse(existingText) : [];
       arr = arr.filter((m: any) => m.date !== date);
-      const newEntry = {
-        id: `offline-${Date.now()}`,
-        date,
-        chest: toNum(data.chest) ?? undefined,
-        waist: toNum(data.waist) ?? undefined,
-        hips: toNum(data.hips) ?? undefined,
-        lArm: toNum(data.lArm) ?? undefined,
-        rArm: toNum(data.rArm) ?? undefined,
-        lThigh: toNum(data.lThigh) ?? undefined,
-        rThigh: toNum(data.rThigh) ?? undefined,
-        calves: toNum(data.calves) ?? undefined,
-      };
+      const newEntry = rowToEntry({ id: `offline-${Date.now()}`, logged_at: date, ...columnsFrom(data) });
       arr.unshift(newEntry);
       localStorage.setItem(cacheKey, JSON.stringify(arr.slice(0, 20)));
     } catch {}
@@ -211,25 +219,14 @@ export async function saveMeasurement(
   try {
     const { data: row, error } = await supabase
       .from("body_measurements")
-      .insert({
-        user_id: userId,
-        logged_at: date,
-        chest: toNum(data.chest),
-        waist: toNum(data.waist),
-        hips: toNum(data.hips),
-        bicep_l: toNum(data.lArm),
-        bicep_r: toNum(data.rArm),
-        thigh_l: toNum(data.lThigh),
-        thigh_r: toNum(data.rThigh),
-        calf_l: toNum(data.calves),
-      })
+      .insert({ user_id: userId, logged_at: date, ...columnsFrom(data) })
       .select("id")
       .single();
 
-    if (error || !row?.id) throw new Error(`Failed to save measurement: ${error?.message}`);
+    if (error || !row?.id) throw saveError("measurement", error);
     return row.id;
   } catch (err: any) {
-    if (!isBackgroundSync) {
+    if (!isBackgroundSync && shouldQueueForLater(err)) {
       enqueueAction({ type: "SAVE_MEASUREMENT", userId, payload: { data, date } });
       return "offline_saved";
     }

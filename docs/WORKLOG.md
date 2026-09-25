@@ -4,6 +4,28 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-25 (evening, 2) — Athlete app QA fixes (#97, #98, #100, #101, #109, #110), branch `fix/qa-athlete-app`
+
+**Done** (no database change; the app isn't live, but App.jsx also hosts the website's root)
+- #97 Sign-out on a shared phone: when the account changes, the old user's role, profile, history, weights, measurements and measurement fields are cleared from memory and their `theryn_*_<uid>` caches from the device; an unfinished workout is parked under `th_workout_stash_<uid>` and restored at their next sign-in. At sign-in the role is always the new user's own (or none, so the picker shows).
+- #98 Android back on the workout summary calls `dismissSummary()`, so Start can't save the same sets again.
+- #100 The units toggle writes `profiles.unit_system`.
+- #101 Profile "Update" merges into the profile instead of replacing it (keeps name, height, currency).
+- #109 Only outages are queued (`shouldQueueForLater` = not a permanent client error). Refusals keep their error code and the athlete sees "Your workout wasn't saved: one of the numbers is too large…". A failed sets insert deletes its session row instead of leaving an empty workout, and a refused workout leaves the cached history.
+- #110
+  - **Measurements:** every field reaches its column. The Body screen's keys (`l_arm`, `r_calf`, `neck`…) never matched the save's (`lArm`…), so arms and thighs weren't saved either, only chest, waist, hips and calves. Both spellings are accepted and returned. Picked fields persist per user.
+  - **Chat:** a message sent before the conversation loads stays in the box, with "Still connecting…".
+  - **Rest alert:** sounds once per rest.
+  - **Workout clock:** counts wall-clock seconds, including across a locked phone or a killed app; paused time isn't counted.
+  - **Type change:** changing the day type mid-workout asks before clearing logged sets.
+  - **Records:** show only real PRs, and history loads 400 sessions instead of 30.
+
+**Verified**
+- 6 new tests (queue rule, refused vs offline saves, measurement columns both ways); 225 tests, typecheck, build pass. Landing page renders with no console errors.
+- Not run on a device: the athlete app needs a native build and a real Google sign-in.
+
+**Left for the database PR**: #99 cardio distance/duration (needs columns).
+
 ## 2026-09-25 (evening) — Remaining QA bugs filed (#97–#118); coach dashboard and link fixes, branch `fix/qa-web-dashboard`
 
 **Asked**

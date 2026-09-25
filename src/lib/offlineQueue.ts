@@ -79,7 +79,16 @@ export async function processOfflineQueue(): Promise<void> {
 // Distinguish "the server rejected this payload and will keep rejecting it"
 // (drop it) from "transient/network problem" (retry with backoff). Without
 // this, a single malformed item retries forever and blocks the queue head.
-function isPermanentClientError(err: any): boolean {
+/**
+ * Worth saving for later (#109): the network or the server was down. A
+ * refusal (a check failed, a number overflowed, permission) will be refused
+ * again, so it isn't queued; the caller shows it instead.
+ */
+export function shouldQueueForLater(err: any): boolean {
+  return !isPermanentClientError(err);
+}
+
+export function isPermanentClientError(err: any): boolean {
   if (!err) return false;
   const status = typeof err.status === "number" ? err.status : null;
   if (status !== null) return status >= 400 && status < 500 && status !== 429;
