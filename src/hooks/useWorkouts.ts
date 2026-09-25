@@ -188,12 +188,22 @@ export async function saveCompletedWorkout(
           set_number: idx + 1,
           weight: set.w ? parseFloat(set.w) : null,
           reps: set.r ? parseInt(set.r, 10) : null,
+          // Cardio (#99): distance in the athlete's unit, minutes stored as seconds.
+          ...(set.dist || set.dur ? {
+            distance: set.dist ? parseFloat(set.dist) : null,
+            duration_seconds: set.dur ? Math.round(parseFloat(set.dur) * 60) : null,
+          } : {}),
         });
       });
     }
 
     if (setsToInsert.length > 0) {
-      const { error: setsErr } = await supabase.from("workout_sets").insert(setsToInsert);
+      let { error: setsErr } = await supabase.from("workout_sets").insert(setsToInsert);
+      // A database without the cardio columns yet: save everything else (#99).
+      if (setsErr && ["42703", "PGRST204"].includes((setsErr as any).code)) {
+        const plain = setsToInsert.map(({ distance, duration_seconds, ...rest }) => rest);
+        ({ error: setsErr } = await supabase.from("workout_sets").insert(plain));
+      }
       if (setsErr) {
         // Don't leave a workout with no sets behind and call it saved (#109):
         // take the session back out and let the error decide what happens.
@@ -261,17 +271,20 @@ export async function loadWorkoutHistory(
   } catch {}
 
   const fetchNetwork = async () => {
-    const { data: sessions, error } = await supabase
-      .from("workout_sessions")
-      .select(`
-        id, workout_type, started_at, completed_at, notes, source,
-        workout_sets ( exercise_id, set_number, weight, reps )
-      `)
+    // Typed loosely: the column list is built at runtime.
+    const query = (sets: string): Promise<{ data: any[] | null; error: any }> => (supabase
+      .from("workout_sessions") as any)
+      .select(`id, workout_type, started_at, completed_at, notes, source, workout_sets ( ${sets} )`)
       .eq("user_id", userId)
       .not("completed_at", "is", null)
       .order("completed_at", { ascending: false })
       // Records, streaks and all-time stats read this; 30 capped them (#110).
       .limit(400);
+    let { data: sessions, error }: { data: any[] | null; error: any } = await query("exercise_id, set_number, weight, reps, distance, duration_seconds");
+    // A database without the cardio columns yet (#99): read the rest.
+    if (error && /distance|duration_seconds/.test(error.message || "")) {
+      ({ data: sessions, error } = await query("exercise_id, set_number, weight, reps"));
+    }
 
     if (error || !sessions) return [];
 
@@ -288,7 +301,7 @@ export async function loadWorkoutHistory(
       const completedAt = new Date(s.completed_at).getTime();
       const duration = Math.round((completedAt - startedAt) / 1000);
 
-      const exMap: Record<string, Array<{ w: string; r: string }>> = {};
+      const exMap: Record<string, Array<{ w: string; r: string; dist?: string; dur?: string }>> = {};
       const exOrder: string[] = [];
 
       const sortedSets = [...(s.workout_sets || [])].sort((a, b) => a.set_number - b.set_number);
@@ -301,6 +314,8 @@ export async function loadWorkoutHistory(
         exMap[set.exercise_id].push({
           w: set.weight != null ? String(set.weight) : "",
           r: set.reps != null ? String(set.reps) : "",
+          ...((set as any).distance != null ? { dist: String((set as any).distance) } : {}),
+          ...((set as any).duration_seconds != null ? { dur: String(Math.round(((set as any).duration_seconds / 60) * 100) / 100) } : {}),
         });
       }
 
