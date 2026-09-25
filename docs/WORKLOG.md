@@ -4,6 +4,24 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-25 (evening, 3) — Database QA fixes (#99, #107, #108, #117), branch `fix/qa-database`
+
+**Done** (migration `20260925174442_qa_database_fixes.sql`, **applied to production 2026-09-25** after the owner's go-ahead; the file is named after the version the database recorded)
+- #99 `workout_sets.distance` (numeric, 0–1000) and `duration_seconds` (0–86400). The app saves cardio `dist`/`dur` (minutes → seconds) and reads them back. Until the columns exist it retries without them, so the app change is safe in either order.
+- #107 A conversation can only be inserted for an accepted coach–athlete pair.
+- #108 `routines_archive`: the `WITH CHECK (true)` insert policy is gone and anon/authenticated lose INSERT/UPDATE/DELETE; the plan RPCs still write it.
+- #117
+  - `search_exercises` runs as the caller (`SECURITY INVOKER`); existing row security returns exactly own + coach's + coached athletes' custom exercises. Body unchanged.
+  - `delete_device_token` and `claim_outbox_batch` / `mark_outbox_*` are for service_role only.
+  - `process-outbox` requires an `x-cron-secret` header, checked with `outbox_cron_secret_ok()` against a secret the migration creates in Vault. The cron job's header list gains the secret, read from Vault at run time. Nothing secret is in a file.
+
+**Verified** (local Postgres with the live policies and the live `search_exercises` body, md5-checked; Vault and pg_cron stand-ins)
+- 6 misuse cases work on today's setup and are refused with the migration (conversation with a stranger, archive rows signed out and in, another user's custom exercises, another user's push token, outbox functions signed out).
+- 12 normal cases pass: coach–athlete conversation, own, coach's and library exercises, same fuzzy matches before and after, service role runs the outbox, cardio columns and their checks, the cron command gains the secret once and keeps its key, and the right/wrong secret check.
+- The migration runs twice cleanly. 2 new app tests; 227 tests, typecheck, build pass.
+
+**Production after applying**: cardio columns, the conversation rule and the archive lockdown are in place; the push functions and `outbox_cron_secret_ok` are service-role only; `search_exercises` runs as the caller with its body byte-for-byte unchanged; Vault holds one 64-character secret; the cron job sends it once and keeps its key. `process-outbox` v7 deployed (JWT check still on): the public key with no secret or a wrong one gets 403; the cron job's own request returns 200 `{"processed":0}`. Conversations (4), archive rows (9), active links (16) and submissions (51) unchanged.
+
 ## 2026-09-25 (evening, 2) — Athlete app QA fixes (#97, #98, #100, #101, #109, #110), branch `fix/qa-athlete-app`
 
 **Done** (no database change; the app isn't live, but App.jsx also hosts the website's root)

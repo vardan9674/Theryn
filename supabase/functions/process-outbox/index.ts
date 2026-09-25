@@ -115,9 +115,20 @@ async function processOne(row: OutboxRow): Promise<void> {
   }
 }
 
-Deno.serve(async (_req) => {
-  // Supabase verifies the JWT (service_role) at the platform level before this
-  // function runs — no additional auth check required.
+Deno.serve(async (req) => {
+  // The platform only checks that the caller holds *a* valid key, and the cron
+  // job calls with the public anon key, so anyone could trigger a run (#117).
+  // The cron job also sends a secret kept in the database Vault; nothing else
+  // has it. outbox_cron_secret_ok() compares, callable by the service role only.
+  const { data: allowed, error: authErr } = await supabase.rpc("outbox_cron_secret_ok", {
+    p_secret: req.headers.get("x-cron-secret"),
+  });
+  if (authErr || allowed !== true) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const { data: claimed, error } = await supabase.rpc("claim_outbox_batch", {
     p_limit: BATCH_SIZE,
