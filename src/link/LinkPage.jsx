@@ -210,7 +210,7 @@ export default function LinkPage({ token, api }) {
             onPickDay={joined ? (iso) => { setDayIso(iso === isoToday() ? null : iso); window.scrollTo(0, 0); } : null}
             extras={extras} onExtras={joined ? setExtras : null}
             onSubmit={(payload) => submitLink(token, "workout", payload)}
-            onSent={(summary) => { setSent({ kind: "workout", summary }); if (joined) refreshMe(); }} onMeasure={() => setTab("measurements")} />
+            onSent={(summary) => { setSent({ kind: "workout", summary }); refreshMe(); }} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
       {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
@@ -371,6 +371,7 @@ function fromHistory(entry, today) {
   return {
     at: Date.parse(p.edited_by_client_at || entry?.at || "") || null,
     id: entry?.id || null,
+    byCoach: Boolean(entry?.by_coach || p.logged_by === "coach"),
     day: p.day || today?.key,
     type: p.type || today?.type,
     sets: list.reduce((a, e) => a + (Number(e?.sets_done) || 0), 0),
@@ -391,6 +392,7 @@ function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
     <div className="lk-card lk-sent">
       <span className="lk-sent-tick" aria-hidden="true"><Icon.Check size={26} /></span>
       <h2 className="lk-sent-h">{isToday ? "Today's workout is done." : `${dayLabel} is done.`}</h2>
+      {sent.byCoach && <p className="lk-sent-by">Your coach put this one in for you.</p>}
       <p className="lk-sent-p">
         <span>{sent.type && sent.type !== "Rest" ? <><b>{sent.type}</b> · </> : null}{sets}</span>
         <span className="lk-sent-when">Sent to {coach ? `Coach ${coach}` : "your coach"}{sent.at ? ` at ${clock(sent.at)}` : ""}</span>
@@ -656,7 +658,13 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   // phone they are on; this phone's memory covers everyone else.
   const sentOnServer = (me?.history || []).find((h) => h?.date === date && h?.kind === "workout") || null;
   const sentPayload = sentOnServer?.payload || null;
-  const sentInfo = sentBefore || (sentPayload ? fromHistory(sentOnServer, today) : null);
+  // The server's copy wins — it has the id, and it is what the coach reads.
+  // A record from this phone fills in anything it doesn't carry (and is all
+  // there is for a send from before the server started returning them).
+  const fromServer = sentPayload ? fromHistory(sentOnServer, today) : null;
+  const sentInfo = fromServer
+    ? { ...(sentBefore || {}), ...fromServer, at: fromServer.at || sentBefore?.at || null, saved: sentBefore?.saved || null }
+    : sentBefore;
   const showSent = Boolean(sentInfo) && !mode && !upcoming;
   const startEdit = () => {
     // What the coach actually received comes first — it is the same on every
