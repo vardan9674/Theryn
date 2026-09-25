@@ -12,6 +12,7 @@ import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine
 import { planTemplate } from "../lib/manualTemplates.js";
 import { MEASUREMENT_FIELDS } from "../lib/clientLinks.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
+import { clientNow, theirTimeNote } from "../lib/clientClock.js";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
 import { supersetInfo } from "../lib/exerciseKinds.js";
 
@@ -52,6 +53,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="name">{row.name}</div>
           <div className="status">{loading ? <span className="cx-muted">Loading…</span> : statusLine}</div>
+          {!loading && theirTimeNote(data?.timeZone, row.name.split(" ")[0]) && <div className="cx-small cx-muted">It's {theirTimeNote(data?.timeZone, row.name.split(" ")[0])}</div>}
           {!loading && row.streak?.current >= 2 && !/streak/i.test(todo?.text || "") && <span className={`cx-streak chip ${row.streak.atRisk ? "risk" : ""}`}><Icon.Flame size={12} />{streakLabel(row.streak.current)}{row.streak.atRisk ? " · at risk today" : row.streak.best > row.streak.current ? ` · best ${row.streak.best}` : ""}</span>}
         </div>
         {onClose && <Button icon={<Icon.Close />} size="sm" aria-label="Close" onClick={onClose} />}
@@ -163,6 +165,7 @@ function ClientEmail({ clientId, initial, firstName }) {
 
 // ── Plan ──────────────────────────────────────────────────────────────────
 function PlanTab({ data, row, actions }) {
+  const cnow = clientNow(data);
   const unit = data.profile?.unit_system === "metric" ? "kg" : "lb";
   const routine = data.routine;
   const athleteId = row.link.athlete_id;
@@ -201,9 +204,9 @@ function PlanTab({ data, row, actions }) {
             <div key={d} className="cx-daycard">
               <button type="button" className="hd" style={{ background: "none", border: "none", padding: 0, width: "100%", minHeight: 32 }} onClick={() => setOpen(isOpen ? null : d)} aria-expanded={isOpen}>
                 <b>{DAY_LONG[d]}</b>
-                <span className="cx-row cx-dayhd-r">{latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>{latestByDay[d].byCoach ? "Logged by you" : "Done via link"}</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
+                <span className="cx-row cx-dayhd-r">{latestByDay[d] && daysAgoOf(latestByDay[d].date, cnow) < 7 && <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>{latestByDay[d].byCoach ? "Logged by you" : "Done via link"}</span>}<Pill color={color}>{day.type}</Pill><span className="cx-small cx-muted">{plural(day.exercises.length, "exercise")}</span><Icon.Down /></span>
               </button>
-              {isOpen && latestByDay[d] && daysAgoOf(latestByDay[d].date) < 7 && (
+              {isOpen && latestByDay[d] && daysAgoOf(latestByDay[d].date, cnow) < 7 && (
                 <div className="cx-small" style={{ color: "var(--cx-tx2)" }}>
                   {shortDate(latestByDay[d].date)}: {latestByDay[d].totalSets} of {latestByDay[d].plannedSets || latestByDay[d].totalSets} sets done
                   {latestByDay[d].exercises.some((e) => e.sets.some((x) => x.w)) && ` · weights: ${latestByDay[d].exercises.filter((e) => e.sets[0]?.w).map((e) => `${e.name} ${e.sets[0].w}`).join(", ")}`}
@@ -235,6 +238,7 @@ function PlanTab({ data, row, actions }) {
 // ── Workouts ──────────────────────────────────────────────────────────────
 function ProgressTab({ data, row, actions }) {
   const { history, routine, profile } = data;
+  const cnow = React.useMemo(() => clientNow(data), [data]); // the client's clock (#95)
   const coachData = useCoachData();
   const toast = useToast();
   const firstName = row.name.split(" ")[0];
@@ -245,7 +249,7 @@ function ProgressTab({ data, row, actions }) {
   const canLog = row.link.manual && typeof coachData.logWorkoutForClient === "function" && routine && DAYS.some((d) => routine[d]?.type && routine[d].type !== "Rest" && (routine[d].exercises || []).length);
   const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
   const sheet = canLog ? (
-    <LogWorkoutSheet open={logging} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
+    <LogWorkoutSheet open={logging} now={cnow} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
       onClose={() => setLogging(false)}
       onSave={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
   ) : null;
@@ -257,11 +261,11 @@ function ProgressTab({ data, row, actions }) {
   }
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
-  const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine), [history, routine]);
+  const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine, cnow), [history, routine, cnow]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
   const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
-  const week = React.useMemo(() => weekProgress(history || [], routine), [history, routine]);
-  const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at), [history, routine, row.link.created_at]);
+  const week = React.useMemo(() => weekProgress(history || [], routine, cnow), [history, routine, cnow]);
+  const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at, cnow), [history, routine, row.link.created_at, cnow]);
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -343,8 +347,8 @@ function ProgressTab({ data, row, actions }) {
         })}
       </div>
 
-      <AthleteAttendanceCalendar history={history} />
-      <AthleteVolumeChart history={history} unit={unit} />
+      <AthleteAttendanceCalendar history={history} now={cnow} />
+      <AthleteVolumeChart history={history} unit={unit} now={cnow} />
       <AthletePRTimeline history={history} unit={unit} />
     </>
   );
@@ -396,7 +400,7 @@ function BodyTab({ data }) {
 }
 function daysDiff(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000); }
 // Local today: toISOString() is UTC, which is still yesterday in India until 5:30 am.
-function daysAgoOf(iso) { return daysDiff(iso, isoDate(new Date())); }
+function daysAgoOf(iso, now = new Date()) { return daysDiff(iso, isoDate(now)); }
 
 // ── Payments ──────────────────────────────────────────────────────────────
 function PaymentsTab({ row, fees, payments, defaultCurrency, actions, payment }) {

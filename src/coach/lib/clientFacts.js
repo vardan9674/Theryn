@@ -70,7 +70,7 @@ export function whatToDo(data, now = new Date()) {
   if (!data) return { text: "", severity: null, tab: "plan", color: null };
   const { history, routine, weights, measurements } = data;
   const streak = routineStreak(history, routine, now);
-  const signals = detectSignals({ history, routine, weights, measurements, streak });
+  const signals = detectSignals({ history, routine, weights, measurements, streak, now });
   const sum = summarizeForRow(signals);
   if (sum.primaryLine) {
     const tab = mapSuggestedTab(sum.primaryTab);

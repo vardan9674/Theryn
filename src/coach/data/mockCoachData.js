@@ -186,9 +186,9 @@ export function createMockCoachData() {
         const base = manualClientData(row);
         const linked = linkClientData(subs, { plan: row.plan, coachUnits: rowUnits(row) });
         const routine = row.plan ? convertPlan(row.plan, rowUnits(row), { assumeFrom: rowUnits(row) }) : base.routine;
-        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
+        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions, timeZone: linked.timeZone };
       }
-      return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs };
+      return { routine: st.routines[athleteId] || null, history: st.histories[athleteId] || [], weights: st.weights[athleteId] || [], measurements: st.measurements[athleteId] || [], profile: { height_cm: 168, unit_system: "imperial" }, submissions: subs, timeZone: athleteId === "a5" ? "America/Los_Angeles" : null };
     },
     async saveClientRoutine(athleteId, templates) {
       await wait(300);

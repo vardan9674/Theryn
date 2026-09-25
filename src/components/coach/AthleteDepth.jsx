@@ -5,6 +5,7 @@
 // Everything renders client-side from loadAthleteData() output.
 
 import React from "react";
+import { isoDate } from "../../coach/lib/format.js";
 import { Overlay } from "../../coach/ui/primitives.jsx";
 
 // "YYYY-MM-DD" parsed as local midday so the day never shifts in negative-offset zones.
@@ -43,8 +44,11 @@ const cardLabel = {
   fontWeight: 600, textTransform: "uppercase",
 };
 
+// Local calendar date. Cells are local midnight; toISOString() turned that into
+// the previous day for anyone east of UTC, so in India every workout sat one
+// day late on the calendar (#93).
 function toIso(d) {
-  return new Date(d).toISOString().split("T")[0];
+  return isoDate(new Date(d));
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -70,17 +74,18 @@ function shiftDate(base, unit, amount) {
   return d;
 }
 
-export function AthleteAttendanceCalendar({ history, onDateTap }) {
+// `now`: the client's clock when the coach is in another timezone (#95).
+export function AthleteAttendanceCalendar({ history, onDateTap, now }) {
   const [view, setView] = React.useState("month"); // 'week' | 'month' | '3month'
   const [anchor, setAnchor] = React.useState(() => {
-    const d = new Date();
+    const d = new Date(now || Date.now());
     d.setHours(0, 0, 0, 0);
     return d;
   });
 
   const today = React.useMemo(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
-  }, []);
+    const d = new Date(now || Date.now()); d.setHours(0, 0, 0, 0); return d;
+  }, [now ? new Date(now).toDateString() : ""]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Workout lookup: ISO-date → volume (0 means rest / no session)
   const volByDate = React.useMemo(() => {
@@ -457,13 +462,13 @@ function fmtVol(v) {
   return Math.round(v).toString();
 }
 
-export function AthleteVolumeChart({ history, unit = "lbs" }) {
+export function AthleteVolumeChart({ history, unit = "lbs", now }) {
   const [hoverIdx, setHoverIdx] = React.useState(null);
 
   const { rows, weekLabels } = React.useMemo(() => {
     if (!history || history.length === 0) return { rows: [], weekLabels: [] };
     // Build last 8 weeks of per-type volume totals
-    const today = new Date();
+    const today = new Date(now || Date.now());
     today.setHours(0, 0, 0, 0);
     const weekStarts = [];
     for (let i = 7; i >= 0; i--) {
@@ -503,7 +508,7 @@ export function AthleteVolumeChart({ history, unit = "lbs" }) {
       .sort((a, b) => b.total - a.total);
 
     return { rows, weekLabels: labels };
-  }, [history]);
+  }, [history, now ? new Date(now).toDateString() : ""]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (rows.length === 0) return null;
 

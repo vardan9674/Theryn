@@ -1,6 +1,7 @@
 // Pure helpers for shareable client links (decision 0006).
 import { parseDuration } from "./exerciseKinds.js";
 import { planUnits, convertSubmission, normUnits } from "./units.js";
+import { validTimeZone } from "./clientClock.js";
 export { planUnits };
 
 // Every measurement a coach can ask for, top of the body to the bottom.
@@ -338,5 +339,17 @@ export function linkClientData(submissions, { plan = null, coachUnits = "imperia
   const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement).sort(byDate);
   const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
   const history = subs.filter((x) => x.kind === "workout").map(submissionToHistory).sort(byDate);
-  return { history, measurements, weights, unitSystem, submissions: subs };
+  return { history, measurements, weights, unitSystem, submissions: subs, timeZone: timeZoneFromSubmissions(subs) };
+}
+
+/**
+ * The client's timezone, from the newest thing they sent through their link
+ * (the link page stamps `tz` on every send, #95). Workouts a coach logged for
+ * them don't count: those carry no timezone of the client's.
+ */
+export function timeZoneFromSubmissions(submissions) {
+  const newest = [...(submissions || [])]
+    .filter((s) => s?.payload?.logged_by !== "coach" && validTimeZone(s?.payload?.tz))
+    .sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : a.submitted_at > b.submitted_at ? -1 : 0))[0];
+  return newest ? newest.payload.tz : null;
 }

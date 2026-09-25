@@ -18,8 +18,13 @@
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// The local calendar date. toISOString() is UTC, which in India is still the
+// day before until 5:30 am, so it paired a local weekday with yesterday's date
+// (#94). A "YYYY-MM-DD" string is already a date and comes back as is.
 function toIso(d) {
-  return new Date(d).toISOString().split("T")[0];
+  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 }
 
 function daysBetween(aIso, bIso) {
@@ -43,7 +48,7 @@ function weekStartIso(dateIso) {
 
 // ── Detectors ────────────────────────────────────────────────────────────
 
-function detectInactivity(history) {
+function detectInactivity(history, now = new Date()) {
   if (!history || history.length === 0) {
     return {
       kind: "inactive",
@@ -55,9 +60,8 @@ function detectInactivity(history) {
     };
   }
   const last = history[0];
-  const days = Math.floor(
-    (Date.now() - new Date(last.date + "T12:00:00").getTime()) / 86400000
-  );
+  // Whole calendar days, the same count as "Last workout: 5 days ago".
+  const days = daysBetween(last.date, toIso(now));
   if (days >= 5) {
     return {
       kind: "inactive",
@@ -71,9 +75,8 @@ function detectInactivity(history) {
   return null;
 }
 
-function detectFallingBehind(history, routine) {
+function detectFallingBehind(history, routine, now = new Date()) {
   if (!history || !routine) return null;
-  const now = new Date();
   let scheduled = 0;
   let missed = 0;
   for (let i = 1; i <= 7; i++) {
@@ -100,15 +103,15 @@ function detectFallingBehind(history, routine) {
   return null;
 }
 
-function detectStreakAtRisk(history, routine, streak) {
+function detectStreakAtRisk(history, routine, streak, now = new Date()) {
   if (!history || !routine || streak < 3) return null;
-  const todayIso = toIso(new Date());
-  const todayName = getDayName(new Date());
+  const todayIso = toIso(now);
+  const todayName = getDayName(now);
   const todayType = routine[todayName]?.type;
   if (!todayType || todayType === "Rest") return null;
   const hitToday = history.some((h) => h.date === todayIso);
   if (hitToday) return null;
-  const hour = new Date().getHours();
+  const hour = now.getHours();
   if (hour < 18) return null;
   return {
     kind: "streak_at_risk",
@@ -296,9 +299,8 @@ function detectWeightTrend(weights) {
 
 // 28-day adherence — completed vs scheduled training days. Flags <60% urgent,
 // 60–79% as warn. Needs a decent sample (>=6 scheduled days) before firing.
-function detectAdherence(history, routine) {
+function detectAdherence(history, routine, now = new Date()) {
   if (!history || !routine) return null;
-  const now = new Date();
   let scheduled = 0;
   let completed = 0;
   for (let i = 0; i < 28; i++) {
@@ -408,7 +410,7 @@ function detectSessionDuration(history) {
 
 // Any routine-scheduled workout type that hasn't been completed in 14+ days.
 // Catches "they drifted off chest day" without relying on streaks.
-function detectStaleMuscleGroup(history, routine) {
+function detectStaleMuscleGroup(history, routine, now = new Date()) {
   if (!history || !routine) return null;
   const scheduledTypes = new Set();
   for (const d of DAYS) {
@@ -416,12 +418,12 @@ function detectStaleMuscleGroup(history, routine) {
     if (t && t !== "Rest") scheduledTypes.add(t);
   }
   if (scheduledTypes.size === 0) return null;
-  const now = Date.now();
+  const todayIso = toIso(now);
   const stale = [];
   for (const type of scheduledTypes) {
     const last = history.find((h) => h.type === type);
     if (!last) continue; // no record at all → covered by "inactive"
-    const days = Math.floor((now - new Date(last.date + "T12:00:00").getTime()) / 86400000);
+    const days = daysBetween(last.date, todayIso);
     if (days >= 14) stale.push({ type, days });
   }
   if (stale.length === 0) return null;
@@ -459,21 +461,22 @@ function detectConsistent(streak) {
  * @param {number} opts.streak - current routine streak in days
  * @returns {Array} ranked signals, highest priority first
  */
-export function detectSignals({ history, routine, weights, measurements, streak = 0 }) {
+export function detectSignals({ history, routine, weights, measurements, streak = 0, now = new Date() }) {
+  // `now` is the client's clock when the coach is elsewhere (#95).
   const out = [];
-  const inactive = detectInactivity(history);
+  const inactive = detectInactivity(history, now);
   if (inactive) out.push(inactive);
 
   // Only run other detectors if athlete has some activity
   if (history && history.length > 0) {
-    const adh = detectAdherence(history, routine);
+    const adh = detectAdherence(history, routine, now);
     if (adh) out.push(adh);
 
-    const fb = detectFallingBehind(history, routine);
+    const fb = detectFallingBehind(history, routine, now);
     // Skip "falling behind" if low-adherence already covers the same ground.
     if (fb && !inactive && !adh) out.push(fb);
 
-    const sar = detectStreakAtRisk(history, routine, streak);
+    const sar = detectStreakAtRisk(history, routine, streak, now);
     if (sar) out.push(sar);
 
     const vol = detectVolumeSignals(history);
@@ -485,7 +488,7 @@ export function detectSignals({ history, routine, weights, measurements, streak 
     const dur = detectSessionDuration(history);
     if (dur) out.push(dur);
 
-    const stale = detectStaleMuscleGroup(history, routine);
+    const stale = detectStaleMuscleGroup(history, routine, now);
     if (stale) out.push(stale);
 
     const wt = detectWeightTrend(weights);
@@ -508,8 +511,7 @@ export function detectSignals({ history, routine, weights, measurements, streak 
 // ── At-a-glance numeric stats (for the card strip) ───────────────────────
 // Pure math over the same inputs detectSignals gets. Returns null fields when
 // there isn't enough data — the UI should render "—" for those.
-export function computeStats({ history, routine, weights, measurements }) {
-  const now = new Date();
+export function computeStats({ history, routine, weights, measurements, now = new Date() }) {
 
   // 28-day adherence
   let scheduled = 0;
