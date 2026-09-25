@@ -297,14 +297,21 @@ export interface MonthlySummary {
 }
 
 /**
- * Month = calendar month containing `refDate`. Expected is pro-rated from
- * cadence: a weekly $50 fee → $50 × 52/12 ≈ $216.67/month; quarterly $300
- * fee → $100/month; yearly $1200 → $100/month.
+ * Month = calendar month containing `refDate`.
+ *
+ * received    — every payment dated this month.
+ * expected    — every billing cycle that starts this month, at its fee
+ *               (a weekly fee starting on four Mondays counts four times; a
+ *               quarterly or yearly fee counts only in the month it falls due).
+ * outstanding — the cycles among those with no payment inside them yet, per
+ *               client. One client paying a lot never cancels another
+ *               client's unpaid cycle (#102).
+ *
+ * A payment "belongs" to a cycle the same way athletePaymentStatus decides
+ * Paid: it is dated inside that cycle. Each payment pays one cycle.
  *
  * NOTE: assumes the coach has one primary currency (profile.default_currency).
- * Mixed-currency totals aren't converted — the first-row currency wins
- * visually, and the coach should use consistent currencies within their
- * dashboard. Mixed-currency conversion is a Phase-2 problem.
+ * Mixed-currency totals aren't converted.
  */
 export function computeMonthlySummary(
   fees: ClientFee[],
@@ -313,30 +320,37 @@ export function computeMonthlySummary(
 ): MonthlySummary {
   const month = refDate.getMonth();
   const year = refDate.getFullYear();
+  const inMonth = (d: Date) => d.getMonth() === month && d.getFullYear() === year;
 
   const receivedThisMonth = payments
-    .filter(p => {
-      const d = atMidday(p.received_date);
-      return d.getMonth() === month && d.getFullYear() === year;
-    })
+    .filter(p => inMonth(atMidday(p.received_date)))
     .reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const expectedThisMonth = fees
-    .filter(f => f.active)
-    .reduce((sum, f) => {
-      const amt = Number(f.amount);
-      switch (f.cadence) {
-        case "weekly":    return sum + amt * (52 / 12);
-        case "monthly":   return sum + amt;
-        case "quarterly": return sum + amt / 3;
-        case "yearly":    return sum + amt / 12;
-        default:          return sum;
-      }
-    }, 0);
+  let expected = 0;
+  let outstanding = 0;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for (const fee of fees) {
+    if (!fee.active || !fee.start_date) continue;
+    const amount = Number(fee.amount) || 0;
+    // Every cycle that starts in this month (never before the fee's own start).
+    const starts = new Map<number, Date>();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const start = cycleStartForDate(fee.cadence, fee.start_date, new Date(year, month, day, 12));
+      if (inMonth(start)) starts.set(start.getTime(), start);
+    }
+    const unused = payments.filter(p => p.athlete_id === fee.athlete_id);
+    for (const start of [...starts.values()].sort((a, b) => a.getTime() - b.getTime())) {
+      expected += amount;
+      const end = cycleEndForStart(fee.cadence, start);
+      const i = unused.findIndex(p => { const d = atMidday(p.received_date); return d >= start && d <= end; });
+      if (i >= 0) unused.splice(i, 1);
+      else outstanding += amount;
+    }
+  }
 
   return {
     receivedThisMonth: Number(receivedThisMonth.toFixed(2)),
-    expectedThisMonth: Number(expectedThisMonth.toFixed(2)),
-    outstanding: Number(Math.max(0, expectedThisMonth - receivedThisMonth).toFixed(2)),
+    expectedThisMonth: Number(expected.toFixed(2)),
+    outstanding: Number(outstanding.toFixed(2)),
   };
 }

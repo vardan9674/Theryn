@@ -99,20 +99,61 @@ export function Overlay({ children }) {
   return createPortal(children, host);
 }
 
+// ── Keyboard focus for dialogs (#104) ──────────────────────────────────────
+// Open sheets, newest last. Only the top one answers Escape and Tab.
+const openSheets = [];
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function useDialogFocus(ref, open, onClose) {
+  const closeRef = React.useRef(onClose);
+  closeRef.current = onClose;
+  React.useEffect(() => {
+    if (!open) return;
+    const id = {};
+    openSheets.push(id);
+    const before = document.activeElement;
+    const root = document.getElementById("root");
+    if (root) root.inert = true; // the page behind can't be tabbed into or read out
+    // Into the dialog: whatever asked for focus (autoFocus), else the dialog
+    // itself, so a phone doesn't pop the keyboard open for no reason.
+    const t = setTimeout(() => {
+      const el = ref.current;
+      if (el && !el.contains(document.activeElement)) (el.querySelector("[autofocus]") || el).focus();
+    }, 0);
+    const onKey = (e) => {
+      if (openSheets[openSheets.length - 1] !== id) return;
+      if (e.key === "Escape") { e.preventDefault(); closeRef.current?.(); return; }
+      if (e.key !== "Tab" || !ref.current) return;
+      const items = [...ref.current.querySelectorAll(FOCUSABLE)].filter((x) => x.offsetParent !== null || x === document.activeElement);
+      if (items.length === 0) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!ref.current.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("keydown", onKey);
+      const i = openSheets.indexOf(id);
+      if (i >= 0) openSheets.splice(i, 1);
+      if (root && openSheets.length === 0) root.inert = false;
+      // Back to the button that opened it.
+      if (before && typeof before.focus === "function" && document.contains(before)) before.focus();
+    };
+  }, [open, ref]);
+}
+
 // ── Sheet / modal: bottom sheet on phone, centered dialog on wider screens ──
 export function Sheet({ open, onClose, title, subtitle, children, wide }) {
   useBackHandler(Boolean(open), () => onClose?.());
-  React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const ref = React.useRef(null);
+  useDialogFocus(ref, open, onClose);
   if (!open) return null;
   return (
     <Overlay>
     <div className="cx-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }} role="presentation">
-      <div className="cx-sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 760 } : undefined}>
+      <div ref={ref} tabIndex={-1} className="cx-sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 760, outline: "none" } : { outline: "none" }}>
         <div className="cx-sheet-grip" />
         <button type="button" className="cx-sheet-close" aria-label="Close" onClick={() => onClose?.()}><Icon.Close size={18} /></button>
         {title && <h2>{title}</h2>}
@@ -130,14 +171,14 @@ export function ToastProvider({ children }) {
   const [toast, setToast] = React.useState(null);
   const timer = React.useRef(null);
   const show = React.useCallback((message, kind = "ok") => {
-    setToast({ message, kind });
+    setToast({ message, kind, overSheet: openSheets.length > 0 });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setToast(null), 2800);
   }, []);
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {toast && <div className={`cx-toast ${toast.kind === "error" ? "err" : ""}`} role="status">{toast.message}</div>}
+      {toast && <div className={`cx-toast ${toast.kind === "error" ? "err" : ""} ${toast.overSheet ? "over-sheet" : ""}`} role="status">{toast.message}</div>}
     </ToastCtx.Provider>
   );
 }

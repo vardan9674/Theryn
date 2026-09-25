@@ -3,6 +3,7 @@ import { Avatar, Button, Chip, Icon, Tone, Empty, Sheet, Field, Checkbox, useVie
 import { paymentFact } from "../lib/clientFacts.js";
 import { shortDate, isoDate, plural } from "../lib/format.js";
 import { fmtMoney, computeMonthlySummary, SUPPORTED_CURRENCIES } from "../../hooks/usePayments.ts";
+import { cleanDecimal } from "../lib/clientLinks.js";
 
 /**
  * Manual ledger. The coach writes down what each client paid; Theryn works
@@ -140,7 +141,7 @@ export function RecordPaymentSheet({ open, onClose, clients, fees, defaultCurren
           </select>
         </Field>
         <div className="cx-form-row">
-          <Field label="Amount"><input className="cx-input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /></Field>
+          <Field label="Amount"><AmountInput value={amount} onChange={setAmount} /></Field>
           <Field label="Currency"><select className="cx-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>{SUPPORTED_CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>)}</select></Field>
         </div>
         <div className="cx-form-row">
@@ -178,7 +179,7 @@ export function FeeSheet({ open, onClose, client, fee, defaultCurrency, onSave, 
     <Sheet open={open} onClose={onClose} title={fee ? "Change fee" : "Set a fee"} subtitle={client ? `What ${client.athlete_name} pays you, and how often. Theryn uses this to tell you who is due.` : ""}>
       <div className="cx-form">
         <div className="cx-form-row">
-          <Field label="Amount"><input className="cx-input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" /></Field>
+          <Field label="Amount"><AmountInput value={amount} onChange={setAmount} /></Field>
           <Field label="Currency"><select className="cx-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>{SUPPORTED_CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>)}</select></Field>
         </div>
         <div className="cx-form-row">
@@ -190,5 +191,18 @@ export function FeeSheet({ open, onClose, client, fee, defaultCurrency, onSave, 
         {fee && onDelete && <Button variant="danger" onClick={async () => { setBusy(true); try { await onDelete(); onClose(); } finally { setBusy(false); } }} disabled={busy}>Remove fee</Button>}
       </div>
     </Sheet>
+  );
+}
+
+/** An amount box: digits and one decimal point. A minus sign or letters are
+ * dropped with a word about it, rather than silently (#116). */
+function AmountInput({ value, onChange }) {
+  const [note, setNote] = React.useState(null);
+  return (
+    <>
+      <input className="cx-input" inputMode="decimal" value={value} placeholder="0" aria-label="Amount"
+        onChange={(e) => { const raw = e.target.value; onChange(cleanDecimal(raw, 9)); setNote(/[^0-9.]/.test(raw) ? (raw.includes("-") ? "Amounts can't be negative." : "Numbers only.") : null); }} />
+      {note && <span className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>{note}</span>}
+    </>
   );
 }
