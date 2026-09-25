@@ -10,6 +10,7 @@ import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
+import { editStateFromPayload } from "./sentWorkout.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
@@ -169,6 +170,12 @@ export default function LinkPage({ token, api }) {
 
   if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} joined={joined} onBack={() => { setSent(null); setTab("workout"); setDayIso(null); window.scrollTo(0, 0); }} />;
 
+  // After sending, their own history is a workout out of date — and that
+  // history is what "Edit workout" reopens on any other phone.
+  async function refreshMe() {
+    try { const m = await fetchMe(token); if (m?.ok) setMe(m); } catch { /* the page works without it */ }
+  }
+
   async function startConnect(code) {
     setConnect((c) => ({ ...c, busy: true, error: null }));
     try {
@@ -203,7 +210,7 @@ export default function LinkPage({ token, api }) {
             onPickDay={joined ? (iso) => { setDayIso(iso === isoToday() ? null : iso); window.scrollTo(0, 0); } : null}
             extras={extras} onExtras={joined ? setExtras : null}
             onSubmit={(payload) => submitLink(token, "workout", payload)}
-            onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
+            onSent={(summary) => { setSent({ kind: "workout", summary }); if (joined) refreshMe(); }} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
       {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
@@ -354,6 +361,25 @@ function Byline({ coach, units, onUnits }) {
 }
 
 /**
+ * A workout the server has, in the same shape as what this phone remembers
+ * after sending, so the receipt reads the same on a phone that has never sent
+ * anything (a client who connected on a second device).
+ */
+function fromHistory(entry, today) {
+  const p = entry?.payload || {};
+  const list = Array.isArray(p.exercises) ? p.exercises : [];
+  return {
+    at: Date.parse(p.edited_by_client_at || entry?.at || "") || null,
+    id: entry?.id || null,
+    day: p.day || today?.key,
+    type: p.type || today?.type,
+    sets: list.reduce((a, e) => a + (Number(e?.sets_done) || 0), 0),
+    planned: list.reduce((a, e) => a + (Number(e?.sets_planned) || 0), 0),
+    exercises: list.filter((e) => (Number(e?.sets_done) || 0) > 0).length,
+  };
+}
+
+/**
  * A day they have already sent. The workout itself is done with — showing the
  * list again invites a second, contradictory entry — so this says what went
  * and when, and offers the only two things left worth doing: fix it, or put
@@ -367,13 +393,17 @@ function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
       <h2 className="lk-sent-h">{isToday ? "Today's workout is done." : `${dayLabel} is done.`}</h2>
       <p className="lk-sent-p">
         <span>{sent.type && sent.type !== "Rest" ? <><b>{sent.type}</b> · </> : null}{sets}</span>
-        <span className="lk-sent-when">Sent to {coach ? `Coach ${coach}` : "your coach"} at {clock(sent.at)}</span>
+        <span className="lk-sent-when">Sent to {coach ? `Coach ${coach}` : "your coach"}{sent.at ? ` at ${clock(sent.at)}` : ""}</span>
       </p>
-      <div className="lk-sent-acts">
-        <button type="button" className="lk-sendalt" onClick={onEdit}><Icon.Edit size={16} />Edit workout</button>
+      {/* Editing is only offered when this workout can be replaced. Without
+          that, "editing" would quietly leave the coach with two of them. */}
+      <div className={`lk-sent-acts ${sent.id ? "" : "one"}`}>
+        {sent.id && <button type="button" className="lk-sendalt" onClick={onEdit}><Icon.Edit size={16} />Edit workout</button>}
         <button type="button" className="lk-sendalt" onClick={onAgain}><Icon.Plus size={18} />Log another</button>
       </div>
-      <small className="lk-sent-note">Editing replaces this workout. Logging another adds a second one for {isToday ? "today" : dayLabel}.</small>
+      <small className="lk-sent-note">{sent.id
+        ? <>Editing replaces this workout. Logging another adds a second one for {isToday ? "today" : dayLabel}.</>
+        : <>Logging another adds a second workout for {isToday ? "today" : dayLabel}.</>}</small>
     </div>
   );
 }
@@ -622,17 +652,25 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   const tickSet = (i, n) => { const before = ticks[i] || 0; setSets(i, n); if (n > before) maybeRest(i, n); else setRest(null); };
 
   // Already sent this day: the receipt stands until they choose one of the two
-  // ways on from it.
-  const showSent = Boolean(sentBefore) && !mode && !upcoming;
+  // ways on from it. A connected client's own history says what went, whatever
+  // phone they are on; this phone's memory covers everyone else.
+  const sentOnServer = (me?.history || []).find((h) => h?.date === date && h?.kind === "workout") || null;
+  const sentPayload = sentOnServer?.payload || null;
+  const sentInfo = sentBefore || (sentPayload ? fromHistory(sentOnServer, today) : null);
+  const showSent = Boolean(sentInfo) && !mode && !upcoming;
   const startEdit = () => {
-    const saved = sentBefore?.saved;
+    // What the coach actually received comes first — it is the same on every
+    // phone. What this phone remembers is the fallback, for a client whose
+    // link isn't connected to an account.
+    const fromServer = sentPayload ? editStateFromPayload(sentPayload, today.exercises.slice(0, planCount), d.unit_system) : null;
+    const saved = fromServer || sentBefore?.saved || null;
     if (saved) {
       setTicks(saved.ticks || {});
       setLog(saved.log || {});
       setSkipped(saved.skipped || {});
       setNote(saved.note || "");
       setFeel(saved.feel || null);
-      if (saved.extras?.length && onExtras) onExtras(saved.extras);
+      if (onExtras) onExtras(saved.extras || []);
     }
     setReopened({});
     setMode("edit");
@@ -662,7 +700,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         client_key: key,
         // Fixing what they already sent replaces it, so the coach reads one
         // workout for the day rather than two that disagree.
-        ...(mode === "edit" && sentBefore?.id ? { replaces: sentBefore.id } : {}),
+        ...(mode === "edit" && sentInfo?.id ? { replaces: sentInfo.id } : {}),
       };
       const res = await sendWithRetry(onSubmit, payload);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent several workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
@@ -749,7 +787,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           </section>
         )}
 
-        {showSent && <SentCard sent={sentBefore} coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} onEdit={startEdit} onAgain={startAgain} />}
+        {showSent && <SentCard sent={sentInfo} coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} onEdit={startEdit} onAgain={startAgain} />}
 
         {!today.isRest && !showSent && (
           <>
@@ -897,9 +935,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <textarea className="lk-textarea" rows={1} value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Add a note for your coach" aria-label="Note for your coach" />
             </div>
             </>}
-            {sentBefore && mode && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>{mode === "edit"
-              ? `Changing what you sent at ${clock(sentBefore.at)}. Sending replaces it, so your coach sees one workout.`
-              : `You already sent this day at ${clock(sentBefore.at)}. This goes over as a second workout.`}</span></div>}
+            {sentInfo && mode && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>{mode === "edit"
+              ? `Changing the workout your coach already has${sentInfo.at ? `, sent at ${clock(sentInfo.at)}` : ""}. Sending replaces it, so they see one workout.`
+              : `You already sent this day${sentInfo.at ? ` at ${clock(sentInfo.at)}` : ""}. This goes over as a second workout.`}</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}

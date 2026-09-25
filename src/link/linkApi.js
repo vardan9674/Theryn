@@ -67,11 +67,19 @@ export function createPreviewApi() {
       const { replaces, ...stored } = payload; // the server drops it too
       if (at >= 0) { submissions[at] = { ...submissions[at], kind, payload: stored }; return { ok: true, id: replaces, date: payload.date, replaced: true }; }
       const id = `preview-${submissions.length + 1}`;
-      submissions.push({ id, kind, payload: stored });
+      submissions.push({ id, at: new Date().toISOString(), kind, payload: stored });
       return { ok: true, id, date: payload.date };
     },
     // The connect flow, without Google: the code is DEMO24 and signing in is instant.
-    async fetchMe() { await new Promise((r) => setTimeout(r, 120)); return { ok: true, ...connected }; },
+    async fetchMe() {
+      await new Promise((r) => setTimeout(r, 120));
+      // Like the real one: a connected client gets their own workouts back,
+      // each with the id needed to change it.
+      const history = connected.you
+        ? submissions.filter((s) => s.kind === "workout").map((s) => ({ id: s.id, at: s.at, date: s.payload.date, kind: s.kind, payload: s.payload })).reverse()
+        : [];
+      return { ok: true, ...connected, history };
+    },
     async connectLink(_t, code) {
       await new Promise((r) => setTimeout(r, 400));
       if (String(code || "").trim().toUpperCase() !== "DEMO24") return { ok: false, reason: "code", left: 7 };
