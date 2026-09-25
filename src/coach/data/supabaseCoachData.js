@@ -15,7 +15,8 @@ import {
   isManualId, manualIdOf, toClientId, manualToClient, manualClientData, manualFeeRow, manualPaymentRows,
   parseManualPaymentId, parseManualFeeId, cleanName, randomId,
 } from "../lib/manualClients.js";
-import { generateToken, hashToken, connectCode, linkClientData } from "../lib/clientLinks.js";
+import { generateToken, hashToken, connectCode, linkClientData, timeZoneFromSubmissions } from "../lib/clientLinks.js";
+import { validTimeZone } from "../lib/clientClock.js";
 import { convertPlan, normUnits } from "../lib/units.js";
 import { planTemplate, stampTemplate, manualPlanFromTemplate, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 import { isoDate } from "../lib/format.js";
@@ -131,11 +132,13 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         const linked = linkClientData(subs, { plan: row.plan, coachUnits: u });
         // Target weights in this client's units (the editor saves them stamped with those units).
         const routine = row.plan ? convertPlan(row.plan, u, { assumeFrom: u }) : base.routine;
-        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions };
+        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions, timeZone: linked.timeZone };
       }
       const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
       // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.
-      return { ...d, submissions: subs };
+      // Timezone: what their app reported, unless it's the untouched 'UTC' default; else their link sends.
+      const appTz = d.profile?.timezone && d.profile.timezone !== "UTC" ? validTimeZone(d.profile.timezone) : null;
+      return { ...d, submissions: subs, timeZone: appTz || timeZoneFromSubmissions(subs) };
     },
     async saveClientRoutine(clientId, templates) {
       const mid = manualIdOf(clientId);

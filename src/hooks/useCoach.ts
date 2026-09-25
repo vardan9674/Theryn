@@ -151,7 +151,7 @@ export async function loadAthleteData(athleteId: string) {
     // RLS: the existing "coaches can read profile" policy must allow this for
     // accepted coach_athletes links. Falls back to null silently on error.
     supabase.from("profiles")
-      .select("height_cm, unit_system")
+      .select("height_cm, unit_system, timezone")
       .eq("id", athleteId)
       .maybeSingle(),
   ]);
@@ -159,8 +159,9 @@ export async function loadAthleteData(athleteId: string) {
     ? {
         height_cm: profileRes.data.height_cm != null ? Number(profileRes.data.height_cm) : null,
         unit_system: profileRes.data.unit_system || "imperial",
+        timezone: profileRes.data.timezone || null,
       }
-    : { height_cm: null, unit_system: "imperial" };
+    : { height_cm: null, unit_system: "imperial", timezone: null };
   return { routine, history, weights, measurements, profile };
 }
 

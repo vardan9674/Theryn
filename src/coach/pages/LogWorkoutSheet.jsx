@@ -25,9 +25,10 @@ function recentDays(routine, now = new Date()) {
  * a link submission, marked logged_by "coach", so it counts for their streak
  * and shows as "logged by you".
  */
-export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave }) {
+export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now }) {
   const toast = useToast();
-  const days = React.useMemo(() => recentDays(routine), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "Today" is the client's today (#95): a coach in India logging a US client's evening workout.
+  const days = React.useMemo(() => recentDays(routine, now || new Date()), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
   const doneDates = React.useMemo(() => new Set((history || []).map((h) => h.date)), [history]);
   // Start on the latest planned day that has nothing logged yet (usually today).
   const pickDefault = () => (days.find((x) => !x.rest && !doneDates.has(x.iso)) || days.find((x) => !x.rest) || days[0]).iso;

@@ -4,6 +4,31 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-25 (later) — Timezone fixes (#93, #94, #95), branch `fix/timezone-dates`
+
+**Asked**
+- "File the timezone bugs as issues and fix them."
+
+**Filed**: #93 (calendar a day late east of UTC), #94 (insights read the wrong days 00:00–05:30 IST), #95 (client's day judged by the coach's clock).
+
+**Done** (no database change)
+- #93: `AthleteDepth.jsx` keys calendar cells and volume weeks with the local date (`isoDate`), not `toISOString()`. The calendar and volume chart take an optional `now`.
+- #94: `coachInsights.js` `toIso` is local; every detector takes `now` from `detectSignals({ …, now })` / `computeStats({ …, now })`. "No activity for N days" and "stale" count whole calendar days, so they agree with "Last workout: N days ago" (this also fixes QA L1).
+- #95: new `src/coach/lib/clientClock.js` (`clockIn`, `clientNow`, `theirTimeNote`, `browserTimeZone`).
+  - The link page stamps `tz` on every workout and measurement it sends; `link_submit` keeps the payload as is.
+  - `linkClientData` / `timeZoneFromSubmissions` read the newest client-sent `tz`, never a coach-logged one. App clients use `profiles.timezone` unless it is the untouched `UTC` default.
+  - Clients list, client page (streak, This week, consistency, calendar, volume, "Done via link" tags) and Log a workout run on the client's clock. The client page shows "It's 7:45 pm Friday for Alex" when their clock is an hour or more from the coach's. Payments stay on the coach's clock.
+  - Unknown timezone (older sends, clients who haven't sent since): the coach's clock, as before.
+- Preview data: Jonas trains in Los Angeles, so `/?coachPreview=1` shows the note.
+
+**Verified**
+- 10 new tests in `src/coach/lib/__tests__/timezones.test.js` switch `TZ` between Asia/Kolkata and America/Los_Angeles on a pinned clock. The three #94 tests fail on main's old `coachInsights.js`.
+- Headless Chrome with a timezone override, coach in India: Dana's calendar circles Mon/Wed/Fri (before: Tue/Thu/Sat, with the 26th both today and trained); at 2:00 am IST her row reads "12-day streak" (before: "Only 0/12 scheduled sessions"); Jonas's page reads "It's 7:45 pm Friday for Jonas". Same results on UTC.
+- In-app browser (US Central): no console errors. Typecheck, 210 tests, build pass.
+
+**Open**
+- A client's timezone is known only once they send from their link after this deploys; until then their rows use the coach's clock.
+
 ## 2026-09-25 — Close three cross-account holes (#89, #90, #91); India coach / US client timezone pass, branch `fix/db-permission-holes`
 
 **Asked**

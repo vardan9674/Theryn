@@ -12,6 +12,7 @@ import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, co
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
+import { browserTimeZone } from "../coach/lib/clientClock.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
 
@@ -706,6 +707,8 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         // coach as a session they failed.
         ...(mode === "again" ? { exercises: built.exercises.filter((e) => e.sets_done > 0) } : {}),
         client_key: key,
+        // Their timezone, so a coach elsewhere reads this day on the client's clock (#95).
+        ...(browserTimeZone() ? { tz: browserTimeZone() } : {}),
         // Fixing what they already sent replaces it, so the coach reads one
         // workout for the day rather than two that disagree.
         ...(mode === "edit" && sentInfo?.id ? { replaces: sentInfo.id } : {}),
@@ -1030,7 +1033,7 @@ function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }
     try {
       let key = store?.key(`m:${date}`);
       if (!key) { key = sendKey(); store?.setKey(`m:${date}`, key); }
-      const res = await sendWithRetry(onSubmit, { ...measurementsPayload(values, unit, date), client_key: key });
+      const res = await sendWithRetry(onSubmit, { ...measurementsPayload(values, unit, date), client_key: key, ...(browserTimeZone() ? { tz: browserTimeZone() } : {}) });
       store?.setKey(`m:${date}`, null);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent measurements a few times today already. Your coach has them." : res?.reason === "out_of_range" ? "One of the numbers looks off. Please check it." : "Could not send. Try again in a moment.");
       onSent({ count: added + (values.weight ? 1 : 0), date });

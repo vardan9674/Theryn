@@ -3,6 +3,7 @@ import { Avatar, Chip, Icon, Tone, Empty, Button, useViewport } from "../ui/prim
 import { streakStats } from "../lib/streak.js";
 import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients, daysSinceLastWorkout as daysSinceLast } from "../lib/clientFacts.js";
 import { plural, isoDate, daysBetween } from "../lib/format.js";
+import { clientNow } from "../lib/clientClock.js";
 import ClientDetail from "./ClientDetail.jsx";
 
 const daysBetweenIso = (iso, now) => daysBetween(iso, isoDate(now));
@@ -29,33 +30,34 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
       const pays = payments.filter((p) => p.athlete_id === link.athlete_id);
       const payment = paymentFact(fee, pays, defaultCurrency, now);
       if (!data) return { link, name: link.athlete_name, loading: true, payment, bucket: "ok" };
+      const cnow = clientNow(data, now); // the client's day, not the coach's (#95)
       if (link.manual) {
         const hasPlan = data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length);
         const hasHistory = (data.history || []).length > 0;
         const latestM = data.measurements?.[0];
-        const days = hasHistory ? daysSinceLast(data.history, now) : null;
+        const days = hasHistory ? daysSinceLast(data.history, cnow) : null;
         const todo = hasHistory && days != null && days >= 5
           ? { text: `No check-in for ${days} days. Send them a nudge.`, severity: "warn", tab: "plan", color: null }
-          : latestM && daysBetweenIso(latestM.date, now) <= 2
-          ? { text: `Sent measurements ${daysBetweenIso(latestM.date, now) === 0 ? "today" : "recently"}. Have a look.`, severity: "celebrate", tab: "body", color: null }
+          : latestM && daysBetweenIso(latestM.date, cnow) <= 2
+          ? { text: `Sent measurements ${daysBetweenIso(latestM.date, cnow) === 0 ? "today" : "recently"}. Have a look.`, severity: "celebrate", tab: "body", color: null }
           : hasHistory
           ? { text: "Checking in through their link. Nothing needed.", severity: null, tab: "plan", color: null }
           : { text: hasPlan ? "Not on the app yet. Share their link so they can tick off workouts." : "Not on the app yet. Build their plan, then share their link.", severity: null, tab: "plan", color: null };
         const row = { link, name: link.athlete_name, loading: false, data,
-          last: hasHistory ? lastWorkoutLabel(data.history, now) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, now) : "muted",
-          week: hasHistory ? weekProgress(data.history, data.routine, now) : null, todo, payment, manual: true,
-          streak: streakStats((data.history || []).map((h) => h.date), data.routine, now) };
+          last: hasHistory ? lastWorkoutLabel(data.history, cnow) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, cnow) : "muted",
+          week: hasHistory ? weekProgress(data.history, data.routine, cnow) : null, todo, payment, manual: true,
+          streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow) };
         row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
         return row;
       }
-      const todo = whatToDo(data, now);
+      const todo = whatToDo(data, cnow);
       const row = {
         link, name: link.athlete_name, loading: false, data,
-        last: lastWorkoutLabel(data.history, now), lastTone: lastWorkoutTone(data.history, now),
-        week: weekProgress(data.history, data.routine, now), todo, payment,
-        streak: streakStats((data.history || []).map((h) => h.date), data.routine, now),
+        last: lastWorkoutLabel(data.history, cnow), lastTone: lastWorkoutTone(data.history, cnow),
+        week: weekProgress(data.history, data.routine, cnow), todo, payment,
+        streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow),
       };
-      row.bucket = attentionBucket(row, now);
+      row.bucket = attentionBucket(row, cnow);
       return row;
     });
     return sortClients(list);
