@@ -12,7 +12,7 @@ import { Share } from "@capacitor/share";
 import { saveCompletedWorkout, loadWorkoutHistory } from "./hooks/useWorkouts";
 import { loadBodyWeights, saveBodyWeight, deleteBodyWeight, loadMeasurements, saveMeasurement, deleteMeasurement } from "./hooks/useBody";
 import { loadRoutine, saveRoutine } from "./hooks/useRoutine";
-import { findProfileByCode, sendCoachRequest, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
+import { connectAthleteByCode, loadCoachLinks, acceptCoachRequest, removeCoachLink, loadAthleteData, ensureInviteCode, loadAthleteSessionsSince } from "./hooks/useCoach";
 import LandingPage from "./components/landing/Landing.jsx";
 import TherynLoader from "./components/TherynLoader.jsx";
 import ChatView from "./components/ChatView";
@@ -3159,11 +3159,8 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
     if (codeInput.trim().length < 6) return;
     setActionLoading(true); setMsg(null);
     try {
-      const athlete = await findProfileByCode(codeInput.trim());
-      if (!athlete) return setMsg({ text: "No account found with that code. Double-check and try again.", ok: false });
-      if (athlete.id === authUser.id) return setMsg({ text: "That's your own code.", ok: false });
-      await sendCoachRequest(authUser.id, athlete.id);
-      setMsg({ text: `Request sent to ${athlete.display_name}. Waiting for their approval.`, ok: true });
+      const athlete = await connectAthleteByCode(codeInput.trim());
+      setMsg({ text: `${athlete.display_name} added.`, ok: true });
       setCodeInput("");
       await refresh();
       setTimeout(() => goTo("home"), 1800);

@@ -4,6 +4,38 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-25 — Close three cross-account holes (#89, #90, #91); India coach / US client timezone pass, branch `fix/db-permission-holes`
+
+**Asked**
+- "Fix the three database permission issues, and also test as if you're a coach in India and client in USA, different timezone."
+
+**Found** (read-only queries on production, 2026-09-25)
+- Any signed-in user could insert an already-accepted `coach_athletes` row to anyone, and read every profile including invite codes. `is_coach_of` ignored its permission argument.
+- A coach could insert or repoint a `client_links` row at an athlete they don't coach, or at another coach's name-only client.
+- A coach could assign any athlete to their plan and `push_template_update` would overwrite that athlete's routine; it never checked the relationship.
+- Nothing had been misused: no link points at an athlete outside a coach link, and the three accepted coach links are ordinary. One plan assignment from April has no coach link behind it.
+
+**Done** (migration `20260925140931_close_coach_access_holes.sql`, **applied to production 2026-09-25** after the owner's go-ahead; the file is named after the version the database recorded)
+- #89 (QA C1): profiles readable by yourself and the other side of a coach link. Coaches can only *request* a link (pending, edit_routine); through the API only its status can change. `is_coach_of` honours view < edit_routine < full.
+- New RPC `coach_connect_by_code(code)`: the code must match, the athlete can't already have another coach, ten wrong codes an hour per coach. The dashboard and the old app call it instead of looking up the profile and inserting an accepted row. Invite codes come from `crypto.getRandomValues`.
+- #90 (QA H1): `client_links`: no direct inserts (links come from `client_link_upsert`); a trigger freezes coach, athlete, name-only client, token and connection columns on direct updates.
+- #91 (QA H2): `routine_template_assignments`: coaches read only; writes go through the RPCs. `push_template_update` skips athletes the coach may not edit (`no_permission`).
+- When a coach link ends: that coach's assignments end, their links for the athlete are turned off, and the athlete's invite code is cleared so it can't reconnect them. The April leftover is ended on apply.
+
+**Verified**
+- Local Postgres (PGlite) rebuilt with the live policies and the live function bodies (md5 of each matches production). 11 attacks: all work on today's setup, all refused with the migration. 24 normal flows pass (add by code, has_coach/self/too_many, assign, push, links, accept, remove). The migration runs twice cleanly.
+- Typecheck, 200 tests, build pass.
+- Production after applying: new policies and triggers in place; `coach_connect_by_code` executable by authenticated, not anon; no direct insert/update/delete grants left on `client_links` / assignments; each new or changed function's md5 matches the tested copy; the April leftover ended; links (16), coach links (3), submissions (51) and invite codes (8) unchanged. With the public anon key: `link_view` still answers, `coach_connect_by_code` and `client_links` insert are refused, profiles return nothing.
+
+**Timezone pass** (coach Asia/Kolkata, client America/Los_Angeles; real code with a pinned clock, and headless Chrome with a timezone override)
+- Client side is right: the link stays on Friday until midnight Pacific; a 7:30 pm Pacific send is stored as that Friday; `link_view` streak dates use the client's `local_date`.
+- Attendance calendar is one day late for every coach east of UTC: `AthleteDepth.jsx` keys each day cell with `toISOString()`, so in India the cell for Sat 26 holds Fri 25's workout. Seen in Chrome at 8:15 am IST: list says Sep 25/23/21, calendar circles 26/24/22.
+- `coachInsights.js` `toIso` has the same UTC slip, so between midnight and 5:30 am IST the "what to do" line reads the wrong days: Dana with a 12-day streak showed "Only 0/12 scheduled sessions in last 4 weeks".
+- Coach-side streaks use the coach's today: from midnight IST until midnight Pacific (12:30 pm IST), a US client who hasn't trained yet shows "0 · was 5" on the dashboard while their own page shows 5 and the day isn't over. "At risk" fires at 6 pm IST, 5:30 am for the client. "Log a workout" defaults to the coach's day.
+
+**Open**
+- Fix the two `toISOString` date keys (small, local-date helper already exists in `format.js`), and decide whose "today" the coach dashboard uses for a client in another timezone.
+
 ## 2026-09-19 (late night) — Plans: empty-plan bug, keep or replace per client, plain guidance, branch `fix/plans-add-clients`
 
 **Asked**

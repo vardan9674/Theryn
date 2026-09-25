@@ -18,8 +18,12 @@ export interface CoachLink {
 }
 
 // ── Generate a random 6-char uppercase invite code ───────────────────────────
+// The code is what lets a coach add this athlete, so it comes from the
+// cryptographic generator, not Math.random. No 0/O or 1/I, to read aloud.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function randomCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
 // ── Ensure the user has an invite code in profiles ───────────────────────────
@@ -45,51 +49,26 @@ export async function ensureInviteCode(userId: string): Promise<string> {
   return code;
 }
 
-// ── Look up a profile by invite code ─────────────────────────────────────────
-export async function findProfileByCode(
+// ── Add an athlete by the invite code shown in their app ─────────────────────
+// Holding the athlete's code is their consent, so the check happens on the
+// server (coach_connect_by_code): the code must match, the athlete can't
+// already have another coach, and wrong guesses are limited. Other people's
+// profiles and codes are not readable from the browser.
+const CONNECT_ERRORS: Record<string, string> = {
+  not_found: "No athlete found with that code. Ask them to check it in their app.",
+  self: "That is your own code.",
+  has_coach: "This athlete already has an active coach.",
+  too_many: "Too many wrong codes. Try again in an hour.",
+  signin: "Please sign in again.",
+};
+
+export async function connectAthleteByCode(
   code: string
-): Promise<{ id: string; display_name: string } | null> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, display_name")
-    .eq("invite_code", code.trim().toUpperCase())
-    .maybeSingle();
-
+): Promise<{ id: string; display_name: string }> {
+  const { data, error } = await supabase.rpc("coach_connect_by_code", { p_code: code });
   if (error) throw new Error(error.message);
-  return data ?? null;
-}
-
-// ── Send a coach request (coach enters athlete's code) ────────────────────────
-export async function sendCoachRequest(
-  coachId: string,
-  athleteId: string
-): Promise<void> {
-  // Enforce rule: athlete can only have 1 active coach
-  const { data: activeCoach } = await supabase
-    .from("coach_athletes")
-    .select("id")
-    .eq("athlete_id", athleteId)
-    .eq("status", "accepted")
-    .single();
-
-  if (activeCoach) {
-    throw new Error("This athlete already has an active coach.");
-  }
-
-  const { error } = await supabase.from("coach_athletes").insert({
-    coach_id: coachId,
-    athlete_id: athleteId,
-    status: "accepted",
-  });
-  if (error) throw new Error(error.message);
-
-  // Auto-accept: clear any other pending requests for this athlete so the
-  // "one active coach" rule stays consistent.
-  await supabase
-    .from("coach_athletes")
-    .delete()
-    .eq("athlete_id", athleteId)
-    .eq("status", "pending");
+  if (!data?.ok) throw new Error(CONNECT_ERRORS[data?.reason] || "Could not add this athlete. Try again.");
+  return { id: data.athlete_id, display_name: data.display_name || "Athlete" };
 }
 
 // ── Load all links for the current user (as coach OR athlete) ─────────────────

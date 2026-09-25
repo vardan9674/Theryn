@@ -3,7 +3,7 @@
 // clients (coach_manual_clients) are merged in here so screens never care.
 import { supabase } from "../../lib/supabase.ts";
 import { Capacitor } from "@capacitor/core";
-import { loadAthleteData, loadCoachLinks, ensureInviteCode, findProfileByCode, sendCoachRequest, removeCoachLink, loadAthleteSessionsSince } from "../../hooks/useCoach.ts";
+import { loadAthleteData, loadCoachLinks, ensureInviteCode, connectAthleteByCode, removeCoachLink, loadAthleteSessionsSince } from "../../hooks/useCoach.ts";
 import { saveRoutineAsCoach } from "../../hooks/useRoutine.ts";
 import { loadClientFees, loadPayments, upsertClientFee, deleteClientFee, savePayment, deletePayment } from "../../hooks/usePayments.ts";
 import { useChat, loadConversationPreviews } from "../../hooks/useChat.ts";
@@ -162,14 +162,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       return removeCoachLink(linkId);
     },
     ensureInviteCode: () => ensureInviteCode(coachId),
-    findProfileByCode: (code) => findProfileByCode(code),
-    addClientByCode: async (code) => {
-      const p = await findProfileByCode(code);
-      if (!p) throw new Error("No athlete found with that code. Ask them to check it in their app.");
-      if (p.id === coachId) throw new Error("That is your own code.");
-      await sendCoachRequest(coachId, p.id);
-      return p;
-    },
+    addClientByCode: (code) => connectAthleteByCode(code),
     /** Optional email for a name-only client: later, signing in with it offers them their history. */
     // The coach's kg/lb choice for one client. Numbers already saved keep the
     // unit they were typed in; they are converted on the way out.
