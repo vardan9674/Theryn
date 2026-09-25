@@ -1,6 +1,7 @@
--- Finishing a workout on a phone that drops its connection.
+-- Finishing a workout on a phone that drops its connection, and fixing one
+-- that has already gone.
 --
--- Two changes to link_submit, nothing else:
+-- Three changes to link_submit, nothing else:
 --
 --   1. A retry is the same workout. The page now sends a `client_key` that
 --      stays the same until the coach has the workout, even across a reload.
@@ -9,6 +10,10 @@
 --   2. A connected client can send more than three workouts a day. They can
 --      open any day of the week now, so catching up on a few days at once is
 --      normal. Links that nobody has connected keep the old limit of three.
+--   3. "Change what I sent" replaces the workout instead of adding a second
+--      one, so the coach reads one workout per day rather than two that
+--      disagree. Only the client's own recent workout through this link, and
+--      never one the coach has already corrected by hand.
 --
 -- Everything else — the checks, the ranges, the promotion into the athlete's
 -- own tables — is exactly as it was.
@@ -37,6 +42,8 @@ DECLARE
   v_id     UUID;
   v_key    TEXT;
   v_prev   client_submissions%ROWTYPE;
+  v_repl   TEXT;
+  v_fixed  BOOLEAN := false;   -- a correction, not a new workout
 BEGIN
   IF p_token IS NULL OR length(p_token) < 20 OR length(p_token) > 128 THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'invalid');
@@ -67,17 +74,34 @@ BEGIN
     END IF;
   END IF;
 
+  -- ── Are they changing a workout they already sent? ──
+  -- Their own, through this link, in the last two days, and not one the coach
+  -- has corrected by hand — the coach's fix is the one that stands.
+  v_repl := nullif(p_payload->>'replaces', '');
+  IF p_kind = 'workout' AND v_repl ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    SELECT * INTO v_prev FROM client_submissions
+     WHERE id = v_repl::uuid
+       AND link_id = v_link.id
+       AND kind = 'workout'
+       AND submitted_at > now() - interval '48 hours'
+       AND NOT (payload ? 'edited_by_coach_at');
+    IF FOUND THEN v_id := v_prev.id; v_fixed := true; END IF;
+  END IF;
+
   -- A connected client opens any day of the week, so catching up on several
   -- days in one sitting is normal; a plain link still sends three a day.
-  v_cap := CASE
-             WHEN p_kind = 'measurements' THEN 5
-             WHEN v_link.connected_user_id IS NOT NULL OR v_link.athlete_id IS NOT NULL THEN 12
-             ELSE 3
-           END;
-  SELECT count(*) INTO v_today FROM client_submissions
-   WHERE link_id = v_link.id AND kind = p_kind AND submitted_at > now() - interval '24 hours';
-  IF v_today >= v_cap THEN
-    RETURN jsonb_build_object('ok', false, 'reason', 'too_many');
+  -- Correcting one they already sent doesn't count: it adds nothing.
+  IF v_id IS NULL THEN
+    v_cap := CASE
+               WHEN p_kind = 'measurements' THEN 5
+               WHEN v_link.connected_user_id IS NOT NULL OR v_link.athlete_id IS NOT NULL THEN 12
+               ELSE 3
+             END;
+    SELECT count(*) INTO v_today FROM client_submissions
+     WHERE link_id = v_link.id AND kind = p_kind AND submitted_at > now() - interval '24 hours';
+    IF v_today >= v_cap THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'too_many');
+    END IF;
   END IF;
 
   -- Date: today unless a valid past date (max 60 days back) is given.
@@ -112,11 +136,27 @@ BEGIN
     END IF;
   END IF;
 
+  IF v_id IS NOT NULL THEN
+    -- Their correction stands in place of the first one.
+    UPDATE client_submissions
+       SET payload = (p_payload - 'replaces') || jsonb_build_object('date', v_date, 'edited_by_client_at', to_jsonb(now())),
+           submitted_at = now()
+     WHERE id = v_id;
+    -- An app athlete's promoted session for that day goes with it, so their
+    -- own history matches what the coach now reads.
+    IF v_link.athlete_id IS NOT NULL THEN
+      DELETE FROM workout_sessions
+       WHERE user_id = v_link.athlete_id AND source = 'link'
+         AND started_at >= (v_date + time '00:00')::timestamptz
+         AND started_at <  ((v_date + 1) + time '00:00')::timestamptz;
+    END IF;
+  ELSE
   INSERT INTO client_submissions (link_id, coach_id, athlete_id, manual_client_id, kind, payload, user_agent)
   VALUES (v_link.id, v_link.coach_id, v_link.athlete_id, v_link.manual_client_id, p_kind,
           p_payload || jsonb_build_object('date', v_date), left(current_setting('request.headers', true)::jsonb->>'user-agent', 200))
   RETURNING id INTO v_id;
   UPDATE client_links SET submissions = submissions + 1 WHERE id = v_link.id;
+  END IF;
 
   -- ── Promote into the real tables for app clients ──
   IF v_link.athlete_id IS NOT NULL THEN
@@ -172,6 +212,6 @@ BEGIN
     END IF;
   END IF;
 
-  RETURN jsonb_build_object('ok', true, 'id', v_id, 'date', v_date);
+  RETURN jsonb_build_object('ok', true, 'id', v_id, 'date', v_date, 'replaced', v_fixed);
 END;
 $function$;

@@ -353,6 +353,29 @@ function Byline({ coach, units, onUnits }) {
   );
 }
 
+/**
+ * A day they have already sent. The workout itself is done with — showing the
+ * list again invites a second, contradictory entry — so this says what went
+ * and when, and offers the only two things left worth doing: fix it, or put
+ * down something else they did that day.
+ */
+function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
+  const when = clock(sent.at);
+  const sets = sent.planned > 0 ? `${sent.sets} of ${sent.planned} sets` : `${sent.exercises || 0} exercise${sent.exercises === 1 ? "" : "s"}`;
+  return (
+    <div className="lk-card lk-sent">
+      <span className="lk-sent-tick" aria-hidden="true"><Icon.Check size={22} /></span>
+      <h2 className="lk-sent-h">{isToday ? "Today's workout is with your coach." : `${dayLabel}'s workout is with your coach.`}</h2>
+      <p className="lk-sent-p">{sent.type && sent.type !== "Rest" ? `${sent.type} · ` : ""}{sets} · sent at {when}{coach ? ` to Coach ${coach}` : ""}.</p>
+      <div className="lk-sent-acts">
+        <button type="button" className="lk-send secondary" onClick={onEdit}>Change what I sent</button>
+        <button type="button" className="lk-send secondary" onClick={onAgain}>Add something else</button>
+      </div>
+      <small className="lk-small">Changing replaces what your coach sees. Adding something else sends it as a second workout for {isToday ? "today" : dayLabel}.</small>
+    </div>
+  );
+}
+
 // ── Connecting an account ──────────────────────────────────────────────────
 /**
  * The link alone opens today's workout. Connecting a Google account — with the
@@ -443,6 +466,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null }) {
   const [adding, setAdding] = React.useState(false);
   const planCount = today.exercises.length - extras.length; // the coach's, before theirs
+  // A day they have already sent opens as a receipt, not as the workout again.
+  // "edit" reopens what they sent; "again" starts a separate second entry.
+  const [mode, setMode] = React.useState(null);
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
@@ -593,6 +619,30 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   };
   const tickSet = (i, n) => { const before = ticks[i] || 0; setSets(i, n); if (n > before) maybeRest(i, n); else setRest(null); };
 
+  // Already sent this day: the receipt stands until they choose one of the two
+  // ways on from it.
+  const showSent = Boolean(sentBefore) && !mode && !upcoming;
+  const startEdit = () => {
+    const saved = sentBefore?.saved;
+    if (saved) {
+      setTicks(saved.ticks || {});
+      setLog(saved.log || {});
+      setSkipped(saved.skipped || {});
+      setNote(saved.note || "");
+      setFeel(saved.feel || null);
+      if (saved.extras?.length && onExtras) onExtras(saved.extras);
+    }
+    setReopened({});
+    setMode("edit");
+    window.scrollTo(0, 0);
+  };
+  // Something else they did that day: a clean sheet, sent as its own workout.
+  const startAgain = () => {
+    setTicks({}); setLog({}); setSkipped({}); setNote(""); setFeel(null); setReopened({});
+    setMode("again");
+    window.scrollTo(0, 0);
+  };
+
   async function send() {
     setBusy(true); setError(null);
     try {
@@ -600,12 +650,33 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
       // connection — even after a reload — is this workout, not a second one.
       let key = store?.key(date);
       if (!key) { key = sendKey(); store?.setKey(date, key); }
-      const payload = { ...workoutPayload(today, ticks, log, note, date, d.unit_system, feel), client_key: key };
+      const built = workoutPayload(today, ticks, log, note, date, d.unit_system, feel);
+      const payload = {
+        ...built,
+        // A second workout for a day already sent is only what they did this
+        // time. Sending the whole plan again with zeros would read to the
+        // coach as a session they failed.
+        ...(mode === "again" ? { exercises: built.exercises.filter((e) => e.sets_done > 0) } : {}),
+        client_key: key,
+        // Fixing what they already sent replaces it, so the coach reads one
+        // workout for the day rather than two that disagree.
+        ...(mode === "edit" && sentBefore?.id ? { replaces: sentBefore.id } : {}),
+      };
       const res = await sendWithRetry(onSubmit, payload);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent several workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
       store?.setKey(date, null);
       const before = streakStats(d.doneDates || [], d.plan).current;
-      store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
+      // Enough to show them what went, and to open it again if they want to
+      // change it: the submission's id, the totals, and what was in the boxes.
+      store?.markSent(date, {
+        at: Date.now(), day: today.key, type: today.type,
+        id: res?.id || null,
+        sets: payload.exercises.reduce((a, e) => a + e.sets_done, 0),
+        planned: payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0),
+        exercises: payload.exercises.filter((e) => e.sets_done > 0).length,
+        saved: { ticks, log, note, feel, skipped, extras },
+      });
+      setMode(null); // back to the receipt for this day
       store?.addDone(date);
       store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
       const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
@@ -627,17 +698,18 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         <Byline coach={d.coach_name} units={d.unit_system} onUnits={d.onUnits} />
         <div className="lk-intro">
           <div className="lk-dateline">
-            <span className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : `Logging ${longDate(dateOf(date))}`}</span>
+            <span className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : showSent ? longDate(dateOf(date)) : `Logging ${longDate(dateOf(date))}`}</span>
             {isToday && !controlledTicks && <StreakChip st={st} />}
           </div>
           {today.isRest
             ? <h1 className="lk-h1">Rest day.</h1>
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
-          <p className="lk-lede">{today.isRest
+          {/* A day already sent says so in its own card; no need to be told to tick it. */}
+          {!showSent && <p className="lk-lede">{today.isRest
             ? (!isToday ? `Hi ${first}. Nothing is planned for ${DAY_LONG[today.key]}.` : today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
             : isToday ? `Hi ${first}. ${st.current >= 2 && !st.doneToday ? `Tick today and that's ${st.current + 1} workouts in a row.${st.best > st.current + 1 ? ` Your best is ${st.best}.` : ""}` : "Follow your coach's plan and tick off each exercise."}`
             : upcoming ? `Hi ${first}. Here's ${DAY_LONG[today.key]}'s plan. You can tick it off on the day.`
-            : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
+            : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>}
         </div>
 
         {d.plan && (
@@ -675,7 +747,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           </section>
         )}
 
-        {!today.isRest && (
+        {showSent && <SentCard sent={sentBefore} coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} onEdit={startEdit} onAgain={startAgain} />}
+
+        {!today.isRest && !showSent && (
           <>
             <div className="lk-card" style={{ flexDirection: "row", alignItems: "center" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -821,7 +895,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <textarea className="lk-textarea" rows={1} value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Add a note for your coach" aria-label="Note for your coach" />
             </div>
             </>}
-            {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
+            {sentBefore && mode && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>{mode === "edit"
+              ? `Changing what you sent at ${clock(sentBefore.at)}. Sending replaces it, so your coach sees one workout.`
+              : `You already sent this day at ${clock(sentBefore.at)}. This goes over as a second workout.`}</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}
@@ -838,7 +914,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           </div>
         )}
       </main>
-      {!today.isRest && !upcoming && (
+      {!today.isRest && !upcoming && !showSent && (
         <div className="lk-footer"><div className="lk-footer-inner">
           {rest && (
             <div className="lk-rest" role="status" aria-live="polite">
@@ -847,7 +923,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <button type="button" className="lk-rest-skip" onClick={() => setRest(null)}>Skip</button>
             </div>
           )}
-          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
+          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…"
+            : mode === "edit" ? "Save the changes"
+            : mode === "again" ? "Send this as well"
+            : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>
       )}

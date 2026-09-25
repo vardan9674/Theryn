@@ -30,6 +30,9 @@ const ClientLink = lazy(async () => {
   ])
   const token = linkMatch[1]
   const api = import.meta.env.DEV && token === 'preview' ? createPreviewApi() : null
+  // Dev only: lets /f/preview be inspected from the console — what was sent,
+  // and whether a change replaced it or added a second workout.
+  if (api) window.__previewApi = api
   return { default: () => <LinkPage token={token} api={api} /> }
 })
 
