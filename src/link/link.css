@@ -313,3 +313,4 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-sent-note { margin-top: 12px; font-size: 12.5px; line-height: 1.45; color: var(--cx-mu); max-width: 34ch; }
 @media (max-width: 380px) { .lk-sent-acts { grid-template-columns: minmax(0, 1fr); } .lk-sent { padding: 24px 14px 16px; } }
 .lk-sent-acts.one { grid-template-columns: minmax(0, 1fr); }
+.lk-sent-by { margin: -2px 0 10px; font-size: 13px; color: var(--cx-mu); }

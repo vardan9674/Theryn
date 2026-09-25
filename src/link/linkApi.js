@@ -73,11 +73,10 @@ export function createPreviewApi() {
     // The connect flow, without Google: the code is DEMO24 and signing in is instant.
     async fetchMe() {
       await new Promise((r) => setTimeout(r, 120));
-      // Like the real one: a connected client gets their own workouts back,
-      // each with the id needed to change it.
-      const history = connected.you
-        ? submissions.filter((s) => s.kind === "workout").map((s) => ({ id: s.id, at: s.at, date: s.payload.date, kind: s.kind, payload: s.payload })).reverse()
-        : [];
+      // Like the real one: whoever holds the link gets their own workouts
+      // back, each with the id needed to change it — except one the coach
+      // logged, which comes back without an id and so cannot be edited.
+      const history = submissions.filter((s) => s.kind === "workout").map((s) => ({ id: s.payload.logged_by === "coach" ? null : s.id, at: s.at, date: s.payload.date, kind: s.kind, by_coach: s.payload.logged_by === "coach", payload: s.payload })).reverse();
       return { ok: true, ...connected, history };
     },
     async connectLink(_t, code) {
