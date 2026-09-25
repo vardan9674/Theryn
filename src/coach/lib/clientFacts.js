@@ -97,6 +97,8 @@ export function paymentFact(fee, athletePayments, defaultCurrency = "USD", now =
   switch (info.status) {
     case "paid": return { status: "paid", label: "Paid", tone: "ok", info, currency };
     case "due": return { status: "due", label: "Due today", tone: "warn", info, currency };
+    // Not late, not due yet — a fee the coach set for a date still to come.
+    case "upcoming": return { status: "upcoming", label: info.label, tone: "muted", info, currency };
     case "overdue": return { status: "overdue", label: `Late by ${plural(info.daysIntoCycle ?? 1, "day")}`, tone: "bad", info, currency };
     case "paused": return { status: "paused", label: "Paused", tone: "muted", info, currency };
     default: return { status: "no_fee", label: "No fee set", tone: "muted", info, currency };

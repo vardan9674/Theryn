@@ -23,9 +23,9 @@
 
 /* Week strip */
 .lk-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
-.lk-day { height: 84px; border-radius: 10px; border: 1px solid var(--cx-bd); background: var(--cx-s1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 12px; color: var(--cx-tx2); }
+.lk-day { height: 84px; border-radius: 10px; border: 1px solid var(--cx-bd); background: var(--cx-s1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 12px; color: var(--cx-tx2); overflow: hidden; }
 .lk-day i { width: 18px; height: 5px; border-radius: 3px; background: var(--day, var(--cx-bd2)); display: block; }
-.lk-day b { color: var(--day, var(--cx-mu)); font-size: 12px; }
+.lk-day b { color: var(--day, var(--cx-mu)); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lk-day.rest b { color: #585858; font-weight: 400; }
 .lk-day small { font-size: 12px; color: var(--cx-mu); }
 .lk-day.today { border: 1.5px solid var(--day, var(--cx-a)); }
@@ -292,3 +292,14 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-addex .lk-segment { height: 44px; }
 .lk-yours { margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8FB8FF; border: 1px solid rgba(143, 184, 255, 0.4); white-space: nowrap; }
 .lk-code::placeholder { letter-spacing: 0.12em; font-size: 16px; font-weight: 600; color: var(--cx-mu); }
+
+/* ── A day already sent ─────────────────────────────────────────────────── */
+.lk-sent { align-items: center; text-align: center; gap: 10px; padding: 22px 16px; }
+.lk-sent-tick { width: 46px; height: 46px; border-radius: 50%; background: rgba(200, 255, 0, 0.12); color: var(--cx-a); display: inline-flex; align-items: center; justify-content: center; }
+.lk-sent-h { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.2; }
+.lk-sent-p { margin: 0; font-size: 14px; color: var(--cx-tx2); line-height: 1.45; }
+.lk-sent-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; margin-top: 4px; }
+.lk-sent-acts .lk-send { min-height: 48px; font-size: 15px; }
+@media (max-width: 360px) { .lk-sent-acts { grid-template-columns: minmax(0, 1fr); } }
+/* Long, coach-typed day names clip rather than break the seven columns. */
+@media (max-width: 360px) { .lk-day b { font-size: 11.5px; letter-spacing: -0.2px; } }

@@ -4,6 +4,7 @@ import { DAY_LONG } from "../lib/format.js";
 import { todayFromPlan, workoutPayload, dayKeyOf } from "../lib/clientLinks.js";
 import { planSets } from "../lib/planSets.js";
 import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.js";
+import { readDraft, saveDraft, clearDraft } from "../lib/logDraft.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -24,7 +25,7 @@ function recentDays(routine, now = new Date()) {
  * a link submission, marked logged_by "coach", so it counts for their streak
  * and shows as "logged by you".
  */
-export default function LogWorkoutSheet({ open, firstName, routine, history, unit, onClose, onSave }) {
+export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave }) {
   const toast = useToast();
   const days = React.useMemo(() => recentDays(routine), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
   const doneDates = React.useMemo(() => new Set((history || []).map((h) => h.date)), [history]);
@@ -39,9 +40,22 @@ export default function LogWorkoutSheet({ open, firstName, routine, history, uni
 
   const plan = React.useMemo(() => todayFromPlan(routine, noon(date)), [routine, date]);
   const allDone = () => Object.fromEntries(plan.exercises.map((e, i) => [i, e.sets || 1]));
-  // Fresh sheet, or a different day: everything ticked, as planned.
-  React.useEffect(() => { if (open) { setDate(pickDefault()); setNote(""); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  React.useEffect(() => { setTicks(allDone()); setLog({}); setOpenEx(null); }, [date, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reopening the sheet, or coming back to a day: whatever they had typed for
+  // that day is still there. Only a day they never touched opens as planned.
+  React.useEffect(() => { if (open) setDate(pickDefault()); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!open) return;
+    const draft = readDraft(clientId, date);
+    setTicks(draft?.ticks || allDone());
+    setLog(draft?.log || {});
+    setNote(draft?.note || "");
+    setOpenEx(null);
+  }, [open, date, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Every tick and every number, kept until it is sent.
+  React.useEffect(() => {
+    if (!open || plan.isRest) return;
+    saveDraft(clientId, date, { ticks, log, note }, allDone());
+  }, [open, clientId, date, ticks, log, note]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setsTotal = plan.exercises.reduce((a, e) => a + (e.sets || 1), 0);
   const setsDone = plan.exercises.reduce((a, e, i) => a + Math.min(ticks[i] || 0, e.sets || 1), 0);
@@ -64,6 +78,7 @@ export default function LogWorkoutSheet({ open, firstName, routine, history, uni
     try {
       const payload = { ...workoutPayload(plan, t, asPlanned ? {} : log, asPlanned ? "" : note, date, unit === "kg" ? "metric" : "imperial"), logged_by: "coach" };
       await onSave(payload);
+      clearDraft(clientId, date); // the coach has sent it; nothing left to keep
       toast(`Saved ${dayInfo?.label === "Today" ? "today's" : `${DAY_LONG[plan.key]}'s`} workout for ${firstName}. It counts for their streak.`);
       onClose();
     } catch (e) {

@@ -60,7 +60,16 @@ export function createPreviewApi() {
     async fetchLink() { await new Promise((r) => setTimeout(r, 300)); const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
       const done_dates = [1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14].map((n) => { const x = new Date(); x.setDate(x.getDate() - n); return iso(x); }).filter((d) => { const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00").getDay()]; return plan[k].type !== "Rest"; });
       return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips"], plan, done_dates }; },
-    async submitLink(_t, kind, payload) { await new Promise((r) => setTimeout(r, 500)); submissions.push({ kind, payload }); return { ok: true, id: "preview", date: payload.date }; },
+    async submitLink(_t, kind, payload) {
+      await new Promise((r) => setTimeout(r, 500));
+      // Same as the real one: a correction stands in place of the first send.
+      const at = payload.replaces ? submissions.findIndex((s) => s.id === payload.replaces) : -1;
+      const { replaces, ...stored } = payload; // the server drops it too
+      if (at >= 0) { submissions[at] = { ...submissions[at], kind, payload: stored }; return { ok: true, id: replaces, date: payload.date, replaced: true }; }
+      const id = `preview-${submissions.length + 1}`;
+      submissions.push({ id, kind, payload: stored });
+      return { ok: true, id, date: payload.date };
+    },
     // The connect flow, without Google: the code is DEMO24 and signing in is instant.
     async fetchMe() { await new Promise((r) => setTimeout(r, 120)); return { ok: true, ...connected }; },
     async connectLink(_t, code) {

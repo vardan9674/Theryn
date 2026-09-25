@@ -21,8 +21,8 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
     return { link, fee, list, fact, last: list[0] || null };
   }).sort((a, b) => rank(a.fact.status) - rank(b.fact.status) || a.link.athlete_name.localeCompare(b.link.athlete_name)), [clients, fees, payments, defaultCurrency]);
 
-  const counts = { late: rows.filter((r) => r.fact.status === "overdue").length, due: rows.filter((r) => r.fact.status === "due").length, paid: rows.filter((r) => r.fact.status === "paid").length, none: rows.filter((r) => r.fact.status === "no_fee").length };
-  const visible = rows.filter((r) => filter === "all" || (filter === "late" && r.fact.status === "overdue") || (filter === "due" && r.fact.status === "due") || (filter === "paid" && r.fact.status === "paid") || (filter === "none" && r.fact.status === "no_fee"));
+  const counts = { late: rows.filter((r) => r.fact.status === "overdue").length, due: rows.filter((r) => r.fact.status === "due" || r.fact.status === "upcoming").length, paid: rows.filter((r) => r.fact.status === "paid").length, none: rows.filter((r) => r.fact.status === "no_fee").length };
+  const visible = rows.filter((r) => filter === "all" || (filter === "late" && r.fact.status === "overdue") || (filter === "due" && (r.fact.status === "due" || r.fact.status === "upcoming")) || (filter === "paid" && r.fact.status === "paid") || (filter === "none" && r.fact.status === "no_fee"));
   const lateTotal = rows.filter((r) => r.fact.status === "overdue").reduce((s, r) => s + (r.fee?.amount || 0), 0);
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
 
@@ -93,7 +93,7 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
   );
 }
 
-function rank(status) { return { overdue: 0, due: 1, no_fee: 2, paid: 3 }[status] ?? 4; }
+function rank(status) { return { overdue: 0, due: 1, upcoming: 2, no_fee: 3, paid: 4 }[status] ?? 5; }
 
 // ── Record payment sheet ──────────────────────────────────────────────────
 export function RecordPaymentSheet({ open, onClose, clients, fees, defaultCurrency, presetAthleteId, onSave }) {

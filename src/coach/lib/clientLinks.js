@@ -292,13 +292,25 @@ export function doneSets(e) {
   const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
   // What the coach planned for set `i` (0-based): its own numbers when the sets differ.
   const planR = (i) => firstNum(ps?.[i]?.r ?? e.reps);
+  // Timed exercises (planks, runs) carry seconds instead of reps.
+  const planS = (i) => { const v = ps?.[i]?.s ?? e.secs_target; const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : null; };
+  const timed = e.mode === "time";
   if (Array.isArray(e.sets) && e.sets.length) {
     // Per set, a blank weight means the planned one (weight_used is just the first typed weight).
     const planW = (i) => ps?.[i]?.w ?? e.weight_target ?? e.weight_used;
-    return e.sets.filter((s) => s && s.done).map((s) => { const i = (Number(s.n) || 1) - 1; return { w: w(s.weight ?? planW(i)), r: s.reps != null ? String(s.reps) : planR(i) }; });
+    return e.sets.filter((s) => s && s.done).map((s) => {
+      const i = (Number(s.n) || 1) - 1;
+      const out = { w: w(s.weight ?? planW(i)), r: s.reps != null ? String(s.reps) : planR(i) };
+      if (timed) { const secs = s.secs ?? planS(i); if (secs != null) out.s = secs; }
+      return out;
+    });
   }
   const planW = (i) => ps?.[i]?.w ?? e.weight_used ?? e.weight_target;
-  return Array.from({ length: e.sets_done || 0 }, (_, i) => ({ w: w(planW(i)), r: planR(i) }));
+  return Array.from({ length: e.sets_done || 0 }, (_, i) => {
+    const out = { w: w(planW(i)), r: planR(i) };
+    if (timed && planS(i) != null) out.s = planS(i);
+    return out;
+  });
 }
 
 export function submissionToHistory(sub) {

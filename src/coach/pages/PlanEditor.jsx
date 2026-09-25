@@ -10,6 +10,7 @@ import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
 import { planSets, packSets, setsAreSame, setsLine } from "../lib/planSets.js";
 import { defaultMode, defaultSecs, parseDuration, durationInput, maskDuration, tidyDuration, formatDuration, supersetInfo, normalizeSupersets, SET_KINDS, dropWeight, warmupWeight, REST_OPTIONS, groupName, restLabel } from "../lib/exerciseKinds.js";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
+import { cleanTypeName, typeNameProblem, isCustomTypeName, MAX_TYPE_NAME } from "../lib/workoutTypes.js";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { useBackHandler } from "../../lib/backStack.ts";
 
@@ -343,6 +344,53 @@ function WeekList({ days, active, onPick }) {
   );
 }
 
+/**
+ * What kind of day this is. The ready-made names, plus "Name it myself…" for
+ * a coach who splits their week their own way — "Biceps + Back", "Fight Prep".
+ * A name they have already typed stays in the list, so switching away and back
+ * doesn't lose it.
+ */
+function TypePick({ dayKey, type, color, onPick }) {
+  const [typing, setTyping] = React.useState(false);
+  const [v, setV] = React.useState("");
+  const [err, setErr] = React.useState(null);
+  const custom = isCustomTypeName(type);
+  const options = custom ? [...WORKOUT_TYPES, type] : WORKOUT_TYPES;
+
+  const done = () => {
+    const problem = typeNameProblem(v);
+    if (problem) { setErr(problem); return; }
+    onPick(cleanTypeName(v));
+    setTyping(false); setErr(null);
+  };
+  if (typing) {
+    return (
+      <span className="pe-typename">
+        <input autoFocus value={v} maxLength={MAX_TYPE_NAME} placeholder="Biceps + Back"
+          onChange={(e) => { setV(e.target.value); setErr(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") done(); if (e.key === "Escape") { setTyping(false); setErr(null); } }}
+          onBlur={() => { if (cleanTypeName(v)) done(); else { setTyping(false); setErr(null); } }}
+          aria-label={`Name ${DAY_LONG[dayKey]}'s workout`} aria-invalid={Boolean(err)} />
+        {err && <em role="alert">{err}</em>}
+      </span>
+    );
+  }
+  return (
+    <label className="pe-type" style={{ color, background: `${color}1F` }}>
+      {String(type).toUpperCase()} <Icon.Down size={12} />
+      <select value={type} aria-label={`Workout type for ${DAY_LONG[dayKey]}`}
+        onChange={(e) => {
+          if (e.target.value !== NAME_IT) { onPick(e.target.value); return; }
+          setV(custom ? type : ""); setTyping(true);
+        }}>
+        {options.map((t) => <option key={t} value={t}>{t}</option>)}
+        <option value={NAME_IT}>{custom ? "Rename…" : "Name it myself…"}</option>
+      </select>
+    </label>
+  );
+}
+const NAME_IT = "__name_it__";
+
 // ── One day ────────────────────────────────────────────────────────────────
 function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey, act, onAdd, onCopy }) {
   const isRest = day.type === "Rest";
@@ -361,12 +409,7 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
     <section className="pe-day" aria-label={DAY_LONG[dayKey]}>
       <div className="pe-dayhead">
         <div className="pe-dayname"><b>{DAY_LONG[dayKey]}</b><span>{isRest ? "Rest day" : `${c.ex} exercise${c.ex === 1 ? "" : "s"} · ${c.sets} sets`}</span></div>
-        <label className="pe-type" style={{ color, background: `${color}1F` }}>
-          {day.type.toUpperCase()} <Icon.Down size={12} />
-          <select value={day.type} onChange={(e) => act.setType(dayKey, e.target.value)} aria-label={`Workout type for ${DAY_LONG[dayKey]}`}>
-            {WORKOUT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </label>
+        <TypePick dayKey={dayKey} type={day.type} color={color} onPick={(t) => act.setType(dayKey, t)} />
         {!isRest && c.ex > 0 && <button type="button" className="pe-chipbtn" onClick={onCopy}>Copy day</button>}
       </div>
 

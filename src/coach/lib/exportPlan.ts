@@ -69,9 +69,27 @@ export function safeSheetName(name: string): string {
   return name.replace(/[:\\/?*\[\]]/g, " ").trim().slice(0, 31) || "Sheet";
 }
 
+/**
+ * Excel refuses two sheets with the same name, and 31 characters is not much
+ * when the coach has named their days themselves — "Monday - Shoulders and…"
+ * and "Tuesday - Shoulders and…" can arrive here identical. Numbers the
+ * repeats rather than throwing the export away.
+ */
+function uniqueSheetName(name: string, taken: Set<string>): string {
+  const base = safeSheetName(name);
+  if (!taken.has(base.toLowerCase())) { taken.add(base.toLowerCase()); return base; }
+  for (let n = 2; n < 100; n++) {
+    const suffix = ` (${n})`;
+    const candidate = base.slice(0, 31 - suffix.length) + suffix;
+    if (!taken.has(candidate.toLowerCase())) { taken.add(candidate.toLowerCase()); return candidate; }
+  }
+  return base;
+}
+
 export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}): SheetSpec[] {
   const unit = opts.unit || "lb";
   const sheets: SheetSpec[] = [];
+  const taken = new Set<string>();
   for (const day of DAY_ORDER) {
     const t = templates?.[day];
     if (!t || !t.type || t.type === "Rest") continue;
@@ -101,7 +119,7 @@ export function buildPlanSheets(templates: Templates, opts: ExportOptions = {}):
       if (opts.blankColumns) row.push("", "", "", "");
       rows.push(row);
     });
-    sheets.push({ name: safeSheetName(`${DAY_LONG[day]} - ${t.type}`), rows, widths });
+    sheets.push({ name: uniqueSheetName(`${DAY_LONG[day]} - ${t.type}`, taken), rows, widths });
   }
   return sheets;
 }

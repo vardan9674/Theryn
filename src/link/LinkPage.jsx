@@ -9,6 +9,7 @@ import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
+import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
@@ -66,6 +67,11 @@ function linkStore(token) {
     // Exercises the client added themselves for a day, on top of the coach's plan.
     extras: (date) => read().extras?.[date] || [],
     saveExtras: (date, list) => { const s = read(); write({ ...s, extras: keepRecent({ ...s.extras, [date]: list }) }); },
+    // The key for the send in progress for that day. It outlives a reload, so
+    // finishing again after a dropped connection is the same workout, not a
+    // second one. Cleared once the coach has it.
+    key: (date) => read().keys?.[date] || null,
+    setKey: (date, k) => { const s = read(); const keys = { ...(s.keys || {}) }; if (k) keys[date] = k; else delete keys[date]; write({ ...s, keys: keepRecent(keys) }); },
     // The coach's code, kept only across the hop to Google and back.
     pendingCode: () => read().code || null,
     setPendingCode: (code) => { const s = read(); if (code) write({ ...s, code }); else { const { code: _drop, ...rest } = s; write(rest); } },
@@ -198,7 +204,7 @@ export default function LinkPage({ token, api }) {
             extras={extras} onExtras={joined ? setExtras : null}
             onSubmit={(payload) => submitLink(token, "workout", payload)}
             onSent={(summary) => setSent({ kind: "workout", summary })} onMeasure={() => setTab("measurements")} />
-        : <MeasurementsTab d={d} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
+        : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
       {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
     </div>
@@ -293,14 +299,44 @@ function repsWithin(r, planned) {
 }
 /** "Mon 14" from an ISO date. */
 function shortDay(iso) { const x = dateOf(iso); return `${dayKeyOf(x)} ${x.getDate()}`; }
-/** "8×40, 7×40, 6×37.5 kg": what they did last time, in today's units. */
+/** "8×40, 7×40, 6×37.5 kg" — or "20:00, 18:30" when timed: last time, in today's units. */
 function lastLine(last, units) {
-  const sets = (last.sets || []).map((x) => {
+  const rows = last.sets || [];
+  if (rows.every((x) => x.s != null)) return rows.map((x) => timerClock(x.s)).join(", ");
+  const sets = rows.map((x) => {
     const w = x.w !== "" && x.w != null ? convertWeight(x.w, last.units || units, units) : null;
     return `${x.r || "?"}${w != null ? `×${w}` : ""}`;
   });
-  const any = (last.sets || []).some((x) => x.w !== "" && x.w != null);
+  const any = rows.some((x) => x.w !== "" && x.w != null);
   return `${sets.join(", ")}${any ? ` ${units === "metric" ? "kg" : "lb"}` : " reps"}`;
+}
+
+/**
+ * The boxes start on what they did last time for that exercise — their own
+ * reps, weight and time, not the coach's targets — so a client repeating last
+ * week only has to change what actually changed. Exercises they have never
+ * done stay empty, showing the coach's plan as a hint.
+ */
+function seedFromLast(exercises, store, units) {
+  const log = {};
+  (exercises || []).forEach((e, i) => {
+    const last = store?.last(e.name);
+    if (!last?.sets?.length) return;
+    const per = {};
+    last.sets.forEach((s, si) => {
+      const v = {};
+      if (e.mode === "time") {
+        if (s.s != null) v.s = durationInput(s.s);
+      } else {
+        if (s.r) v.r = String(s.r);
+        const w = s.w !== "" && s.w != null ? convertWeight(s.w, last.units || units, units) : null;
+        if (w != null) v.w = String(w);
+      }
+      if (Object.keys(v).length) per[si] = v;
+    });
+    if (Object.keys(per).length) log[i] = per;
+  });
+  return log;
 }
 
 function Byline({ coach, units, onUnits }) {
@@ -313,6 +349,29 @@ function Byline({ coach, units, onUnits }) {
           <button type="button" aria-pressed={units !== "metric"} onClick={() => onUnits("imperial")}>lb</button>
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * A day they have already sent. The workout itself is done with — showing the
+ * list again invites a second, contradictory entry — so this says what went
+ * and when, and offers the only two things left worth doing: fix it, or put
+ * down something else they did that day.
+ */
+function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
+  const when = clock(sent.at);
+  const sets = sent.planned > 0 ? `${sent.sets} of ${sent.planned} sets` : `${sent.exercises || 0} exercise${sent.exercises === 1 ? "" : "s"}`;
+  return (
+    <div className="lk-card lk-sent">
+      <span className="lk-sent-tick" aria-hidden="true"><Icon.Check size={22} /></span>
+      <h2 className="lk-sent-h">{isToday ? "Today's workout is with your coach." : `${dayLabel}'s workout is with your coach.`}</h2>
+      <p className="lk-sent-p">{sent.type && sent.type !== "Rest" ? `${sent.type} · ` : ""}{sets} · sent at {when}{coach ? ` to Coach ${coach}` : ""}.</p>
+      <div className="lk-sent-acts">
+        <button type="button" className="lk-send secondary" onClick={onEdit}>Change what I sent</button>
+        <button type="button" className="lk-send secondary" onClick={onAgain}>Add something else</button>
+      </div>
+      <small className="lk-small">Changing replaces what your coach sees. Adding something else sends it as a second workout for {isToday ? "today" : dayLabel}.</small>
     </div>
   );
 }
@@ -407,6 +466,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null }) {
   const [adding, setAdding] = React.useState(false);
   const planCount = today.exercises.length - extras.length; // the coach's, before theirs
+  // A day they have already sent opens as a receipt, not as the workout again.
+  // "edit" reopens what they sent; "again" starts a separate second entry.
+  const [mode, setMode] = React.useState(null);
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
@@ -420,8 +482,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
-  // exerciseIndex → setIndex → { r, w }: reps and weight the client typed (blank = as planned)
-  const [log, setLog] = React.useState(() => draft?.log || {});
+  // exerciseIndex → setIndex → { r, w }: the numbers in the boxes. A half-done
+  // draft wins; otherwise they start on last time's, so the client edits what
+  // changed instead of typing everything again.
+  const [log, setLog] = React.useState(() => draft?.log || seedFromLast(today.exercises, store, d.unit_system));
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [feel, setFeel] = React.useState(() => draft?.feel || null); // "easy" | "medium" | "hard"
@@ -458,6 +522,15 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
     setReopened((o) => ({ ...o, [i]: false }));
   };
   const setSets = (i, n) => { setTicks((t) => ({ ...t, [i]: n })); setSkipped((s) => ({ ...s, [i]: false })); setReopened((o) => (o[i] ? { ...o, [i]: false } : o)); };
+  // One of their own exercises. If they have done it before, its boxes start
+  // on last time's numbers, like everything else on the page.
+  const addExtra = (ex) => {
+    const i = today.exercises.length;
+    onExtras?.([...extras, ex]);
+    const seeded = seedFromLast([ex], store, d.unit_system)[0];
+    if (seeded) setLog((l) => ({ ...l, [i]: seeded }));
+    setAdding(false);
+  };
   // Taking one of their own exercises back out. Their other added exercises
   // shift down, so what was ticked on those is cleared with it; the coach's
   // exercises keep everything.
@@ -546,14 +619,64 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   };
   const tickSet = (i, n) => { const before = ticks[i] || 0; setSets(i, n); if (n > before) maybeRest(i, n); else setRest(null); };
 
+  // Already sent this day: the receipt stands until they choose one of the two
+  // ways on from it.
+  const showSent = Boolean(sentBefore) && !mode && !upcoming;
+  const startEdit = () => {
+    const saved = sentBefore?.saved;
+    if (saved) {
+      setTicks(saved.ticks || {});
+      setLog(saved.log || {});
+      setSkipped(saved.skipped || {});
+      setNote(saved.note || "");
+      setFeel(saved.feel || null);
+      if (saved.extras?.length && onExtras) onExtras(saved.extras);
+    }
+    setReopened({});
+    setMode("edit");
+    window.scrollTo(0, 0);
+  };
+  // Something else they did that day: a clean sheet, sent as its own workout.
+  const startAgain = () => {
+    setTicks({}); setLog({}); setSkipped({}); setNote(""); setFeel(null); setReopened({});
+    setMode("again");
+    window.scrollTo(0, 0);
+  };
+
   async function send() {
     setBusy(true); setError(null);
     try {
-      const payload = workoutPayload(today, ticks, log, note, date, d.unit_system, feel);
-      const res = await onSubmit(payload);
-      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent 3 workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      // The same key until the coach has it, so finishing again after a dropped
+      // connection — even after a reload — is this workout, not a second one.
+      let key = store?.key(date);
+      if (!key) { key = sendKey(); store?.setKey(date, key); }
+      const built = workoutPayload(today, ticks, log, note, date, d.unit_system, feel);
+      const payload = {
+        ...built,
+        // A second workout for a day already sent is only what they did this
+        // time. Sending the whole plan again with zeros would read to the
+        // coach as a session they failed.
+        ...(mode === "again" ? { exercises: built.exercises.filter((e) => e.sets_done > 0) } : {}),
+        client_key: key,
+        // Fixing what they already sent replaces it, so the coach reads one
+        // workout for the day rather than two that disagree.
+        ...(mode === "edit" && sentBefore?.id ? { replaces: sentBefore.id } : {}),
+      };
+      const res = await sendWithRetry(onSubmit, payload);
+      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent several workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      store?.setKey(date, null);
       const before = streakStats(d.doneDates || [], d.plan).current;
-      store?.markSent(date, { at: Date.now(), day: today.key, type: today.type });
+      // Enough to show them what went, and to open it again if they want to
+      // change it: the submission's id, the totals, and what was in the boxes.
+      store?.markSent(date, {
+        at: Date.now(), day: today.key, type: today.type,
+        id: res?.id || null,
+        sets: payload.exercises.reduce((a, e) => a + e.sets_done, 0),
+        planned: payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0),
+        exercises: payload.exercises.filter((e) => e.sets_done > 0).length,
+        saved: { ticks, log, note, feel, skipped, extras },
+      });
+      setMode(null); // back to the receipt for this day
       store?.addDone(date);
       store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
       const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
@@ -561,7 +684,11 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
       onSent({ date, streakBefore: before, ...(setsPlanned > 0
         ? { day: DAY_LONG[today.key], type: today.type, done: setsDone, planned: setsPlanned, what: "sets" }
         : { day: DAY_LONG[today.key], type: today.type, done: payload.exercises.filter((e) => e.sets_done > 0).length, planned: payload.exercises.length, what: "exercises" }) });
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      // Nothing is lost: every tick is on this phone, and tapping again sends
+      // the same workout rather than a second one.
+      setError(isNetworkError(e) ? "No connection just now. Your workout is safe on this phone — tap Finish again when you have signal." : e.message);
+    }
     finally { setBusy(false); }
   }
 
@@ -571,17 +698,18 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         <Byline coach={d.coach_name} units={d.unit_system} onUnits={d.onUnits} />
         <div className="lk-intro">
           <div className="lk-dateline">
-            <span className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : `Logging ${longDate(dateOf(date))}`}</span>
+            <span className="lk-eyebrow">{isToday ? longDate() : upcoming ? `Coming up · ${longDate(dateOf(date))}` : showSent ? longDate(dateOf(date)) : `Logging ${longDate(dateOf(date))}`}</span>
             {isToday && !controlledTicks && <StreakChip st={st} />}
           </div>
           {today.isRest
             ? <h1 className="lk-h1">Rest day.</h1>
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
-          <p className="lk-lede">{today.isRest
+          {/* A day already sent says so in its own card; no need to be told to tick it. */}
+          {!showSent && <p className="lk-lede">{today.isRest
             ? (!isToday ? `Hi ${first}. Nothing is planned for ${DAY_LONG[today.key]}.` : today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
             : isToday ? `Hi ${first}. ${st.current >= 2 && !st.doneToday ? `Tick today and that's ${st.current + 1} workouts in a row.${st.best > st.current + 1 ? ` Your best is ${st.best}.` : ""}` : "Follow your coach's plan and tick off each exercise."}`
             : upcoming ? `Hi ${first}. Here's ${DAY_LONG[today.key]}'s plan. You can tick it off on the day.`
-            : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>
+            : `Hi ${first}. Tick off what you did on ${DAY_LONG[today.key]} and send it to your coach.`}</p>}
         </div>
 
         {d.plan && (
@@ -619,7 +747,9 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           </section>
         )}
 
-        {!today.isRest && (
+        {showSent && <SentCard sent={sentBefore} coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} onEdit={startEdit} onAgain={startAgain} />}
+
+        {!today.isRest && !showSent && (
           <>
             <div className="lk-card" style={{ flexDirection: "row", alignItems: "center" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -688,7 +818,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div className="lk-ex-name">{chip}{e.name}{i >= planCount && <span className="lk-yours">Yours</span>}</div>
                       <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
-                      {last && <div className="lk-ex-meta">Last time: {lastLine(last, d.unit_system)}</div>}
+                      {last && <div className="lk-ex-meta">Last time{draft?.log ? "" : " (already in the boxes)"}: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
                     </div>
                     {done && !upcoming
@@ -753,7 +883,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             })}
 
             {onExtras && !upcoming && (adding
-              ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+              ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={addExtra} onClose={() => setAdding(false)} />
               : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Add your own exercise</span></button>)}
 
             {!upcoming && <>
@@ -765,14 +895,16 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <textarea className="lk-textarea" rows={1} value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} placeholder="Add a note for your coach" aria-label="Note for your coach" />
             </div>
             </>}
-            {sentBefore && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>You sent {isToday ? "today's" : `${DAY_LONG[sentBefore.day] || "this"}'s`} workout to Coach {d.coach_name} at {clock(sentBefore.at)}. Sending again gives your coach a second entry.</span></div>}
+            {sentBefore && mode && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>{mode === "edit"
+              ? `Changing what you sent at ${clock(sentBefore.at)}. Sending replaces it, so your coach sees one workout.`
+              : `You already sent this day at ${clock(sentBefore.at)}. This goes over as a second workout.`}</span></div>}
             {error && <div className="lk-error" role="alert">{error}</div>}
           </>
         )}
 
         {/* Trained anyway on a rest day? Connected clients can put it down. */}
         {today.isRest && onExtras && !upcoming && (adding
-          ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={(ex) => { onExtras([...extras, ex]); setAdding(false); }} onClose={() => setAdding(false)} />
+          ? <AddExercise unit={unit} dayLabel={isToday ? "today" : DAY_LONG[today.key]} onAdd={addExtra} onClose={() => setAdding(false)} />
           : <button type="button" className="lk-addbtn" onClick={() => setAdding(true)}><Icon.Plus size={16} /><span>Did something anyway? Add it</span></button>)}
 
         {today.isRest && (
@@ -782,7 +914,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           </div>
         )}
       </main>
-      {!today.isRest && !upcoming && (
+      {!today.isRest && !upcoming && !showSent && (
         <div className="lk-footer"><div className="lk-footer-inner">
           {rest && (
             <div className="lk-rest" role="status" aria-live="polite">
@@ -791,7 +923,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <button type="button" className="lk-rest-skip" onClick={() => setRest(null)}>Skip</button>
             </div>
           )}
-          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…" : sentBefore ? "Send again" : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
+          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…"
+            : mode === "edit" ? "Save the changes"
+            : mode === "again" ? "Send this as well"
+            : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>
       )}
@@ -800,7 +935,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
 }
 
 // ── Measurements ───────────────────────────────────────────────────────────
-function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
+function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }) {
   // The coach's picks come first; any other measurement is one tap away.
   // Everything is optional: at least one number is all it takes to send.
   const requested = askedFields(d.requested);
@@ -845,10 +980,13 @@ function MeasurementsTab({ d, onSubmit, onSent, controlledValues }) {
     if (!v.ok) { setError(v); if (v.field) { setSelected(v.field); inputs.current[v.field]?.focus(); } return; }
     setBusy(true); setError(null);
     try {
-      const res = await onSubmit(measurementsPayload(values, unit, date));
+      let key = store?.key(`m:${date}`);
+      if (!key) { key = sendKey(); store?.setKey(`m:${date}`, key); }
+      const res = await sendWithRetry(onSubmit, { ...measurementsPayload(values, unit, date), client_key: key });
+      store?.setKey(`m:${date}`, null);
       if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent measurements a few times today already. Your coach has them." : res?.reason === "out_of_range" ? "One of the numbers looks off. Please check it." : "Could not send. Try again in a moment.");
       onSent({ count: added + (values.weight ? 1 : 0), date });
-    } catch (e) { setError({ error: e.message }); }
+    } catch (e) { setError({ error: isNetworkError(e) ? "No connection just now. Your numbers are still here — tap Send again when you have signal." : e.message }); }
     finally { setBusy(false); }
   }
 
