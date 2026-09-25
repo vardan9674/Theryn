@@ -146,6 +146,7 @@ function TypingIndicator({ users }) {
 
 function InputBar({ onSend, onTyping }) {
   const [text, setText] = React.useState("");
+  const [note, setNote] = React.useState(null);
   const textareaRef = React.useRef(null);
 
   function handleChange(e) {
@@ -162,8 +163,12 @@ function InputBar({ onSend, onTyping }) {
   function handleSend() {
     const trimmed = text.trim();
     if (!trimmed) return;
-    onSend(trimmed);
+    setNote(null);
     setText("");
+    // Still connecting: put the text back and say so (#110).
+    Promise.resolve(onSend(trimmed)).then((ok) => {
+      if (ok === false) { setText((t) => t || trimmed); setNote("Still connecting. Your message is here; send it again in a moment."); }
+    });
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
@@ -177,6 +182,8 @@ function InputBar({ onSend, onTyping }) {
   const canSend = text.trim().length > 0;
 
   return (
+    <>
+    {note && <div role="status" style={{ position: "sticky", bottom: 64, padding: "6px 14px", fontSize: "12px", color: SB, background: S1, borderTop: `1px solid ${BD}` }}>{note}</div>}
     <div style={{
       position: "sticky",
       bottom: 0,
@@ -236,6 +243,7 @@ function InputBar({ onSend, onTyping }) {
         </svg>
       </button>
     </div>
+    </>
   );
 }
 

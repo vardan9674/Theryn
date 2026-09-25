@@ -575,6 +575,13 @@ const StopwatchOverlay = ({ onSave, onCancel, targetName }) => {
   );
 };
 
+/** A save the server refused: say so, rather than a silent console line (#109). */
+function reportSaveFailure(what, err) {
+  console.error(`Saving ${what} failed:`, err);
+  const tooBig = /22003|out of range|overflow/i.test(`${err?.code || ""} ${err?.message || ""}`);
+  try { window.alert(`Your ${what} wasn't saved${tooBig ? ": one of the numbers is too large" : ": the server didn't accept it"}. Please check it and try again.`); } catch {}
+}
+
 export default function GymApp() {
   // Skip landing on native apps, or when returning from an OAuth redirect.
   const [showLanding, setShowLanding] = useState(() => {
@@ -635,6 +642,68 @@ export default function GymApp() {
   const [showTour, setShowTour] = useState(false);
   const [hasCustomizedRoutine, setHasCustomizedRoutine] = useState(false);
   const [role, setRole] = useState(null); // "athlete" | "coach" — null means not yet chosen
+
+  // ── One phone, two people (#97) ─────────────────────────────────────────
+  // When someone signs out, nothing of theirs stays for the next person: their
+  // role, profile, history, weights and measurements are cleared from memory
+  // and from this device's cache, and an unfinished workout is set aside under
+  // their id and handed back when they sign in again.
+  const WORKOUT_KEYS = ["th_session", "th_workoutActive", "th_workoutPaused", "th_workoutElapsed", "th_workoutStartTime", "th_workoutResumedAt"];
+  const prevUidRef = useRef(undefined);
+  useEffect(() => {
+    if (authLoading) return;
+    const uid = authUser?.id ?? null;
+    const prev = prevUidRef.current;
+    prevUidRef.current = uid;
+    if (prev === uid) return;
+    const read = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+    if (prev) {
+      try {
+        if (read("th_workoutActive")) {
+          localStorage.setItem(`th_workout_stash_${prev}`, JSON.stringify(Object.fromEntries(WORKOUT_KEYS.map((k) => [k, localStorage.getItem(k)]))));
+        }
+        WORKOUT_KEYS.forEach((k) => localStorage.removeItem(k));
+        ["theryn_history_", "theryn_weights_", "theryn_measurements_", "theryn_routine_", "theryn_routine_meta_"].forEach((p) => localStorage.removeItem(p + prev));
+      } catch { /* storage unavailable */ }
+      setRole(null);
+      setProfile({ initials: "", color: PROFILE_COLORS[0], setup: false });
+      setWorkoutHistory([]); setWeightLog([]); setMeasureLog([]); setPrs([]); setMeasureFields(DEFAULT_ACTIVE_FIELDS);
+      setWorkoutActive(false); setWorkoutPaused(false); setWorkoutElapsed(0); setWorkoutStartTime(null);
+      setSession(DEFAULT_TEMPLATES[getToday()].exercises.map((name, i) => ({
+        id: i, name,
+        sets: isCardioExercise(name)
+          ? [{ id: `${i}-0`, dist: "", dur: "", done: false }]
+          : Array.from({ length: 3 }, (_, si) => ({ id: `${i}-${si}`, w: "", r: "", done: false })),
+      })));
+      setTab("log");
+    }
+    if (uid) {
+      try {
+        const stash = localStorage.getItem(`th_workout_stash_${uid}`);
+        if (stash && !read("th_workoutActive")) {
+          const snap = JSON.parse(stash);
+          const val = (k, d) => { try { return snap[k] == null ? d : JSON.parse(snap[k]); } catch { return d; } };
+          Object.entries(snap).forEach(([k, v]) => { if (v != null) localStorage.setItem(k, v); });
+          if (val("th_session", null)) setSession(val("th_session", null));
+          setWorkoutActive(Boolean(val("th_workoutActive", false)));
+          setWorkoutPaused(Boolean(val("th_workoutPaused", false)));
+          setWorkoutElapsed(Number(val("th_workoutElapsed", 0)) || 0);
+          setWorkoutStartTime(val("th_workoutStartTime", null));
+        }
+        if (stash) localStorage.removeItem(`th_workout_stash_${uid}`);
+      } catch { /* a broken stash is dropped */ }
+    }
+  }, [authUser?.id, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The measurement fields an athlete picked stay picked across launches (#110).
+  useEffect(() => {
+    if (!authUser?.id) return;
+    try { const saved = JSON.parse(localStorage.getItem(`theryn_measure_fields_${authUser.id}`)); if (Array.isArray(saved) && saved.length) setMeasureFields(saved); } catch {}
+  }, [authUser?.id]);
+  useEffect(() => {
+    if (!authUser?.id) return;
+    try { localStorage.setItem(`theryn_measure_fields_${authUser.id}`, JSON.stringify(measureFields)); } catch {}
+  }, [measureFields, authUser?.id]);
   // Survives the OAuth page reload via localStorage so the role picker pre-
   // selects what the user picked on the landing page before sign-in.
   const [pendingRole, setPendingRole] = useState(() => {
@@ -762,7 +831,7 @@ export default function GymApp() {
         // If the user is entering from a landing CTA (pendingRole set), we want
         // the role picker to run regardless of stale stored state — skip restore.
         const storedRole = localStorage.getItem(`theryn_role_${user.id}`);
-        if (storedRole && !pendingRoleRef.current) setRole(storedRole);
+        if (!pendingRoleRef.current) setRole(storedRole || null);
 
         // Show athlete tour on first-ever login (only for athlete role)
         if (storedRole === "athlete" && !pendingRoleRef.current) {
@@ -1275,7 +1344,7 @@ export default function GymApp() {
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
         {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
-        {tab==="profile"  && <ProfileScreen profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }} onSwitchRole={() => { setRole("coach"); if (authUser?.id) localStorage.setItem(`theryn_role_${authUser.id}`, "coach"); }}/>}
+        {tab==="profile"  && <ProfileScreen authUser={authUser} profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }} onSwitchRole={() => { setRole("coach"); if (authUser?.id) localStorage.setItem(`theryn_role_${authUser.id}`, "coach"); }}/>}
       </div>
 
       {/* AthleteView removed — coaches manage athletes from the Coach Dashboard */}
@@ -1396,7 +1465,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   useBackHandler(showHistory, () => setShowHistory(false));
   useBackHandler(showEndConfirm, () => setShowEndConfirm(false));
   useBackHandler(showTemplatePrompt, () => setShowTemplatePrompt(false));
-  useBackHandler(!!workoutSummary, () => setWorkoutSummary(null));
+  useBackHandler(!!workoutSummary, () => dismissSummary());
 
   const wUnit = units === "metric" ? "kg" : "lbs";
   const dUnit = units === "metric" ? "km" : "mi";
@@ -1444,14 +1513,31 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
     setActiveStopwatch(null);
   };
 
-  // Workout timer
+  // Workout timer. Counts from the clock, not from ticks (#110): a locked
+  // phone suspends timers, and a killed app loses them, so every tick adds the
+  // whole seconds since the last one it counted (remembered across reloads).
+  // Paused time is never counted.
   useEffect(() => {
-    if (workoutActive && !workoutPaused) {
-      timerRef.current = setInterval(() => setWorkoutElapsed(p => p + 1), 1000);
-    } else {
+    if (!(workoutActive && !workoutPaused)) {
       clearInterval(timerRef.current);
+      try { localStorage.removeItem("th_workoutResumedAt"); } catch {}
+      return;
     }
-    return () => clearInterval(timerRef.current);
+    let last = Number(localStorage.getItem("th_workoutResumedAt")) || Date.now();
+    if (last > Date.now()) last = Date.now();
+    const tick = () => {
+      const now = Date.now();
+      const d = Math.floor((now - last) / 1000);
+      if (d <= 0) return;
+      last += d * 1000;
+      try { localStorage.setItem("th_workoutResumedAt", String(last)); } catch {}
+      setWorkoutElapsed(p => p + d);
+    };
+    try { localStorage.setItem("th_workoutResumedAt", String(last)); } catch {}
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(timerRef.current); document.removeEventListener("visibilitychange", tick); };
   }, [workoutActive, workoutPaused]);
 
   // Rest timer countdown
@@ -1503,7 +1589,12 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   const REST_NOTIF_ID = 9001; // outside all other ID ranges
 
+  // The in-app timeout and the countdown can both reach zero; the alert
+  // sounds once per rest (#110).
+  const restFiredRef = useRef(false);
   const fireRestNotification = async (exName) => {
+    if (restFiredRef.current) return;
+    restFiredRef.current = true;
     playRestTimerBeep();
 
     if (Capacitor.isNativePlatform()) {
@@ -1532,6 +1623,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const startRest = (exId, exName) => {
     const base = customRest[exId] ?? getDefaultRest();
     clearTimeout(notifTimeoutRef.current);
+    restFiredRef.current = false;
 
     // Register with the OS so the notification fires even if the app is backgrounded/suspended
     if (Capacitor.isNativePlatform()) {
@@ -1563,6 +1655,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   const adjustRest = (delta) => {
     clearTimeout(notifTimeoutRef.current);
+    restFiredRef.current = false;
     const newRemaining = Math.max(1, (restTimer?.remaining ?? 0) + delta);
 
     // Reschedule the OS notification at the updated time
@@ -1592,6 +1685,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   };
 
   const startWorkout = () => {
+    try { localStorage.removeItem("th_workoutResumedAt"); } catch {}
     // Pre-fill sets with last known values from workout history
     setSession(p => p.map(ex => {
       if (isCardioExercise(ex.name)) return ex;
@@ -1667,7 +1761,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
           exercises: completedExercises,
           totalSets: doneSets,
           totalVolume: totalVol,
-        }).catch(console.error);
+        }).catch((e) => reportSaveFailure("workout", e));
       }
     }
 
@@ -1751,6 +1845,8 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
   // Switch workout type — also update the template
   const switchType = (newType) => {
+    const logged = workoutActive && session.some(ex => ex.sets.some(s => s.done || s.w || s.r || s.dist || s.dur));
+    if (logged && !window.confirm(`Switch today to ${newType}? The sets you've logged in this workout will be cleared.`)) { setShowTypePick(false); return; }
     setTodayType(newType);
     setShowTypePick(false);
     const exercises = TYPE_EXERCISES[newType] || [];
@@ -3512,7 +3608,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
     setInputW("");
     // Save to Supabase in background
     if (authUser) {
-      saveBodyWeight(authUser.id, w, todayStr()).catch(console.error);
+      saveBodyWeight(authUser.id, w, todayStr()).catch((e) => reportSaveFailure("weight", e));
     }
   };
 
@@ -3549,7 +3645,7 @@ function BodyScreen({ weightLog, setWeightLog, measureLog, setMeasureLog, measur
     if (authUser) {
       const measureData = {};
       activeFields.forEach(f => { const v = parseFloat(mInputs[f.key]); if (!isNaN(v)) measureData[f.key] = v; });
-      saveMeasurement(authUser.id, measureData, todayStr()).catch(console.error);
+      saveMeasurement(authUser.id, measureData, todayStr()).catch((e) => reportSaveFailure("measurements", e));
     }
     setMInputs({});
   };
@@ -4161,13 +4257,14 @@ function PRsScreen({ prs, profile, onProfileTap, units, workoutHistory }) {
   });
 
   const derivedPRs = Object.entries(prMap).map(([name, d], i) => ({ id:i, name, ...d }));
-  const displayPRs = derivedPRs.length > 0 ? derivedPRs : prs; // fall back to seed data if no history
+  // Only real records: new athletes used to see sample PRs here (#110).
+  const displayPRs = derivedPRs;
 
   return (
     <div>
       <ScreenHeader sup="All Time" title="Records" profile={profile} onProfileTap={onProfileTap}/>
       <div style={{ padding:"14px" }}>
-        {workoutHistory.length === 0 && (
+        {displayPRs.length === 0 && (
           <div style={{ ...card, textAlign:"center", padding:"40px 20px", marginBottom:"8px" }}>
             <div style={{ fontSize:"15px", fontWeight:"600", marginBottom:"6px" }}>No records yet</div>
             <div style={{ fontSize:"13px", color:SB }}>Complete a workout with weight entries and your PRs will appear here automatically.</div>
@@ -4193,7 +4290,7 @@ function PRsScreen({ prs, profile, onProfileTap, units, workoutHistory }) {
 // ════════════════════════════════════════════════════════════════════════
 // PROFILE SCREEN
 // ════════════════════════════════════════════════════════════════════════
-function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitchRole }) {
+function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitchRole, authUser }) {
   const [initials, setInitials] = useState(profile.initials);
   const [color, setColor]       = useState(profile.color);
   const [selectedUnits, setSelectedUnits] = useState(profile.units || "imperial");
@@ -4211,7 +4308,9 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
 
   const saveProfile = () => {
     if (!initials.trim()) return;
-    setProfile({ initials: initials.trim().toUpperCase().slice(0,2), color, units: selectedUnits, setup: true });
+    // Merge: replacing the object dropped display_name, height_cm and
+    // default_currency, and BMI vanished until the next launch (#101).
+    setProfile(p => ({ ...p, initials: initials.trim().toUpperCase().slice(0,2), color, units: selectedUnits, setup: true }));
     setSaveState("saved");
   };
 
@@ -4303,7 +4402,11 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
                 { id:"imperial", label:"lbs / mi / in" },
                 { id:"metric",   label:"kg / km / cm" },
               ].map(u => (
-                <button key={u.id} onClick={() => { setSelectedUnits(u.id); setProfile(p => ({ ...p, units: u.id })); }} style={{
+                <button key={u.id} onClick={() => {
+                  setSelectedUnits(u.id); setProfile(p => ({ ...p, units: u.id }));
+                  if (authUser?.id) supabase.from("profiles").update({ unit_system: u.id }).eq("id", authUser.id)
+                    .then(({ error }) => { if (error) console.error("Couldn't save units:", error.message); });
+                }} style={{
                   background: selectedUnits===u.id ? A : S2,
                   color: selectedUnits===u.id ? "#000" : SB,
                   border: `1px solid ${selectedUnits===u.id ? A : MT}`,

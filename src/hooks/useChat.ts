@@ -21,7 +21,7 @@ export interface UseChatReturn {
   error: string | null;
   typingUsers: { user_id: string; name: string }[];
   conversationId: string | null;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string) => Promise<boolean | undefined>; // false: not connected yet
   markRead: () => Promise<void>;
   sendTyping: () => void;
 }
@@ -240,7 +240,10 @@ export function useChat(params: {
   // ── sendMessage ───────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (content: string) => {
-      if (!conversationId || !authUser?.id || !content.trim()) return;
+      // Not connected to the conversation yet: say so (false), so the box keeps
+      // the text instead of the message quietly disappearing (#110).
+      if (!content.trim()) return true;
+      if (!conversationId || !authUser?.id) return false;
 
       const clientId = crypto.randomUUID();
       const now = new Date().toISOString();

@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase";
-import { enqueueAction } from "../lib/offlineQueue";
+import { enqueueAction, shouldQueueForLater } from "../lib/offlineQueue";
 import { registerActionHandler } from "../lib/actionRegistry";
 
 // ── Exercise name → UUID cache (module-level, shared across calls) ──────────
@@ -131,13 +131,14 @@ export async function saveCompletedWorkout(
   const completedAt = new Date().toISOString();
 
   // 1. Optimistic Cache Update (only if this is user action, not background sync)
+  const optimisticId = `offline-${Date.now()}`;
   if (!isBackgroundSync) {
     const cacheKey = `theryn_history_${userId}`;
     try {
       const cachedText = localStorage.getItem(cacheKey);
       const cached = cachedText ? JSON.parse(cachedText) : [];
       const optimisticEntry = {
-        id: `offline-${Date.now()}`,
+        id: optimisticId,
         date: startedAt.split("T")[0],
         type: workout.type,
         duration: workout.duration,
@@ -193,14 +194,27 @@ export async function saveCompletedWorkout(
 
     if (setsToInsert.length > 0) {
       const { error: setsErr } = await supabase.from("workout_sets").insert(setsToInsert);
-      if (setsErr) console.error("Failed to insert sets:", setsErr.message);
+      if (setsErr) {
+        // Don't leave a workout with no sets behind and call it saved (#109):
+        // take the session back out and let the error decide what happens.
+        await supabase.from("workout_sessions").delete().eq("id", sessionId);
+        throw setsErr;
+      }
     }
 
     return sessionId;
   } catch (err: any) {
-    if (!isBackgroundSync) {
+    if (!isBackgroundSync && shouldQueueForLater(err)) {
       enqueueAction({ type: "SAVE_WORKOUT", userId, payload: workout });
       return "offline_saved";
+    }
+    // Refused: it wasn't saved, so it doesn't stay in the cached history either.
+    if (!isBackgroundSync) {
+      try {
+        const cacheKey = `theryn_history_${userId}`;
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || "[]");
+        localStorage.setItem(cacheKey, JSON.stringify(cached.filter((h: any) => h.id !== optimisticId)));
+      } catch {}
     }
     throw err;
   }
@@ -256,7 +270,8 @@ export async function loadWorkoutHistory(
       .eq("user_id", userId)
       .not("completed_at", "is", null)
       .order("completed_at", { ascending: false })
-      .limit(30);
+      // Records, streaks and all-time stats read this; 30 capped them (#110).
+      .limit(400);
 
     if (error || !sessions) return [];
 
