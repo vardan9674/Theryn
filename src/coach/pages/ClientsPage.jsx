@@ -182,7 +182,7 @@ function Skeleton({ w = 80 }) { return <span className="cx-skel" style={{ displa
 function TableRow({ row, selected, onClick, tour }) {
   const pay = row.payment;
   return (
-    <button type="button" className="cx-trow" aria-selected={selected} onClick={onClick} data-tour={tour}>
+    <button type="button" className="cx-trow" aria-current={selected ? "true" : undefined} onClick={onClick} data-tour={tour}>
       <div className="name"><Avatar name={row.name} size="sm" /><div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}><span>{row.name}</span>{row.manual && <span className="cx-tag" style={{ alignSelf: "flex-start" }} title="Added by name; they haven't joined the app">Not on app</span>}</div></div>
       <div>{row.loading ? <Skeleton w={70} /> : row.last == null ? <span className="cx-muted">—</span> : <Tone tone={row.lastTone}>{row.last}</Tone>}</div>
       <div>{row.loading ? <Skeleton w={40} /> : <StreakCell s={row.streak} />}</div>

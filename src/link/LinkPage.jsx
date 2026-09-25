@@ -7,7 +7,7 @@ import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
-import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
@@ -488,7 +488,7 @@ function AddExercise({ unit, dayLabel = "today", onAdd, onClose }) {
           ? <label className="lk-field"><span>Time each</span><input className="lk-input" inputMode="numeric" value={secs} onChange={(e) => setSecs(maskDuration(e.target.value))} onBlur={(e) => { const t = tidyDuration(e.target.value); if (t) setSecs(t); }} aria-label="Time for each set" /></label>
           : <>
             <label className="lk-field"><span>Reps</span><input className="lk-input" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value.replace(/[^0-9–\-/]/g, "").slice(0, 12))} aria-label="Reps" /></label>
-            <label className="lk-field"><span>{unit}</span><input className="lk-input" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value.replace(/[^0-9.]/g, "").slice(0, 6))} placeholder="—" aria-label={`Weight in ${unit}`} /></label>
+            <label className="lk-field"><span>{unit}</span><input className="lk-input" inputMode="decimal" value={weight} onChange={(e) => setWeight(cleanDecimal(e.target.value))} placeholder="—" aria-label={`Weight in ${unit}`} /></label>
           </>}
       </div>
       <button type="button" className="lk-send" disabled={!name.trim()} onClick={add}>Add to {dayLabel}</button>
@@ -576,7 +576,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   };
   // Typing only edits the number. Ticking is a separate tap, so reaching for a value never ticks a set.
   const setSetValue = (i, si, field, raw) => {
-    const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : field === "s" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    const v = field === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : field === "s" ? maskDuration(raw) : cleanDecimal(raw);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [field]: v } } }));
   };
 
@@ -693,6 +693,14 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   };
 
   async function send() {
+    // A typo like 999999 kg would land in the coach's totals and records (#105).
+    const problem = workoutNumbersProblem(today.exercises, log, d.unit_system);
+    if (problem) {
+      setError(problem);
+      // Above the sticky Finish button, where they can read it.
+      requestAnimationFrame(() => document.querySelector(".lk-error")?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      return;
+    }
     setBusy(true); setError(null);
     try {
       // The same key until the coach has it, so finishing again after a dropped
@@ -1016,7 +1024,7 @@ function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }
   const fieldBox = (f) => (
     <div key={f.id} className={`lk-numfield ${selected === f.id ? "on" : ""} ${error?.field === f.id ? "bad" : ""}`} onClick={() => pick(f.id)}>
       <span className="lab">{f.label}</span>
-      <span className="val"><input ref={(el) => { inputs.current[f.id] = el; }} inputMode="decimal" placeholder="—" value={values[f.id] || ""} onChange={(e) => setVal(f.id, e.target.value)} onFocus={() => setSelected(f.id)} aria-label={`${f.label} in ${unitOf(f)}`} /><span className="unit">{unitOf(f)}</span></span>
+      <span className="val"><input ref={(el) => { inputs.current[f.id] = el; }} inputMode="decimal" placeholder="—" value={values[f.id] || ""} onChange={(e) => setVal(f.id, e.target.value)} onFocus={() => setSelected(f.id)} aria-label={`${f.label}, ${({ cm: "centimetres", in: "inches", "%": "percent" })[unitOf(f)] || unitOf(f)}`} /><span className="unit">{unitOf(f)}</span></span>
     </div>
   );
 
@@ -1024,7 +1032,7 @@ function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }
   // field, which would scroll the figure away and open the keyboard on a phone.
   const pick = (id) => { setSelected(id); inputs.current[id]?.focus(); };
   const show = (id) => setSelected(id);
-  const setVal = (id, v) => { setValues((x) => ({ ...x, [id]: v.replace(/[^0-9.]/g, "").slice(0, 6) })); setError(null); };
+  const setVal = (id, v) => { setValues((x) => ({ ...x, [id]: cleanDecimal(v) })); setError(null); };
 
   async function send() {
     const v = validateMeasurements(values, unit, requested);
@@ -1190,8 +1198,8 @@ function Unavailable({ reason }) {
     <div className="lk-page cx-app">
       <div className="lk-center">
         <div className="lk-mark muted"><Icon.Lock size={30} /></div>
-        <h1>{revoked ? "This link has been turned off." : reason === "server" || reason === "network" ? "Couldn't load this right now." : "This link doesn't work."}</h1>
-        <p>{revoked ? "Your coach may have sent you a new one. Check your messages."
+        <h1>{revoked ? "This link isn't working." : reason === "server" || reason === "network" ? "Couldn't load this right now." : "This link doesn't work."}</h1>
+        <p>{revoked ? "It may have been turned off, or a letter is missing. Open the link your coach sent you again, or ask them for a new one."
           : reason === "network" ? "Couldn't reach Theryn. Check your connection and try again."
           : reason === "server" ? "Theryn had a problem on our side. Your link is fine. Try again in a minute."
           : "Check the link your coach sent you, or ask them to send it again."}</p>

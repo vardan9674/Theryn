@@ -195,6 +195,40 @@ export function measurementsPayload(values, unit, date) {
 /** `units` is what the client typed weights in (and saw the targets in). */
 // A time typed by the client ("1:30", "45") or set by the timer (a number of seconds).
 const secsOrNull = (v) => (typeof v === "number" ? (v > 0 ? Math.round(v) : null) : parseDuration(v));
+/**
+ * A number box's text: digits and one decimal point, at most `max` characters
+ * ("1.2.3" → "1.23", "-5e3" → "53"). #105
+ */
+export function cleanDecimal(raw, max = 6) {
+  const s = String(raw ?? "").replace(/[^0-9.]/g, "");
+  const dot = s.indexOf(".");
+  return (dot < 0 ? s : s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "")).slice(0, max);
+}
+
+/** Heaviest believable load per set, and most reps. Anything past it is a typo. */
+export const WEIGHT_MAX = { metric: 500, imperial: 1100 };
+export const REPS_MAX = 200;
+
+/**
+ * The first impossible number the client typed, as a sentence for the page,
+ * or null when everything is believable. `log[i][si] = { r, w }`.
+ */
+export function workoutNumbersProblem(exercises, log, units) {
+  const max = WEIGHT_MAX[units === "metric" ? "metric" : "imperial"];
+  const unit = units === "metric" ? "kg" : "lb";
+  for (const [i, sets] of Object.entries(log || {})) {
+    if (!sets || typeof sets !== "object") continue;
+    for (const [si, x] of Object.entries(sets)) {
+      const name = exercises?.[i]?.name || "this exercise";
+      const w = x?.w === "" || x?.w == null ? null : Number(x.w);
+      const r = x?.r === "" || x?.r == null ? null : Number(x.r);
+      if (w != null && (!Number.isFinite(w) || w < 0 || w > max)) return `Set ${Number(si) + 1} of ${name}: ${x.w} ${unit} looks off. Check the weight.`;
+      if (r != null && (!Number.isFinite(r) || r > REPS_MAX)) return `Set ${Number(si) + 1} of ${name}: ${x.r} reps looks off. Check the reps.`;
+    }
+  }
+  return null;
+}
+
 const numOrNull = (v) => (v == null || String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /**
@@ -289,7 +323,7 @@ export function submissionToMeasurement(sub) {
 /** What one done set weighed and how many reps: what the client typed, else what the coach planned. */
 export function doneSets(e) {
   const firstNum = (r) => (r ? String(r).replace(/[^0-9].*$/, "") : "");
-  const w = (x) => (x != null && x !== "" ? String(x) : "");
+  const w = (x) => (x != null && x !== "" && Number(x) >= 0 && Number(x) <= 2 * WEIGHT_MAX.imperial ? String(x) : "");
   const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
   // What the coach planned for set `i` (0-based): its own numbers when the sets differ.
   const planR = (i) => firstNum(ps?.[i]?.r ?? e.reps);
@@ -301,7 +335,8 @@ export function doneSets(e) {
     const planW = (i) => ps?.[i]?.w ?? e.weight_target ?? e.weight_used;
     return e.sets.filter((s) => s && s.done).map((s) => {
       const i = (Number(s.n) || 1) - 1;
-      const out = { w: w(s.weight ?? planW(i)), r: s.reps != null ? String(s.reps) : planR(i) };
+      const typedW = w(s.weight);
+      const out = { w: typedW || w(planW(i)), r: s.reps != null && Number(s.reps) >= 0 && Number(s.reps) <= REPS_MAX ? String(s.reps) : planR(i) };
       if (timed) { const secs = s.secs ?? planS(i); if (secs != null) out.s = secs; }
       return out;
     });

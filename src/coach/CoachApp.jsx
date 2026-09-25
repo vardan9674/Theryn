@@ -17,7 +17,7 @@ import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
 import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
 import CoachTour, { isTourDone, markTourDone } from "./pages/CoachTour.jsx";
 import { buildNotifications, unreadCount } from "./lib/notifications.js";
-import { consumeBackPress } from "../lib/backStack.ts";
+import { consumeBackPress, backStackSize, subscribeBackStack } from "../lib/backStack.ts";
 import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
 const TABS = [
@@ -214,6 +214,59 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     });
     return () => { h.then((x) => x.remove()); };
   }, [tab, msgOpen, selectedId, vp, setSelectedId]);
+  // The browser tab names the page (#116), and gives the old title back on the way out.
+  React.useEffect(() => {
+    const before = document.title;
+    return () => { document.title = before; };
+  }, []);
+  React.useEffect(() => {
+    const names = { clients: "Clients", plans: "Plans", payments: "Payments", messages: "Messages" };
+    document.title = `${names[tab] || "Dashboard"} · Theryn`;
+  }, [tab]);
+
+  // ── Browser Back on the web (#103) ───────────────────────────────────────
+  // The dashboard has no URLs per screen, so Back used to leave the site with
+  // a client or sheet open. While something is open that Back can close, one
+  // history entry stands in front of the page; Back pops it and closes the top
+  // thing (a sheet, the plan editor, a chat, a client, then the tab), and it is
+  // put back if more is still open. Closing things with their own buttons
+  // takes the entry away again, so leaving never needs an extra Back.
+  const handlers = React.useSyncExternalStore(subscribeBackStack, backStackSize);
+  const closable = !Capacitor.isNativePlatform() && (handlers > 0 || (tab === "messages" && Boolean(msgOpen)) || Boolean(selectedId) || tab !== "clients");
+  const guardRef = React.useRef(false);
+  const [backTick, setBackTick] = React.useState(0); // re-check after each Back
+  const ignorePopRef = React.useRef(false);
+  const backRef = React.useRef(null);
+  backRef.current = () => {
+    if (consumeBackPress()) return;
+    if (tab === "messages" && msgOpen) { setMsgOpen(null); return; }
+    if (selectedId) { setSelectedId(null); return; }
+    if (tab !== "clients") setTab("clients");
+  };
+  React.useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    const onPop = () => {
+      if (ignorePopRef.current) { ignorePopRef.current = false; return; }
+      if (!guardRef.current) return;
+      guardRef.current = false;
+      backRef.current?.();
+      setBackTick((n) => n + 1); // still something open? put the entry back
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  React.useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    if (closable && !guardRef.current) {
+      window.history.pushState({ therynBack: true }, "");
+      guardRef.current = true;
+    } else if (!closable && guardRef.current && window.history.state?.therynBack) {
+      guardRef.current = false;
+      ignorePopRef.current = true;
+      window.history.back();
+    }
+  }, [closable, backTick]);
+
   React.useEffect(() => {
     if (!loadedClients) return;
     const link = consumePendingDeepLink();
@@ -345,7 +398,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onDelete={sheetFee ? async () => { await data.deleteFee(sheetFee.id); setFees((f) => f.filter((x) => x.id !== sheetFee.id)); toast("Fee removed"); } : null} />
       <Confirm open={sheet?.kind === "deletePayment"} title="Delete this payment?" body="This only removes the record. It doesn't move any money." confirmLabel="Delete" danger onClose={() => setSheet(null)}
         onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
-      <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
+      <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} existingNames={clients.map((c) => c.athlete_name)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
       <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />

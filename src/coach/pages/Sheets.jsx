@@ -4,7 +4,9 @@ import { useCoachData } from "../data/CoachDataContext.jsx";
 import { SUPPORTED_CURRENCIES } from "../../hooks/usePayments.ts";
 
 // ── Add a client: show my code, or enter theirs ───────────────────────────
-export function AddClientSheet({ open, onClose, onAdded }) {
+const sameName = (a, b) => String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase();
+
+export function AddClientSheet({ open, onClose, onAdded, existingNames = [] }) {
   const data = useCoachData();
   const toast = useToast();
   const [myCode, setMyCode] = React.useState(null);
@@ -14,6 +16,8 @@ export function AddClientSheet({ open, onClose, onAdded }) {
   const [busy, setBusy] = React.useState(false);
   React.useEffect(() => { if (open) { setCode(""); setFirst(""); setLast(""); data.ensureInviteCode().then(setMyCode).catch(() => setMyCode("")); } }, [open, data]);
 
+  const typedName = `${first} ${last}`;
+  const dupName = first.trim() ? existingNames.find((n) => sameName(n, typedName)) : null;
   async function addByName() {
     if (!first.trim()) { toast("A first name is needed.", "error"); return; }
     setBusy(true);
@@ -55,7 +59,8 @@ export function AddClientSheet({ open, onClose, onAdded }) {
             <input className="cx-input" value={first} onChange={(e) => setFirst(e.target.value.slice(0, 60))} placeholder="First name" aria-label="First name" autoComplete="off" />
             <input className="cx-input" value={last} onChange={(e) => setLast(e.target.value.slice(0, 60))} onKeyDown={(e) => e.key === "Enter" && addByName()} placeholder="Last name" aria-label="Last name" autoComplete="off" />
           </div>
-          <Button variant="primary" icon={<Icon.Person />} onClick={addByName} disabled={!first.trim() || busy}>{busy ? "Adding…" : "Add client"}</Button>
+          {dupName && <div className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>You already have a client called {dupName}. Add a second one with the same name?</div>}
+          <Button variant="primary" icon={<Icon.Person />} onClick={addByName} disabled={!first.trim() || busy}>{busy ? "Adding…" : dupName ? "Add another" : "Add client"}</Button>
         </div>
         <div className="cx-small cx-muted" style={{ textAlign: "center" }}>Or, if they have the app</div>
         <div className="cx-card cx-card-pad cx-col">

@@ -5,12 +5,22 @@ import { useEffect, useRef } from "react";
 // before falling through to tab navigation. This keeps modal-aware back
 // behavior decoupled from where each modal's open state lives.
 const stack: Array<() => void> = [];
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach((l) => l());
+
+/** How many handlers are waiting; for the web Back button (#103). */
+export function backStackSize(): number { return stack.length; }
+export function subscribeBackStack(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
 
 export function pushBackHandler(fn: () => void): () => void {
   stack.push(fn);
+  changed();
   return () => {
     const i = stack.lastIndexOf(fn);
-    if (i >= 0) stack.splice(i, 1);
+    if (i >= 0) { stack.splice(i, 1); changed(); }
   };
 }
 

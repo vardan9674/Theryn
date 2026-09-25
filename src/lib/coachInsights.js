@@ -95,7 +95,7 @@ function detectFallingBehind(history, routine, now = new Date()) {
       kind: "falling_behind",
       severity: "warn",
       title: `${missed}/${scheduled} missed`,
-      message: `Missed ${missed} of ${scheduled} scheduled sessions this week.`,
+      message: `Missed ${missed} of ${scheduled} scheduled sessions in the last 7 days.`,
       suggestedTab: "progress",
       evidence: { missed, scheduled, windowDays: 7 },
     };

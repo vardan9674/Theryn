@@ -4,6 +4,31 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-25 (evening) — Remaining QA bugs filed (#97–#118); coach dashboard and link fixes, branch `fix/qa-web-dashboard`
+
+**Asked**
+- "File the remaining QA bugs as issues and fix them."
+
+**Filed** (one per QA ID, rechecked against main at 25d1c0a first): #97–#118. Web fixes are in this branch; the athlete app and the database each get their own PR.
+
+**Done**
+- #102 Payments "Still expected": per client, the cycles that start this month and have no payment inside them. One client's payment never cancels another's. Sample data: $403.33 → $310 (Dana $120 late, Priya $150 due, Jonas $40 on the 28th).
+- #103 Browser Back on the dashboard closes the top thing (sheet, plan editor, chat, client, then tab) instead of leaving the site. One history entry stands in front while something is open; closing things with their own buttons removes it (`backStack.ts` gained a size + subscribe).
+- #104 Every `Sheet` (and so every Confirm) takes focus on open, keeps Tab inside, makes `#root` inert, returns focus on close; Escape closes only the top sheet.
+- #105 Link number boxes accept one decimal point (`cleanDecimal`); Finish stops with "Set 3 of Row: 999999 kg looks off" for weights over 500 kg / 1100 lb or reps over 200; the coach's history treats an impossible number already sent as the planned one, so it can't inflate volume or records.
+- #111 "Missed 2 of 3 scheduled sessions in the last 7 days."
+- #112 New plan and Add client by name warn about a same-name plan or client and relabel the button ("Create another", "Add another").
+- #113 A link that doesn't work: "This link isn't working. It may have been turned off, or a letter is missing…"
+- #116 Tab title per page ("Clients · Theryn"); day tiles wrap "Full Body"; a toast raised over a sheet shows at the top; measurement boxes read "Chest, centimetres"; selected rows use `aria-current`; amount boxes say "Amounts can't be negative."
+- #118 `npm audit fix`: tar, ws, @xmldom/xmldom, brace-expansion. Only xlsx remains (no fix; write-only use).
+
+**Verified**
+- 9 new tests (payments math, number cleaning and limits, wording); 219 tests, typecheck, build pass.
+- In-app browser: Back closes a client, then a sheet, then the Payments tab, then leaves; one Back after closing with ✕. Real Tab/Shift+Tab stay inside "Record a payment"; Escape closes it and focus returns to the button. Duplicate warnings, $310, the link error in view above Finish, toast at the top, "Full Body" unclipped at 375. No console errors.
+
+**Not fixed here**
+- #106 (raw token in `label`): needs a product decision. #114 (admin page): its code is uncommitted work in a local checkout, not on main. #115 (Google shows the Supabase domain): needs a custom domain.
+
 ## 2026-09-25 (later) — Timezone fixes (#93, #94, #95), branch `fix/timezone-dates`
 
 **Asked**

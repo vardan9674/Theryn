@@ -27,7 +27,7 @@ export default function MessagesPage({ clients, previews, refreshPreviews, openA
         <div className="cx-search" style={{ width: "100%", maxWidth: "none" }}><Icon.Search /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search conversations" /></div>
       </div>
       {list.map(({ link, p }) => (
-        <button key={link.athlete_id} type="button" className={`cx-conv ${p.unread > 0 ? "unread" : ""}`} aria-selected={openAthleteId === link.athlete_id} onClick={() => onOpen(link.athlete_id)}>
+        <button key={link.athlete_id} type="button" className={`cx-conv ${p.unread > 0 ? "unread" : ""}`} aria-current={openAthleteId === link.athlete_id ? "true" : undefined} onClick={() => onOpen(link.athlete_id)}>
           <Avatar name={link.athlete_name} />
           <div className="body">
             <div className="top"><b>{link.athlete_name}</b><time>{relativeTime(p.lastMsgAt)}</time></div>

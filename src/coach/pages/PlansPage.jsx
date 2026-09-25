@@ -11,6 +11,8 @@ import PushUpdateModal from "../../components/templates/PushUpdateModal.jsx";
 export { templateDaysToPlan } from "../lib/manualTemplates.js";
 import { templateDaysToPlan, planToTemplateDays, templateHasWorkouts, EMPTY_PLAN_MSG } from "../lib/manualTemplates.js";
 
+const sameName = (a, b) => String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase();
+
 /**
  * The coach's saved plans. Each row: Edit plan · Excel · Update clients ·
  * Add clients. Editing opens the same editor as a client's plan, full-screen.
@@ -39,6 +41,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   }, [data, toast]);
   React.useEffect(() => { reload(); }, [reload]);
 
+  const dupPlan = templates.find((t) => sameName(t.name, newName)) || null;
   async function create() {
     const name = newName.trim();
     if (!name) return;
@@ -275,7 +278,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       <Sheet open={naming} onClose={() => setNaming(false)} title="New plan" subtitle="Give it a name you'll recognise, like PPL Intermediate or Beginner Full Body.">
         <div className="cx-form">
           <input className="cx-input" autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Plan name" aria-label="Plan name" />
-          <div className="cx-actions-2"><Button onClick={() => setNaming(false)}>Cancel</Button><Button variant="primary" onClick={create} disabled={!newName.trim() || busy}>{busy ? "Creating…" : "Create and edit"}</Button></div>
+          {dupPlan && <div className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>You already have a plan called {dupPlan.name}. Make a second one?</div>}
+          <div className="cx-actions-2"><Button onClick={() => setNaming(false)}>Cancel</Button><Button variant="primary" onClick={create} disabled={!newName.trim() || busy}>{busy ? "Creating…" : dupPlan ? "Create another" : "Create and edit"}</Button></div>
         </div>
       </Sheet>
 
