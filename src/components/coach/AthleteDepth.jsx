@@ -667,6 +667,8 @@ export function AthletePRTimeline({ history, unit = "lbs" }) {
         for (const set of ex.sets || []) {
           const w = parseFloat(set.w) || 0;
           const r = parseInt(set.r, 10) || 0;
+          // A set with no readable reps (blank, "-5") isn't a lift to record (#134).
+          if (r <= 0) continue;
           if (w > maxW || (w === maxW && r > bestReps)) {
             maxW = w;
             bestReps = r;

@@ -2,6 +2,7 @@
 import { parseDuration } from "./exerciseKinds.js";
 import { planUnits, convertSubmission, normUnits } from "./units.js";
 import { validTimeZone } from "./clientClock.js";
+import { plannedSet, plannedRepsNumber } from "./planSets.js";
 export { planUnits };
 
 // Every measurement a coach can ask for, top of the body to the bottom.
@@ -347,17 +348,18 @@ export function submissionToMeasurement(sub) {
 /** A workout submission row → the history entry shape the dashboard already uses. */
 /** What one done set weighed and how many reps: what the client typed, else what the coach planned. */
 export function doneSets(e) {
-  const firstNum = (r) => (r ? String(r).replace(/[^0-9].*$/, "") : "");
   const w = (x) => (x != null && x !== "" && Number(x) >= 0 && Number(x) <= 2 * WEIGHT_MAX.imperial ? String(x) : "");
-  const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
-  // What the coach planned for set `i` (0-based): its own numbers when the sets differ.
-  const planR = (i) => firstNum(ps?.[i]?.r ?? e.reps);
+  const ps = Array.isArray(e.plan_sets) && e.plan_sets.length ? e.plan_sets : null;
+  // What the coach planned for set `i` (0-based): its own numbers when the sets
+  // differ. "8-12" counts as 8; reps that can't be read ("-5") count as none (#134).
+  const planR = (i) => { const n = plannedRepsNumber(plannedSet(e, i).r); return n == null ? "" : String(n); };
   // Timed exercises (planks, runs) carry seconds instead of reps.
-  const planS = (i) => { const v = ps?.[i]?.s ?? e.secs_target; const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : null; };
+  const planS = (i) => { const n = plannedSet(e, i).s; return n == null ? null : Math.round(n); };
   const timed = e.mode === "time";
   if (Array.isArray(e.sets) && e.sets.length) {
     // Per set, a blank weight means the planned one (weight_used is just the first typed weight).
-    const planW = (i) => ps?.[i]?.w ?? e.weight_target ?? e.weight_used;
+    // With per-set plans a set without its own weight had none; weight_target only summarises the first.
+    const planW = (i) => (ps ? plannedSet(e, i).w : e.weight_target ?? e.weight_used);
     return e.sets.filter((s) => s && s.done).map((s) => {
       const i = (Number(s.n) || 1) - 1;
       const typedW = w(s.weight);
@@ -366,7 +368,7 @@ export function doneSets(e) {
       return out;
     });
   }
-  const planW = (i) => ps?.[i]?.w ?? e.weight_used ?? e.weight_target;
+  const planW = (i) => (ps ? plannedSet(e, i).w : e.weight_used ?? e.weight_target);
   return Array.from({ length: e.sets_done || 0 }, (_, i) => {
     const out = { w: w(planW(i)), r: planR(i) };
     if (timed && planS(i) != null) out.s = planS(i);

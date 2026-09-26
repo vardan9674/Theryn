@@ -1,7 +1,8 @@
 import React from "react";
 import { Sheet, useToast } from "../ui/primitives.jsx";
 import { shortDate } from "../lib/format.js";
-import { editableSets, applyEdits, weightLooksOff } from "../lib/editWorkout.js";
+import { editableSets, applyEdits, weightLooksOff, editNumbersProblem } from "../lib/editWorkout.js";
+import { cleanDecimal } from "../lib/clientLinks.js";
 import { maskDuration, tidyDuration, durationInput, parseDuration } from "../lib/exerciseKinds.js";
 
 const toStr = (v) => (v == null ? "" : String(v));
@@ -29,11 +30,14 @@ export default function EditWorkoutSheet({ open, workout, firstName, unit, onClo
 
   if (!payload) return null;
   const setVal = (ei, i, f, raw) => {
-    const v = f === "reps" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "secs" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    const v = f === "reps" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "secs" ? maskDuration(raw) : cleanDecimal(raw);
     setRows((r) => ({ ...r, [ei]: r[ei].map((x, k) => (k === i ? { ...x, [f]: v } : x)) }));
   };
 
   async function save() {
+    // A weight that can't be read would be saved as blank, erasing it. Say so instead. #133
+    const bad = editNumbersProblem(payload.exercises, rows, unit);
+    if (bad) { toast(bad, "error"); return; }
     // Only exercises whose numbers changed are rewritten.
     const edits = {};
     for (const [ei, list] of Object.entries(rows)) {
