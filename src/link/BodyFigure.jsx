@@ -1,45 +1,42 @@
 import React from "react";
 import { MEASUREMENT_FIELDS } from "../coach/lib/clientLinks.js";
+import { BODY_FRONT } from "../lib/bodyMap/bodyPaths.js";
 
-// Front-view figure with callout labels. Drawing from mockups/share-links.
-// ly: where the label sits, so labels on the same side never overlap.
+// Front-view body with a band and a callout label for each measurement.
+// The body drawing is the same one the exercise picker uses (src/lib/bodyMap/bodyPaths.js).
 // The figure faces you: the client's left arm is on your right.
+// Coordinates are in the drawing's own units. ly: where the label sits, so labels on
+// the same side never overlap.
 const REGIONS = {
-  neck: { x: 160, y: 80, rx: 13, ry: 5, side: "left", ly: 60 },
-  shoulders: { x: 160, y: 100, rx: 50, ry: 8, side: "left", ly: 94 },
-  chest: { x: 160, y: 127, rx: 40, ry: 10, side: "left" },
-  back: { x: 160, y: 142, rx: 44, ry: 9, side: "right", ly: 112, dashed: true },
-  arm_r: { x: 103, y: 146, rx: 12, ry: 23, side: "left", ly: 156 },
-  arm: { x: 217, y: 146, rx: 12, ry: 23, side: "right" },
-  forearm_r: { x: 88, y: 190, rx: 9, ry: 14, side: "left", ly: 254 },
-  forearm_l: { x: 232, y: 190, rx: 9, ry: 14, side: "right", ly: 186 },
-  waist: { x: 160, y: 176, rx: 30, ry: 8, side: "left", ly: 180 },
-  belly: { x: 160, y: 196, rx: 33, ry: 7, side: "left", ly: 204 },
-  hips: { x: 160, y: 214, rx: 39, ry: 10, side: "left", ly: 228 },
-  thigh_r: { x: 138, y: 287, rx: 18, ry: 11, side: "left" },
-  thigh: { x: 182, y: 287, rx: 18, ry: 11, side: "right" },
-  calf_r: { x: 141, y: 352, rx: 11, ry: 10, side: "left" },
-  calf_l: { x: 179, y: 352, rx: 11, ry: 10, side: "right" },
+  neck: { x: 364, y: 292, rx: 32, ry: 10, side: "left", ly: 238 },
+  shoulders: { x: 364, y: 345, rx: 170, ry: 16, side: "left", ly: 318 },
+  chest: { x: 364, y: 388, rx: 112, ry: 16, side: "left", ly: 398 },
+  back: { x: 364, y: 430, rx: 118, ry: 14, side: "right", ly: 362, dashed: true },
+  arm_r: { x: 217, y: 450, rx: 38, ry: 11, side: "left", ly: 478 },
+  arm: { x: 511, y: 450, rx: 38, ry: 11, side: "right", ly: 450 },
+  forearm_r: { x: 186, y: 548, rx: 32, ry: 10, side: "left", ly: 558 },
+  forearm_l: { x: 542, y: 548, rx: 32, ry: 10, side: "right", ly: 548 },
+  waist: { x: 364, y: 578, rx: 104, ry: 14, side: "left", ly: 638 },
+  belly: { x: 364, y: 632, rx: 108, ry: 14, side: "left", ly: 718 },
+  hips: { x: 364, y: 700, rx: 124, ry: 16, side: "left", ly: 798 },
+  thigh_r: { x: 296, y: 790, rx: 58, ry: 14, side: "left", ly: 878 },
+  thigh: { x: 432, y: 790, rx: 58, ry: 14, side: "right", ly: 790 },
+  calf_r: { x: 288, y: 1090, rx: 40, ry: 12, side: "left", ly: 1090 },
+  calf_l: { x: 440, y: 1090, rx: 40, ry: 12, side: "right", ly: 1090 },
 };
+
+// Label columns sit outside the body on both sides.
+const LEFT_TEXT = -318, LEFT_ELBOW = -40, RIGHT_TEXT = 1046, RIGHT_ELBOW = 768;
+const SKIN = new Set(["head", "hair", "neck", "hands", "feet", "knees", "ankles"]);
 
 export default function BodyFigure({ requested, selected, onSelect }) {
   const fields = MEASUREMENT_FIELDS.filter((f) => requested.includes(f.id) && REGIONS[f.id]);
   return (
-    <svg className="lk-body" viewBox="0 0 320 440" role="group" aria-label="Body measurement diagram">
-      <defs>
-        <linearGradient id="lk-shade" x1="0" x2="1">
-          <stop offset="0" stopColor="#181818" /><stop offset=".5" stopColor="#202020" /><stop offset="1" stopColor="#181818" />
-        </linearGradient>
-      </defs>
-      <path className="lk-grid" d="M160 10v416M91 127h138M102 176h116M101 214h118M109 287h102" />
-      <g className="lk-human" fill="url(#lk-shade)">
-        <path d="M140 40c0-17 8-26 20-26s20 9 20 26l-3 17c-2 10-10 18-17 18s-15-8-17-18Z" />
-        <path d="M147 71v13c-9 7-20 10-33 13-11 3-18 12-21 24l-10 40-9 39-9 27-7 14-2 16c0 5 4 7 7 2l5-11-1 12c0 5 5 5 7 0l7-19 6-11 9-25 13-31 9-31 6 34-6 29-5 26c8 10 24 16 47 16s39-6 47-16l-5-26-6-29 6-34 9 31 13 31 9 25 6 11 7 19c2 5 7 5 7 0l-1-12 5 11c3 5 7 3 7-2l-2-16-7-14-9-27-9-39-10-40c-3-12-10-21-21-24-13-3-24-6-33-13V71" />
-        <path d="M113 230c-1 22 2 46 8 66l7 29-3 32 7 39-3 12-8 8c-4 5-1 8 6 8h17c5-1 8-5 8-10l-2-19 3-38-1-32 7-66h2l7 66-1 32 3 38-2 19c0 5 3 9 8 10h17c7 0 10-3 6-8l-8-8-3-12 7-39-3-32 7-29c6-20 9-44 8-66" />
-      </g>
-      <g className="lk-muscles">
-        <path d="M145 88l15 9 15-9M160 99v43M123 113q17-13 32-5M165 108q15-8 32 5M122 132q14 12 33 3M165 135q19 9 33-3M136 146l-5 19 5 21M184 146l5 19-5 21M145 157h10M165 157h10M145 172h10M165 172h10M150 189q10 5 20 0M126 202l27 30M194 202l-27 30M160 216v25M127 249l9 38 2 27M193 249l-9 38-2 27M135 326q9-5 14 1M171 327q5-6 14-1M137 342l6 42M183 342l-6 42" />
-        <path d="M112 103q-10 12-11 27M208 103q10 12 11 27M98 139l-9 35M222 139l9 35M86 190l-9 32M234 190l9 32" />
+    <svg className="lk-body" viewBox="-330 80 1388 1290" role="group" aria-label="Body measurement diagram">
+      <g className="lk-human" aria-hidden="true">
+        {BODY_FRONT.map((part) => part.paths.map((d, i) => (
+          <path key={`${part.slug}-${i}`} d={d} className={SKIN.has(part.slug) ? "lk-part lk-skin" : "lk-part"} />
+        )))}
       </g>
       {fields.map((f) => {
         const r = REGIONS[f.id];
@@ -47,14 +44,16 @@ export default function BodyFigure({ requested, selected, onSelect }) {
         const active = selected === f.id;
         const sx = left ? r.x - r.rx : r.x + r.rx;
         const labelY = r.ly ?? r.y;
+        const elbow = left ? LEFT_ELBOW : RIGHT_ELBOW;
+        const end = left ? LEFT_TEXT : RIGHT_TEXT;
         return (
           <g key={f.id} className={`lk-region ${active ? "on" : ""}`} role="button" tabIndex={0} aria-pressed={active} aria-label={`Show how to measure ${f.label.toLowerCase()}`}
             onClick={() => onSelect(f.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(f.id); } }}>
-            <ellipse className="lk-band" cx={r.x} cy={r.y} rx={r.rx} ry={r.ry} strokeDasharray={r.dashed ? "4 3" : undefined} />
-            <path className="lk-callout" d={`M${sx} ${r.y} H${left ? 86 : 240} L${left ? 75 : 246} ${labelY} H${left ? 10 : 310}`} />
-            <rect x={left ? 0 : 236} y={labelY - 30} width="84" height="54" fill="transparent" />
-            <text x={left ? 6 : 314} y={labelY - 8} textAnchor={left ? "start" : "end"}>{f.label}</text>
-            <circle cx={sx} cy={r.y} r="3.5" />
+            <ellipse className="lk-band" cx={r.x} cy={r.y} rx={r.rx} ry={r.ry} strokeDasharray={r.dashed ? "12 9" : undefined} />
+            <path className="lk-callout" d={`M${sx} ${r.y} H${elbow} L${left ? elbow - 30 : elbow + 30} ${labelY} H${end}`} />
+            <rect x={left ? -330 : 748} y={labelY - 70} width="310" height="100" fill="transparent" />
+            <text x={end} y={labelY - 14} textAnchor={left ? "start" : "end"}>{f.label}</text>
+            <circle cx={sx} cy={r.y} r="9" />
           </g>
         );
       })}

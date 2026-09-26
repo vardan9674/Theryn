@@ -64,16 +64,16 @@
 .lk-segment { height: 52px; border-radius: 10px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); display: flex; padding: 3px; }
 .lk-segment button { flex: 1; border: none; background: none; border-radius: 8px; font-size: 14px; color: var(--cx-mu); }
 .lk-segment button[aria-pressed="true"] { background: var(--cx-bd2); color: var(--cx-tx); font-weight: 700; }
-.lk-body { width: 100%; max-height: 420px; height: auto; display: block; margin: 4px auto 0; overflow: visible; }
-.lk-grid { fill: none; stroke: var(--cx-bd2); stroke-width: 0.6; stroke-dasharray: 2 6; }
-.lk-human { stroke: var(--cx-mu); stroke-width: 1.05; stroke-linecap: round; stroke-linejoin: round; }
-.lk-muscles { fill: none; stroke: var(--cx-mu); stroke-width: 0.75; opacity: 0.65; stroke-linecap: round; }
+.lk-body { width: 100%; max-height: 440px; height: auto; display: block; margin: 4px auto 0; overflow: visible; }
+/* Body drawing: same muscle shapes as the exercise picker (src/lib/bodyMap/bodyPaths.js), in drawing units (about 3x CSS px). */
+.lk-part { fill: #383838; stroke: var(--cx-s1); stroke-width: 3; }
+.lk-skin { fill: #2A2A2A; }
 .lk-region { cursor: pointer; outline-offset: 2px; }
-.lk-band { fill: transparent; pointer-events: all; stroke: var(--cx-mu); stroke-width: 1; stroke-dasharray: 3 3; }
-.lk-callout { fill: none; stroke: var(--cx-mu); stroke-width: 0.8; }
-.lk-region text { fill: var(--cx-tx2); font-size: 13px; font-weight: 500; font-family: inherit; }
+.lk-band { fill: transparent; pointer-events: all; stroke: var(--cx-tx2); stroke-width: 3; stroke-dasharray: 9 9; }
+.lk-callout { fill: none; stroke: var(--cx-mu); stroke-width: 2.5; }
+.lk-region text { fill: var(--cx-tx2); font-size: 38px; font-weight: 500; font-family: inherit; }
 .lk-region circle { fill: var(--cx-tx2); }
-.lk-region.on .lk-band { stroke: var(--cx-a); stroke-width: 2; fill: var(--cx-a); fill-opacity: 0.09; stroke-dasharray: none; }
+.lk-region.on .lk-band { stroke: var(--cx-a); stroke-width: 6; fill: var(--cx-a); fill-opacity: 0.12; stroke-dasharray: none; }
 .lk-region.on .lk-callout { stroke: var(--cx-a); }
 .lk-region.on text, .lk-region.on circle { fill: var(--cx-a); }
 .lk-guide { display: flex; gap: 16px; padding-top: 14px; border-top: 1px solid var(--cx-bd); }
