@@ -3313,10 +3313,15 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
 
   const handleShare = async () => {
     if (!myCode) return;
+    // There is no field for anyone to type someone else's code: a coach types
+    // their athlete's code, never the other way round. Telling a client to
+    // "enter my code" left them signed in on the download page with an account
+    // belonging to nobody, so the athlete's message asks for the reverse and
+    // the coach's points at the client's own link.
     const text =
       mode === "athlete"
-        ? `Let's train together on Theryn — I'd love to have you as my coach. Sign in and enter my code ${myCode} to connect.`
-        : `I'd like to coach you on Theryn. Sign in and enter my code ${myCode} to connect.`;
+        ? `Let's train together on Theryn — I'd love to have you as my coach. My athlete code is ${myCode}; add me from Clients → Add client → Enter their code.`
+        : `I'd like to coach you on Theryn. Send me your athlete code, or open the link I sent you and tap "Set up my account".`;
     const url = "https://thery.fit";
     try {
       await Share.share({
@@ -3558,7 +3563,7 @@ function CoachModal({ authUser, onClose, mode = "athlete", inline = false, onUpd
           {!loading && view === "connect" && (
             <div className="coach-content">
               <div style={{ fontSize:"15px", color:SB, lineHeight:"1.6", marginBottom:"28px" }}>
-                Ask your athlete for their 6-letter code and enter it below. They'll receive a request to approve.
+                Ask your athlete for their 6-letter code and enter it below. They're connected straight away.
               </div>
 
               {/* 6-box code input */}

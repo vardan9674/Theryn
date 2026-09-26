@@ -11,7 +11,7 @@ import PaymentsPage, { RecordPaymentSheet, FeeSheet } from "./pages/PaymentsPage
 import MessagesPage from "./pages/MessagesPage.jsx";
 import PlanEditor from "./pages/PlanEditor.jsx";
 import ExportExcelDialog from "./pages/ExportExcelDialog.jsx";
-import { AddClientSheet, ProfileSheet, LinkClientSheet, UnitsPromptSheet, unitsConfirmed, markUnitsConfirmed } from "./pages/Sheets.jsx";
+import { AddClientSheet, ProfileSheet, UnitsPromptSheet, unitsConfirmed, markUnitsConfirmed } from "./pages/Sheets.jsx";
 import TherynLoader from "../components/TherynLoader.jsx";
 import ShareLinkSheet from "./pages/ShareLinkSheet.jsx";
 import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSheet.jsx";
@@ -293,7 +293,6 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     editFee: (id) => setSheet({ kind: "fee", athleteId: id }),
     deletePayment: (p) => setSheet({ kind: "deletePayment", payment: p }),
     addClient: () => setSheet({ kind: "addClient" }),
-    linkClient: (id) => setSheet({ kind: "linkClient", athleteId: id }),
     shareLink: (id) => setSheet({ kind: "shareLink", athleteId: id }),
     profile: () => setSheet({ kind: "profile" }),
     editPlan: (id) => setEditor({ athleteId: id }),
@@ -402,8 +401,6 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
       <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
-      <LinkClientSheet open={sheet?.kind === "linkClient"} onClose={() => setSheet(null)} client={sheetClient} candidates={realClients}
-        onLinked={async (athleteId) => { cache.invalidate(athleteId); await Promise.all([refreshClients(), reloadPayments()]); setSelectedId(athleteId); setDetailTab("plan"); }} />
       <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} units={units} onUnitsChanged={onUnitsChanged} onRemoveClient={() => { refreshClients(); reloadPayments(); }} onTour={startTour} />
       <UnitsPromptSheet open={unitsAsk} onClose={() => setUnitsAsk(false)} onChosen={onUnitsChanged} />
       <CoachTour open={tourOpen && !editor} onClose={endTour} firstName={(data.coachName || "").replace(/^coach\s+/i, "").split(" ")[0]} hasClients={clients.length > 0}

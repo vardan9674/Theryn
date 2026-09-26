@@ -204,7 +204,6 @@ export function createMockCoachData() {
       if (mid) { st.manual = st.manual.filter((m) => m.id !== mid); return; }
       st.links = st.links.filter((l) => l.id !== linkId);
     },
-    async updateManualEmail(clientId, email) { await wait(150); const m = st.manual.find((r) => r.id === manualIdOf(clientId)); const e = String(email || "").trim().toLowerCase(); if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right."); if (m) m.email = e || null; return m?.email || null; },
     historyKept: true,
     async createManualClient({ firstName, lastName }) {
       await wait(250);
@@ -213,18 +212,6 @@ export function createMockCoachData() {
       const row = { id: "m" + randomId().slice(0, 6), coach_id: COACH_ID, ...name, plan: null, fee: null, payments: [], notes: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
       st.manual.push(row);
       return manualToClient(row);
-    },
-    async linkManualClient(clientId, athleteId) {
-      await wait(400);
-      const mid = manualIdOf(clientId);
-      const row = st.manual.find((m) => m.id === mid);
-      if (!row) throw new Error("This client no longer exists.");
-      if (row.plan) st.routines[athleteId] = JSON.parse(JSON.stringify(row.plan));
-      const fee = manualFeeRow(row);
-      if (fee) st.fees = [...st.fees.filter((f) => f.athlete_id !== athleteId), { ...fee, id: "fee-" + athleteId, athlete_id: athleteId }];
-      for (const p of manualPaymentRows(row)) st.payments.push({ ...p, id: uid(), athlete_id: athleteId });
-      st.manual = st.manual.filter((m) => m.id !== mid);
-      return { moved: { plan: Boolean(row.plan), fee: Boolean(fee), payments: manualPaymentRows(row).length } };
     },
     async ensureInviteCode() { await wait(100); return "THRYN4K2P"; },
     async findProfileByCode(code) { await wait(200); return code.toUpperCase() === "NEWBIE" ? { id: "a7", display_name: "New Client" } : null; },
