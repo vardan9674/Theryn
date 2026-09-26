@@ -4,6 +4,24 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-26 — Payment totals convert between currencies (#122), branch `fix/payments-currency`
+
+**Asked**
+- "When I change to INR or USD the payment number doesn't change, only the symbol changes."
+
+**Found** (read-only on production): both web coaches use INR; name-only clients' fees (7) and payments (2) are INR, older app clients' fees (3) and a payment (1) are USD. The Payments totals added all of them as one number and printed it with the coach's symbol, so switching currency only relabelled it.
+
+**Done** (no database change)
+- `src/coach/lib/money.js`: `sumByCurrency`, `convert`, `describeTotal` and `loadRates`. Rates come from open.er-api.com (no key, CORS open), cached 12 h in localStorage, with the last copy used offline.
+- `computeMonthlySummary` also returns received / expected / outstanding per currency; the old plain numbers stay for the old app screen.
+- Payments cards: in the coach's currency, converted when needed ("≈ ₹25,898") with the parts underneath ("$270"), and a line naming the rate day with the provider credit their terms ask for. No rates: "₹8,000 + $150", never a wrong single number. Late is summed per fee currency.
+- Settings: "Your currency", with a line saying totals convert and each client's fee keeps its own currency.
+- Preview data: Ravi pays ₹8,000; `?currency=` picks the coach's currency and the Settings switch reloads on it.
+
+**Verified**
+- 10 new tests; 237 tests, typecheck, build pass.
+- Browser (US Central) with USD, then INR through Settings: Received $520 + ₹8,000 ≈ $603.40, then ≈ ₹57,878. Still expected $270 → ≈ ₹25,898 (95.92 today). Client rows keep $120 / $150 / ₹8,000. Nothing clips at 375 px; no console errors.
+
 ## 2026-09-25 (evening, 3) — Database QA fixes (#99, #107, #108, #117), branch `fix/qa-database`
 
 **Done** (migration `20260925174442_qa_database_fixes.sql`, **applied to production 2026-09-25** after the owner's go-ahead; the file is named after the version the database recorded)

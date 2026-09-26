@@ -294,6 +294,12 @@ export interface MonthlySummary {
   receivedThisMonth: number;
   expectedThisMonth: number;
   outstanding: number;
+  /** The same three, per currency ({ USD: 320, INR: 12000 }): the plain
+   * numbers above add different currencies together, so screens that show a
+   * total convert these instead (src/coach/lib/money.js). */
+  receivedByCurrency: Record<string, number>;
+  expectedByCurrency: Record<string, number>;
+  outstandingByCurrency: Record<string, number>;
 }
 
 /**
@@ -322,9 +328,15 @@ export function computeMonthlySummary(
   const year = refDate.getFullYear();
   const inMonth = (d: Date) => d.getMonth() === month && d.getFullYear() === year;
 
-  const receivedThisMonth = payments
-    .filter(p => inMonth(atMidday(p.received_date)))
-    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const add = (m: Record<string, number>, cur: string | undefined, n: number) => { const c = cur || "USD"; m[c] = (m[c] || 0) + n; };
+  const receivedByCurrency: Record<string, number> = {};
+  const expectedByCurrency: Record<string, number> = {};
+  const outstandingByCurrency: Record<string, number> = {};
+  const feeCurrency = (athleteId: string) => fees.find(f => f.athlete_id === athleteId)?.currency;
+
+  const monthPayments = payments.filter(p => inMonth(atMidday(p.received_date)));
+  const receivedThisMonth = monthPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  for (const p of monthPayments) add(receivedByCurrency, p.currency || feeCurrency(p.athlete_id), Number(p.amount) || 0);
 
   let expected = 0;
   let outstanding = 0;
@@ -341,10 +353,11 @@ export function computeMonthlySummary(
     const unused = payments.filter(p => p.athlete_id === fee.athlete_id);
     for (const start of [...starts.values()].sort((a, b) => a.getTime() - b.getTime())) {
       expected += amount;
+      add(expectedByCurrency, fee.currency, amount);
       const end = cycleEndForStart(fee.cadence, start);
       const i = unused.findIndex(p => { const d = atMidday(p.received_date); return d >= start && d <= end; });
       if (i >= 0) unused.splice(i, 1);
-      else outstanding += amount;
+      else { outstanding += amount; add(outstandingByCurrency, fee.currency, amount); }
     }
   }
 
@@ -352,5 +365,8 @@ export function computeMonthlySummary(
     receivedThisMonth: Number(receivedThisMonth.toFixed(2)),
     expectedThisMonth: Number(expected.toFixed(2)),
     outstanding: Number(outstanding.toFixed(2)),
+    receivedByCurrency,
+    expectedByCurrency,
+    outstandingByCurrency,
   };
 }

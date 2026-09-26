@@ -149,6 +149,8 @@
 .cx-stat { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; }
 .cx-stat .k { font-size: 12px; color: var(--cx-mu); }
 .cx-stat .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Converted totals ("≈ ₹25,898") are wider; three cards share a phone row. */
+@media (max-width: 420px) { .cx-stat .v { font-size: 18px; letter-spacing: -0.01em; } }
 .cx-stat .s { font-size: 11px; color: var(--cx-mu); min-height: 14px; }
 .cx-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .cx-avatar {
