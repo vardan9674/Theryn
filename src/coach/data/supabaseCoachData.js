@@ -183,14 +183,6 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const row = await patchManualRow(mid, { unit_system: normUnits(units) });
       return normUnits(row.unit_system || units);
     },
-    async updateManualEmail(clientId, email) {
-      const mid = manualIdOf(clientId);
-      if (!mid) throw new Error("Only for clients added by name.");
-      const e = String(email || "").trim().toLowerCase();
-      if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new Error("That email doesn't look right.");
-      const row = await patchManualRow(mid, { email: e || null });
-      return row.email || null;
-    },
     get historyKept() { return historyV2; },
     async createManualClient({ firstName, lastName }) {
       const name = cleanName(firstName, lastName);
@@ -199,29 +191,6 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const { data, error } = await supabase.from("coach_manual_clients").insert({ coach_id: coachId, ...name, payments: [] }).select(cols()).single();
       if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
       return manualToClient(data);
-    },
-    /**
-     * The person joined with the coach's code: copy plan, fee and payments
-     * onto their real account, then delete the name-only row.
-     */
-    async linkManualClient(clientId, athleteId) {
-      const mid = manualIdOf(clientId);
-      if (!mid || isManualId(athleteId)) throw new Error("Pick a client who is on the app.");
-      const row = await getManualRow(mid);
-      // Their link check-ins belong to the name-only row and are deleted with it
-      // (client_submissions.manual_client_id ON DELETE CASCADE). Until they can be
-      // moved onto the account, don't connect anyone who has sent something.
-      const sent = await loadSubmissions({ manual_client_id: mid });
-      if (sent.length) throw new Error(`${row.first_name || "This client"} has ${sent.length} check-in${sent.length === 1 ? "" : "s"} from their link. Connecting now would delete them, so it's switched off until their history can be moved onto the account. Keep them as a name-only client for now.`);
-      if (row.plan && Object.keys(row.plan).length) await saveRoutineAsCoach(athleteId, row.plan, coachId);
-      const fee = manualFeeRow(row, defaultCurrency);
-      if (fee) await upsertClientFee(coachId, athleteId, { amount: fee.amount, currency: fee.currency, cadence: fee.cadence, start_date: fee.start_date, active: fee.active, notes: fee.notes });
-      for (const p of manualPaymentRows(row)) {
-        await savePayment(coachId, athleteId, { amount: p.amount, currency: p.currency, received_date: p.received_date, notes: p.notes });
-      }
-      const { error } = await supabase.from("coach_manual_clients").delete().eq("id", mid).eq("coach_id", coachId);
-      if (error) throw new Error(error.message);
-      return { moved: { plan: Boolean(row.plan), fee: Boolean(fee), payments: manualPaymentRows(row).length } };
     },
     loadSessionsSince: (sinceIso) => loadAthleteSessionsSince(coachId, sinceIso),
 
