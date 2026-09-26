@@ -139,14 +139,20 @@ export async function removeCoachLink(linkId: string): Promise<void> {
 }
 
 // ── Load an athlete's full data for the coach view ────────────────────────────
-export async function loadAthleteData(athleteId: string) {
+/**
+ * Everything the coach sees about one athlete. `strict` (the dashboard): any
+ * read that fails throws, so the screen says it couldn't load instead of
+ * showing "No plan yet" or no workouts (#132). The older app keeps the
+ * forgiving default.
+ */
+export async function loadAthleteData(athleteId: string, { strict = false }: { strict?: boolean } = {}) {
   const [routine, history, weights, measurements, profileRes] = await Promise.all([
-    loadRoutine(athleteId, true),
+    loadRoutine(athleteId, true, { strict }),
     // Always hit the network: the loaders' localStorage cache would hand the
     // coach the previous snapshot and only refresh it for the next load.
-    loadWorkoutHistory(athleteId, undefined, { fresh: true }),
-    loadBodyWeights(athleteId, { fresh: true }),
-    loadMeasurements(athleteId, { fresh: true }),
+    loadWorkoutHistory(athleteId, undefined, { fresh: true, strict }),
+    loadBodyWeights(athleteId, { fresh: true, strict }),
+    loadMeasurements(athleteId, { fresh: true, strict }),
     // Fetch the athlete's height + unit so the coach can compute BMI.
     // RLS: the existing "coaches can read profile" policy must allow this for
     // accepted coach_athletes links. Falls back to null silently on error.
@@ -155,6 +161,8 @@ export async function loadAthleteData(athleteId: string) {
       .eq("id", athleteId)
       .maybeSingle(),
   ]);
+  // Without it the coach would see lb for a kg client, and no BMI.
+  if (strict && profileRes?.error) throw new Error(`Could not load their profile: ${profileRes.error.message}`);
   const profile = profileRes?.data
     ? {
         height_cm: profileRes.data.height_cm != null ? Number(profileRes.data.height_cm) : null,
