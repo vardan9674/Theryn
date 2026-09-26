@@ -4,6 +4,7 @@ import { toClientId } from "./manualClients.js";
 import { submissionDate } from "./clientLinks.js";
 import { formatDuration } from "./exerciseKinds.js";
 import { weightLooksOff } from "./editWorkout.js";
+import { plannedSet } from "./planSets.js";
 
 /** Which dashboard client a submission row belongs to. Mock rows carry clientId; real rows carry the two ids. */
 export function clientIdOfSubmission(sub) {
@@ -55,24 +56,27 @@ function repsWithin(r, planned) {
  * No typed detail: per-set plan chips when the plan had different sets, else none.
  */
 function setsDetail(e, done) {
-  const ps = Array.isArray(e.plan_sets) ? e.plan_sets : null;
+  const ps = Array.isArray(e.plan_sets) && e.plan_sets.length ? e.plan_sets : null;
+  // Each set's own planned numbers; with per-set plans, no weight means none (#134).
+  const plan = (i) => plannedSet(e, i);
   if (e.mode === "time") {
     // Timed: each done set's time (typed or from the timer), else the planned one.
-    const planS = (i) => ps?.[i]?.s ?? e.secs_target ?? null;
+    const planS = (i) => plan(i).s;
     const list = Array.isArray(e.sets) && e.sets.length ? e.sets.filter((x) => x && x.done) : Array.from({ length: done }, (_, i) => ({ n: i + 1 }));
     return list.map((x) => {
       const i = (Number(x.n) || 1) - 1;
       const secs = x.secs ?? planS(i);
-      const w = x.weight ?? ps?.[i]?.w ?? e.weight_target ?? null;
+      const w = x.weight ?? plan(i).w;
       return { w: w != null ? String(w) : "", r: "", t: formatDuration(secs) || "done", changed: x.secs != null && planS(i) != null && Math.abs(x.secs - planS(i)) > 5 };
     });
   }
-  const planR = (i) => ps?.[i]?.r ?? e.reps;
-  const planW = (i) => ps?.[i]?.w ?? e.weight_target;
+  const planR = (i) => plan(i).r;
+  const planW = (i) => plan(i).w;
   if (Array.isArray(e.sets) && e.sets.length) {
     return e.sets.filter((x) => x && x.done).map((x) => {
       const i = (Number(x.n) || 1) - 1;
-      const w = x.weight ?? planW(i) ?? e.weight_used ?? null; // blank = the planned weight
+      // Blank = the planned weight. Older sends without per-set plans had one weight for all.
+      const w = x.weight ?? planW(i) ?? (ps ? null : e.weight_used) ?? null;
       const r = x.reps ?? null;
       return {
         ...(ps?.[i]?.k ? { k: ps[i].k } : {}),
@@ -84,7 +88,7 @@ function setsDetail(e, done) {
       };
     });
   }
-  if (ps && done > 0) return ps.slice(0, done).map((s, i) => ({ w: s.w != null ? String(s.w) : "", r: repsLabel(s.r ?? e.reps) || "", changed: false }));
+  if (ps && done > 0) return ps.slice(0, done).map((s, i) => ({ w: s.w != null ? String(s.w) : "", r: repsLabel(s.r) || "", changed: false }));
   return [];
 }
 
@@ -148,7 +152,8 @@ export function workoutSummary(d) {
 
 /**
  * The most recent session with this exercise: { date, sets: [{ w, r }] }, or
- * null. History entries are newest first or not; this sorts by date.
+ * null; timed sets also carry `s` (seconds). History entries are newest
+ * first or not; this sorts by date.
  */
 export function lastSetsFor(history, name) {
   const key = String(name || "").trim().toLowerCase();
@@ -156,12 +161,32 @@ export function lastSetsFor(history, name) {
   const sorted = [...(history || [])].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   for (const h of sorted) {
     const ex = (h.exercises || []).find((e) => String(e.name || "").trim().toLowerCase() === key);
-    if (ex && ex.sets?.length) return { date: h.date, sets: ex.sets.map((x) => ({ w: x.w ?? "", r: x.r ?? "" })) };
+    if (ex && ex.sets?.length) return { date: h.date, sets: ex.sets.map((x) => { const o = { w: x.w ?? "", r: x.r ?? "" }; const s = secsOfSet(x); if (s != null) o.s = s; return o; }) };
   }
   return null;
 }
 
-/** "8×60, 6×55" (reps × weight). */
-export function setsLine(sets) {
-  return (sets || []).map((x) => `${x.r || "?"}${x.w !== "" && x.w != null ? `×${x.w}` : ""}`).join(", ");
+// A set's time: `s` seconds from a link workout, or `dur` minutes from the app. Only when no reps were counted.
+function secsOfSet(x) {
+  if (x?.r != null && x.r !== "") return null;
+  const n = x?.s != null && x.s !== "" ? Number(x.s) : x?.dur != null && x.dur !== "" ? Number(x.dur) * 60 : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * "8×60, 6×55" (reps × weight); a timed set reads "45 s" (or "45 s at 20").
+ * With `unit`, the line ends in it when any set had a weight, else in " reps"
+ * unless every set was timed: "8×60, 6×55 kg", "10, 8 reps", "45 s, 45 s".
+ */
+export function setsLine(sets, unit) {
+  const list = sets || [];
+  const hasW = (x) => x.w !== "" && x.w != null;
+  const line = list.map((x) => {
+    const t = formatDuration(secsOfSet(x));
+    if (t) return hasW(x) ? `${t} at ${x.w}` : t;
+    return `${x.r || "?"}${hasW(x) ? `×${x.w}` : ""}`;
+  }).join(", ");
+  if (!unit || !list.length) return line;
+  if (list.some(hasW)) return `${line} ${unit}`;
+  return list.every((x) => secsOfSet(x) != null) ? line : `${line} reps`;
 }

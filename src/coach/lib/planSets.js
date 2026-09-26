@@ -7,7 +7,7 @@
 // `sets`, `reps` and `weight` are always written too, so older readers (and the
 // Excel export's columns) keep working; `setList` is only written when the sets
 // differ. Pure; no React.
-import { formatDuration, setKindsSummary } from "./exerciseKinds.js";
+import { formatDuration, parseDuration, setKindsSummary } from "./exerciseKinds.js";
 
 const str = (v) => (v == null ? "" : String(v).trim());
 const num = (v) => { if (v == null || String(v).trim() === "") return null; const n = Number(v); return Number.isFinite(n) && n > 0 && n <= 2000 ? Math.round(n * 100) / 100 : null; };
@@ -93,6 +93,123 @@ export function weightSummary(list) {
   if (!w.length) return "";
   const lo = Math.min(...w), hi = Math.max(...w);
   return lo === hi ? String(lo) : `${lo}–${hi}`;
+}
+
+// ── Typing and checking the numbers (#133) ─────────────────────────────────
+// Anything `num` would throw away is caught before saving, with a message,
+// instead of vanishing while the toast says "Saved".
+export const PLAN_WEIGHT_MAX = 2000;
+const MAX_SECS = 6 * 3600;
+
+/**
+ * A reps box as the coach types: digits, then either one range dash ("8-12",
+ * "8–12") or slashes ("12/10/8"). No leading dash, so "-5" can't be typed.
+ */
+export function cleanRepsInput(raw) {
+  let s = String(raw ?? "").replace(/[^0-9\-–/]/g, "").replace(/^[-–/]+/, "");
+  const sep = (s.match(/[-–/]/) || [])[0];
+  if (sep) {
+    const i = s.indexOf(sep);
+    const rest = s.slice(i + 1);
+    // A range has one dash; a list only slashes (no "8--12" or "12/10-8").
+    s = (s.slice(0, i + 1) + (sep === "/" ? rest.replace(/[-–]/g, "") : rest.replace(/[-–/]/g, ""))).replace(/\/{2,}/g, "/");
+  }
+  return s.slice(0, 7);
+}
+
+/** A weight box: digits and one decimal point ("7..5" → "7.5", "-5" → "5"). */
+export function cleanWeightInput(raw, max = 6) {
+  const s = String(raw ?? "").replace(/[^0-9.]/g, "");
+  const dot = s.indexOf(".");
+  return (dot < 0 ? s : s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "")).slice(0, max);
+}
+
+/** Is this a reps target the plan can keep? "", "10", "8-12", "8–12" or "12/10/8". */
+export function repsTargetOk(reps) {
+  const s = String(reps ?? "").trim();
+  if (!s) return true;
+  if (/^\d+$/.test(s)) return Number(s) > 0;
+  const m = s.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  if (m) return Number(m[1]) > 0 && Number(m[1]) <= Number(m[2]);
+  if (/^\d+(\/\d+)+$/.test(s)) return s.split("/").every((x) => Number(x) > 0);
+  return false;
+}
+
+/**
+ * The first number in the editor's week that saving would lose or garble, or
+ * null. `days` is the editor's { Mon: { type, exercises: [{ name, mode, rows }] } }
+ * with rows as typed ({ reps, weight, secs, kind }). Returns
+ * { day, index, set, message }: the day key, the exercise's place in that day,
+ * the set's row index, and a sentence for the toast.
+ */
+export function planNumbersProblem(days, unit = "kg", dayOrder = Object.keys(days || {}), dayNames = {}) {
+  for (const d of dayOrder) {
+    const day = days?.[d];
+    if (!day || day.type === "Rest") continue;
+    const exercises = day.exercises || [];
+    for (let index = 0; index < exercises.length; index++) {
+      const ex = exercises[index];
+      const timed = ex.mode === "time";
+      let working = 0;
+      const rows = ex.rows || [];
+      for (let set = 0; set < rows.length; set++) {
+        const r = rows[set] || {};
+        const kind = kindOf(r);
+        // Name the set the way the editor labels it: 1, 2, 3, W for a warm-up, D for a drop set.
+        const label = kind === "warmup" ? "warm-up set" : kind === "drop" ? "drop set" : `set ${++working}`;
+        const where = `${dayNames[d] || d} · ${String(ex.name || "").trim() || "Unnamed exercise"}, ${label}`;
+        const problem = (message) => ({ day: d, index, set, message: `${where}: ${message}` });
+        if (timed) {
+          const typed = String(r.secs ?? "").trim();
+          const secs = typed ? typedSecs(typed) : null;
+          if (typed && (secs == null || secs <= 0 || secs > MAX_SECS)) return problem("time should be between 1 second and 6 hours.");
+        } else if (kind !== "amrap" && !repsTargetOk(r.reps)) {
+          return problem("reps should be a whole number like 10, or a range like 8-12.");
+        }
+        const w = String(r.weight ?? "").trim();
+        if (w) {
+          const n = Number(w);
+          if (!Number.isFinite(n) || n <= 0 || n > PLAN_WEIGHT_MAX) return problem(`weight should be between 0 and ${PLAN_WEIGHT_MAX} ${unit}.`);
+        }
+      }
+    }
+  }
+  return null;
+}
+// The editor keeps times as typed ("00:45", "1:30", "45"). parseDuration clamps
+// anything past 6 hours to 6 hours, so clock-style and plain seconds are read raw here.
+function typedSecs(typed) {
+  if (/^\d+(:\d+){0,2}$/.test(typed)) return typed.split(":").reduce((a, x) => a * 60 + Number(x), 0);
+  return parseDuration(typed);
+}
+
+/**
+ * Reps a done set counts for, from a plan target: "10" → 10, the low end of
+ * "8-12" → 8 (older plans: "12/10/8" → 12). Anything that doesn't start with
+ * a number ("-5", "max", "–") → null, so it adds no volume and no record.
+ */
+export function plannedRepsNumber(reps) {
+  const m = String(reps ?? "").trim().match(/^(\d+)/);
+  return m && Number(m[1]) > 0 ? Number(m[1]) : null;
+}
+
+/**
+ * What the coach planned for set `i` (0-based) of a sent exercise (a workout
+ * payload's exercise): { r, w, s } with r the reps target as written, w the
+ * weight and s the seconds, null when not planned. When the sets differ the
+ * payload carries plan_sets, and a set without its own weight had none: the
+ * exercise-level weight_target is only a summary of the first weighted set,
+ * so it is not lent to the others (#134).
+ */
+export function plannedSet(e, i) {
+  const ps = Array.isArray(e?.plan_sets) && e.plan_sets.length ? e.plan_sets : null;
+  const pos = (v) => { const n = Number(v); return v != null && v !== "" && Number.isFinite(n) && n > 0 ? n : null; };
+  if (ps) {
+    const p = ps[i] || {};
+    // A timed set without its own time runs for the exercise's, as planSets reads it.
+    return { r: p.r != null && p.r !== "" ? String(p.r) : null, w: pos(p.w), s: pos(p.s) ?? pos(e.secs_target), k: p.k || null };
+  }
+  return { r: e?.reps != null && e.reps !== "" ? String(e.reps) : null, w: pos(e?.weight_target), s: pos(e?.secs_target), k: null };
 }
 
 /** "3 sets · 12/10/8 reps · 60–70 kg · drop set", or "3 sets · 1 min each" when timed. */

@@ -3,6 +3,8 @@
 // the sets that were done change; what was planned, the date and the note stay.
 // The first edit keeps a copy of what the client sent in `original_exercises`.
 // Pure; no React.
+import { plannedSet, plannedRepsNumber } from "./planSets.js";
+import { workoutNumbersProblem } from "./clientLinks.js";
 
 const num = (v) => (v == null || String(v).trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
@@ -15,14 +17,17 @@ export function editableSets(ex) {
   const done = Math.max(0, Number(ex?.sets_done) || 0);
   const ps = Array.isArray(ex?.plan_sets) ? ex.plan_sets : [];
   const typed = Array.isArray(ex?.sets) ? ex.sets : [];
-  const firstNum = (r) => (String(r ?? "").match(/\d+/) || [null])[0];
   return Array.from({ length: done }, (_, i) => {
     const t = typed.find((x) => Number(x?.n) === i + 1) || {};
+    const p = plannedSet(ex, i);
+    // With per-set plans, a set the coach gave no weight has none (#134). Older
+    // sends without them carried one weight for the whole exercise.
+    const planW = ps.length ? p.w : ex.weight_used ?? ex.weight_target;
     return {
       n: i + 1,
-      reps: num(t.reps) ?? num(firstNum(ps[i]?.r ?? ex.reps)),
-      weight: num(t.weight) ?? num(ps[i]?.w ?? (i === 0 ? ex.weight_used : null) ?? ex.weight_used ?? ex.weight_target),
-      secs: num(t.secs) ?? num(ps[i]?.s ?? ex.secs_target),
+      reps: num(t.reps) ?? plannedRepsNumber(p.r),
+      weight: num(t.weight) ?? num(planW),
+      secs: num(t.secs) ?? p.s,
     };
   });
 }
@@ -57,6 +62,20 @@ export function applyEdits(payload, edits, now = new Date()) {
   const out = { ...p, exercises, edited_by_coach_at: now.toISOString() };
   if (!p.original_exercises) out.original_exercises = p.exercises || [];
   return out;
+}
+
+/**
+ * The first number in the edit sheet that can't be saved as typed ("." or a
+ * weight past the believable limit), as a sentence, or null. `rows` is the
+ * sheet's { [exerciseIndex]: [{ reps, weight }] } as strings; `unit` is "kg" or "lb".
+ * Without this an unreadable weight was saved as blank, erasing it (#133).
+ */
+export function editNumbersProblem(exercises, rows, unit) {
+  const log = {};
+  for (const [ei, list] of Object.entries(rows || {})) {
+    log[ei] = Object.fromEntries((list || []).map((x, i) => [i, { r: x?.reps ?? "", w: x?.weight ?? "" }]));
+  }
+  return workoutNumbersProblem(exercises, log, unit === "kg" ? "metric" : "imperial");
 }
 
 /**

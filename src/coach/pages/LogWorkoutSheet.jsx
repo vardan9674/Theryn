@@ -1,7 +1,7 @@
 import React from "react";
 import { Sheet, Icon, useToast } from "../ui/primitives.jsx";
 import { DAY_LONG } from "../lib/format.js";
-import { todayFromPlan, workoutPayload, dayKeyOf } from "../lib/clientLinks.js";
+import { todayFromPlan, workoutPayload, dayKeyOf, cleanDecimal, workoutNumbersProblem } from "../lib/clientLinks.js";
 import { planSets } from "../lib/planSets.js";
 import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.js";
 import { readDraft, saveDraft, clearDraft } from "../lib/logDraft.js";
@@ -67,7 +67,7 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   // Tapping set k marks sets 1..k done; tapping the last done set again unticks it.
   const tapSet = (i, k) => setTicks((t) => ({ ...t, [i]: (t[i] || 0) === k + 1 ? k : k + 1 }));
   const setVal = (i, si, f, raw) => {
-    const v = f === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "s" ? maskDuration(raw) : raw.replace(/[^0-9.]/g, "").slice(0, 6);
+    const v = f === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "s" ? maskDuration(raw) : cleanDecimal(raw);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [f]: v } } }));
   };
 
@@ -75,9 +75,13 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
     if (plan.isRest) return;
     const t = asPlanned ? allDone() : ticks;
     if (!Object.values(t).some((n) => n > 0)) { toast("Tick at least one set, or use Done as planned.", "error"); return; }
+    // A number that can't be read would be sent as blank, which means "as planned". #133
+    const units = unit === "kg" ? "metric" : "imperial";
+    const bad = asPlanned ? null : workoutNumbersProblem(plan.exercises, log, units);
+    if (bad) { toast(bad, "error"); return; }
     setBusy(true);
     try {
-      const payload = { ...workoutPayload(plan, t, asPlanned ? {} : log, asPlanned ? "" : note, date, unit === "kg" ? "metric" : "imperial"), logged_by: "coach" };
+      const payload = { ...workoutPayload(plan, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach" };
       await onSave(payload);
       clearDraft(clientId, date); // the coach has sent it; nothing left to keep
       toast(`Saved ${dayInfo?.label === "Today" ? "today's" : `${DAY_LONG[plan.key]}'s`} workout for ${firstName}. It counts for their streak.`);

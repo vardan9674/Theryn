@@ -7,7 +7,7 @@ import { DAYS, DAY_LONG, normalizeExercise } from "../lib/format.js";
 import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { lastSetsFor, setsLine as historyLine } from "../lib/workouts.js";
 import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
-import { planSets, packSets, setsAreSame, setsLine } from "../lib/planSets.js";
+import { planSets, packSets, setsAreSame, setsLine, cleanRepsInput, cleanWeightInput, planNumbersProblem } from "../lib/planSets.js";
 import { defaultMode, defaultSecs, parseDuration, durationInput, maskDuration, tidyDuration, formatDuration, supersetInfo, normalizeSupersets, SET_KINDS, dropWeight, warmupWeight, REST_OPTIONS, groupName, restLabel } from "../lib/exerciseKinds.js";
 import { WORKOUT_TYPES, TYPE_COLORS, TYPE_DEFAULTS } from "../../components/templates/tokens.js";
 import { cleanTypeName, typeNameProblem, isCustomTypeName, MAX_TYPE_NAME } from "../lib/workoutTypes.js";
@@ -73,8 +73,6 @@ const newExercise = (name, lastW) => {
     : { _k: mkKey("s"), reps: DEFAULT_REPS, weight: lastW != null ? String(lastW) : "", secs: "" }));
   return { _key: mkKey("ex"), name, coachNote: "", rows, same: true, _new: true, mode, superset: null };
 };
-const cleanReps = (v) => v.replace(/[^0-9\-–/ ]/g, "").replace(/\s+/g, "").slice(0, 7);
-const cleanWeight = (v) => v.replace(/[^0-9.]/g, "").slice(0, 6);
 const dayCount = (day) => ({ ex: day.exercises.length, sets: day.exercises.reduce((a, e) => a + e.rows.length, 0) });
 
 /**
@@ -138,7 +136,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     note: (d, k, v) => update((next) => { const e = exOf(next, d, k); if (e) e.coachNote = v; return next; }),
     setRow: (d, k, ri, field, raw) => update((next) => {
       const e = exOf(next, d, k); if (!e) return next;
-      const v = field === "reps" ? cleanReps(raw) : field === "secs" ? maskDuration(raw) : cleanWeight(raw);
+      const v = field === "reps" ? cleanRepsInput(raw) : field === "secs" ? maskDuration(raw) : cleanWeightInput(raw);
       if (e.same && ri === 0) e.rows.forEach((r) => { if (!r.kind || r === e.rows[0]) r[field] = v; });
       else { if (e.same && ri > 0) e.same = false; e.rows[ri][field] = v; }
       e.rows.forEach((r) => { delete r._new; });
@@ -215,6 +213,14 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
   async function save() {
     const empty = DAYS.some((d) => days[d].type !== "Rest" && days[d].exercises.some((e) => !e.name.trim()));
     if (empty) { toast("Every exercise needs a name. Remove the blank ones or type a name.", "error"); return; }
+    // A number saving would drop or garble (99999 kg, "-5" reps): say where, open it, don't save. #133
+    const bad = planNumbersProblem(days, unit, DAYS, DAY_LONG);
+    if (bad) {
+      setActiveDay(bad.day);
+      setOpenKey(days[bad.day].exercises[bad.index]?._key ?? null);
+      toast(bad.message, "error");
+      return;
+    }
     let templates = toTemplates(days, unit === "kg" ? "metric" : "imperial");
     if (onSave) {
       setSaving(true);

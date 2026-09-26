@@ -267,7 +267,7 @@ function PlanTab({ data, row, actions }) {
                 return (
                   <div key={i}>
                     <div className="cx-exrow"><span>{ssi[i] && <span className="pe-ss" title={`Superset ${ssi[i].letter}: back to back, then rest`}>{ssi[i].letter}{ssi[i].pos}</span>}{exerciseName(ex)}</span><span>{setsReps(ex, unit)}</span></div>
-                    {(() => { const last = lastSetsFor(data.history, exerciseName(ex)); return last ? <div className="cx-small cx-muted" style={{ marginTop: 2 }}>Last time ({shortDate(last.date)}): {setsLine(last.sets)}{last.sets.some((x) => x.w) ? ` ${unit}` : " reps"}</div> : null; })()}
+                    {(() => { const last = lastSetsFor(data.history, exerciseName(ex)); return last ? <div className="cx-small cx-muted" style={{ marginTop: 2 }}>Last time ({shortDate(last.date)}): {setsLine(last.sets, unit)}</div> : null; })()}
                     {o.coachNote && <div className="cx-note">Note: {o.coachNote}</div>}
                   </div>
                 );
