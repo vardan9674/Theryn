@@ -166,19 +166,35 @@ export function Sheet({ open, onClose, title, subtitle, children, wide }) {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────
+// Errors stay up long enough to read, and can be closed; confirmations go quickly.
+export const TOAST_MS = { ok: 2800, error: 8000 };
 const ToastCtx = React.createContext(() => {});
 export function ToastProvider({ children }) {
   const [toast, setToast] = React.useState(null);
   const timer = React.useRef(null);
+  const hide = React.useCallback(() => { if (timer.current) clearTimeout(timer.current); setToast(null); }, []);
   const show = React.useCallback((message, kind = "ok") => {
     setToast({ message, kind, overSheet: openSheets.length > 0 });
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(null), 2800);
+    timer.current = setTimeout(() => setToast(null), TOAST_MS[kind] || TOAST_MS.ok);
   }, []);
+  const err = toast?.kind === "error";
+  const cls = `cx-toast ${err ? "err" : ""} ${toast?.overSheet ? "over-sheet" : ""}`;
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {toast && <div className={`cx-toast ${toast.kind === "error" ? "err" : ""} ${toast.overSheet ? "over-sheet" : ""}`} role="status">{toast.message}</div>}
+      {/* In <body>, outside #root: while a sheet is open #root is inert, and a
+          message inside it is never read out (#135). The two live regions are
+          always there, so screen readers announce what appears in them. */}
+      <Overlay>
+        <div role="status" aria-live="polite">{toast && !err && <div className={cls}>{toast.message}</div>}</div>
+        <div role="alert" aria-live="assertive">{toast && err && (
+          <div className={cls}>
+            <span>{toast.message}</span>
+            <button type="button" className="cx-toast-x" aria-label="Dismiss" onClick={hide}>×</button>
+          </div>
+        )}</div>
+      </Overlay>
     </ToastCtx.Provider>
   );
 }

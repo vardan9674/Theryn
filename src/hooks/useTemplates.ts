@@ -268,8 +268,15 @@ export async function duplicateTemplate(templateId: string, newName: string, coa
 
   const newTemplate = await createTemplate(coachId, newName);
 
-  // Save the tree into the new template
-  await saveTemplateTree(newTemplate.id, days);
+  // Save the tree into the new template. An empty plan copies as an empty plan
+  // (saveTemplateTree refuses one with no exercises). Any other failure takes
+  // the half-made copy away again, rather than leaving an empty "(copy)" behind
+  // after saying it couldn't duplicate (#140).
+  const hasContent = days.some((d) => d.workout_type !== "Rest" && d.exercises.length > 0);
+  if (hasContent) {
+    try { await saveTemplateTree(newTemplate.id, days); }
+    catch (e) { try { await softDeleteTemplate(newTemplate.id); } catch { /* shows up in the list; can be deleted */ } throw e; }
+  }
 
   // Mark it as forked
   await supabase

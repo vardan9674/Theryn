@@ -45,6 +45,8 @@ export function buildNotifications({ submissions = [], sessions = [], clients = 
     const clientId = clientIdOfSubmission(s);
     if (!clientId || !names.has(clientId)) continue;
     const p = (units && s.kind === "measurements" ? convertSubmission(s, units) : s).payload || {};
+    // The coach logged it themselves ("Log a workout for …"): not news to them (#139).
+    if (p.logged_by === "coach") continue;
     const name = first(names.get(clientId));
     if (s.kind === "measurements") {
       items.push({ id: `sub:${s.id}`, at: s.submitted_at, clientId, clientName: names.get(clientId), kind: "measurements", tab: "body",

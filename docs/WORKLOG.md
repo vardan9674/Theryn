@@ -4,6 +4,52 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-26 (night) — Dashboard QA sweep: failures that said nothing (#129–#142), PRs #144–#147
+
+**Asked**
+- "Test whole dashboard, check for issues like this [#125]… check each and every concern." Then: "file them as issues and fix them."
+
+**Found** (live on the demo coach account, plus a code audit)
+- 14 issues, #129–#142.
+- The same kind as #125: something failed and the screen said nothing, or said it worked.
+- The worst was #129: an app client's plan dropped weights, per-set targets, timed sets, supersets and rest on save, while the coach was told "Saved". `routine_exercises` had no columns for them. All 3 real app clients have plans.
+- The test data (client "QA Tester", a $50 payment, two plans) was removed afterwards. The demo account is back to 0 clients and 0 plans.
+
+**Done**
+- **#144** (link page, #130 #138):
+  - After a failed Google sign-in during Connect, the error is cleared from the address, alongside #128's message.
+  - A turned-off link says so instead of "try again".
+  - Error pages get **Try again**, and Safari's "Load failed" counts as a network error.
+  - Share-link errors say what went wrong.
+- **#145** (#133 #134):
+  - Bad plan numbers are flagged instead of dropped.
+  - "As planned" uses each set's own plan.
+  - A timed exercise's "Last time" reads in seconds.
+- **#146** (#129, plus #132's data side):
+  - Migration `20260926190000_routine_exercise_targets`, proven on PGlite against the live function bodies (21 checks).
+  - `saveRoutine` / `loadRoutine` carry the new fields, and stop reporting real errors as "saved offline".
+  - The coach dashboard reads a client's data strictly, so a failed read is an error, not empty data.
+- **#147** (#131 #132 #135–#137 #139–#142):
+  - Chat keeps unsent text.
+  - Failed loads say so, with **Try again**.
+  - Toasts are outside `#root`, so screen readers hear them.
+  - Double Enter no longer adds twice.
+  - Settings change only once saved.
+  - The coach's own logged workouts don't notify them.
+  - Actions that failed half way are safe.
+  - Several wording fixes.
+  - Notification taps work with the app already open.
+  - Dev preview: `?coachPreview=1&fail=clients,client,payments,plans,notifications` shows each error screen.
+
+**Merged around**
+- #128 / #143 (one-door connect, from another session) landed during this work.
+- My #130 fix builds on their message.
+- The #140 part for connecting a name-only client, and the #141 part for the client email, went with the code #143 removed.
+
+**Open**
+- The #129 migration is written and tested but **not applied**; it's waiting for the owner's OK.
+- Checking a connect code before the Google step (#130) needs a new rate-limited server function.
+
 ## 2026-09-26 (evening) — A failed Google sign-in says so (#125), branch `fix/signin-error-message`
 
 **Asked**

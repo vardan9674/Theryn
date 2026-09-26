@@ -73,7 +73,13 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
-      {loading || !data ? (
+      {row.loadError && tab !== "payments" ? (
+        // Their data didn't load. Never show it as "No plan yet": a plan built
+        // from here would replace the real one (#132).
+        <Empty title={`Couldn't load ${row.name.split(" ")[0]}'s data`} action={<Button onClick={() => actions?.reloadClient?.(athleteId)}>Try again</Button>}>
+          Check your connection and try again.
+        </Empty>
+      ) : (loading || !data) && !row.loadError ? (
         <div className="cx-col"><span className="cx-skel" style={{ height: 18, width: "60%" }} /><span className="cx-skel" style={{ height: 120 }} /><span className="cx-skel" style={{ height: 60 }} /></div>
       ) : tab === "plan" ? (
         <PlanTab data={data} row={row} actions={actions} />

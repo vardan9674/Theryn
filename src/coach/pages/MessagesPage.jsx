@@ -7,7 +7,7 @@ import { useCoachData } from "../data/CoachDataContext.jsx";
  * Conversation list beside the open chat (tablet and laptop); list then a
  * full-screen chat on phone.
  */
-export default function MessagesPage({ clients, previews, refreshPreviews, openAthleteId, onOpen }) {
+export default function MessagesPage({ clients, nameOnlyCount = 0, previews, refreshPreviews, openAthleteId, onOpen }) {
   const vp = useViewport();
   const [q, setQ] = React.useState("");
   const list = React.useMemo(() => {
@@ -18,7 +18,12 @@ export default function MessagesPage({ clients, previews, refreshPreviews, openA
   }, [clients, previews, q]);
   const open = clients.find((c) => c.athlete_id === openAthleteId) || null;
 
-  if (clients.length === 0) return <div className="cx-page"><Empty title="No clients yet">Messages appear once you have clients.</Empty></div>;
+  if (clients.length === 0) {
+    // Clients added by name have no app to chat in; don't tell the coach they have no clients (#141).
+    return <div className="cx-page">{nameOnlyCount > 0
+      ? <Empty title="No one to message yet">Messages are for clients who use the app. {nameOnlyCount === 1 ? "Your client was" : `Your ${nameOnlyCount} clients were`} added by name and {nameOnlyCount === 1 ? "checks in through their link" : "check in through their links"} instead.</Empty>
+      : <Empty title="No clients yet">Messages appear once you have clients on the app.</Empty>}</div>;
+  }
 
   const convList = (
     <div className="cx-convlist">
@@ -62,6 +67,7 @@ function ChatPane({ client, onBack, onRead }) {
   });
   const [text, setText] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [sendError, setSendError] = React.useState(null);
   const bodyRef = React.useRef(null);
   const incoming = messages.filter((m) => m.sender_id !== data.coachId).length;
 
@@ -73,7 +79,11 @@ function ChatPane({ client, onBack, onRead }) {
     if (!t || sending) return;
     setSending(true);
     setText("");
-    try { await sendMessage(t); } catch { setText(t); } finally { setSending(false); }
+    setSendError(null);
+    // false: not sent (still connecting, or refused). The text goes back in the
+    // box with a word about it, instead of vanishing (#131).
+    const failed = () => { setText(t); setSendError("Couldn't send that. Check your connection and try again."); };
+    try { if ((await sendMessage(t)) === false) failed(); } catch { failed(); } finally { setSending(false); }
   }
 
   let lastDay = null;
@@ -102,8 +112,9 @@ function ChatPane({ client, onBack, onRead }) {
           );
         })}
       </div>
+      {sendError && <div className="cx-small" role="alert" style={{ color: "var(--cx-red)", padding: "0 16px 6px" }}>{sendError}</div>}
       <form className="cx-chat-input" onSubmit={(e) => { e.preventDefault(); send(); }}>
-        <input value={text} onChange={(e) => { setText(e.target.value); sendTyping?.(); }} placeholder={`Message ${client.athlete_name.split(" ")[0]}`} aria-label="Message" maxLength={4000} />
+        <input value={text} onChange={(e) => { setText(e.target.value); setSendError(null); sendTyping?.(); }} placeholder={`Message ${client.athlete_name.split(" ")[0]}`} aria-label="Message" maxLength={4000} />
         <button type="submit" aria-label="Send" disabled={!text.trim() || sending}><Icon.Send /></button>
       </form>
     </div>

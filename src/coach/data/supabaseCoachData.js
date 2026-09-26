@@ -37,6 +37,9 @@ function isMissingTable(error) {
   return error?.code === "42P01" || error?.code === "PGRST205" || /coach_manual_clients/.test(msg) && /not exist|not find|schema cache/i.test(msg);
 }
 
+// A database without the notification watermark columns: the device copy is all there is.
+const isMissingNotifColumn = (error) => /coach_notifications_/.test(error?.message || "") && /column|schema cache/i.test(error?.message || "");
+
 export function createSupabaseCoachData({ authUser, profile, setProfile, onSignOut, onSwitchRole }) {
   const coachId = authUser?.id;
   const email = authUser?.email || "";
@@ -158,9 +161,16 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       if (mid) {
         // Archive, never delete: their check-ins, plan and payments stay for
         // reports and for moving onto an account later. Their link stops working.
-        const revoke = () => supabase.from("client_links").update({ revoked_at: new Date().toISOString() }).eq("coach_id", coachId).eq("manual_client_id", mid).is("revoked_at", null);
+        // The link goes off first and must succeed: archiving first left a link
+        // taking check-ins nobody saw, with the client already gone from the
+        // list so there was no way to retry (#140).
+        const revoke = async () => {
+          const { error } = await supabase.from("client_links").update({ revoked_at: new Date().toISOString() }).eq("coach_id", coachId).eq("manual_client_id", mid).is("revoked_at", null);
+          if (error && !isMissingLinks(error)) throw new Error(`Couldn't turn off their link, so nothing was changed: ${error.message}`);
+        };
         if (historyV2) {
-          try { await patchManualRow(mid, { archived_at: new Date().toISOString() }); await revoke(); return; }
+          await revoke();
+          try { await patchManualRow(mid, { archived_at: new Date().toISOString() }); return; }
           catch (e) { if (e.message !== HISTORY_SETUP_MSG) throw e; historyV2 = false; }
         }
         // Before the migration: only a client with no check-ins can go (deleting takes their check-ins with it).
@@ -536,12 +546,16 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     },
     async markNotificationsSeen(iso = new Date().toISOString()) {
       try { localStorage.setItem(`theryn_coach_notif_seen_${coachId}`, iso); } catch {}
-      await supabase.from("profiles").update({ coach_notifications_seen_at: iso }).eq("id", coachId);
+      const { error } = await supabase.from("profiles").update({ coach_notifications_seen_at: iso }).eq("id", coachId);
+      if (error && !isMissingNotifColumn(error)) throw new Error(error.message);
       return iso;
     },
     async clearNotifications(iso = new Date().toISOString()) {
-      try { localStorage.setItem(`theryn_coach_notif_cleared_${coachId}`, iso); localStorage.removeItem(`theryn_coach_notif_dismissed_${coachId}`); } catch {}
-      await supabase.from("profiles").update({ coach_notifications_cleared_at: iso, coach_notifications_seen_at: iso }).eq("id", coachId);
+      // Saved first, then mirrored here: a clear that didn't save must not look
+      // done on this device while the others still show everything (#137).
+      const { error } = await supabase.from("profiles").update({ coach_notifications_cleared_at: iso, coach_notifications_seen_at: iso }).eq("id", coachId);
+      if (error && !isMissingNotifColumn(error)) throw new Error(error.message);
+      try { localStorage.setItem(`theryn_coach_notif_cleared_${coachId}`, iso); localStorage.setItem(`theryn_coach_notif_seen_${coachId}`, iso); localStorage.removeItem(`theryn_coach_notif_dismissed_${coachId}`); } catch {}
       return iso;
     },
     async dismissNotification(id) {
@@ -558,17 +572,19 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       if (error) throw new Error(error.message);
       setProfile?.((p) => ({ ...p, display_name: name }));
     },
+    // Applied to the dashboard only once saved: a failed save used to leave the
+    // new unit or currency showing until a reload (#137).
     async updateUnits(units) {
       const u = normUnits(units);
-      unitSystem = u;
-      setProfile?.((p) => ({ ...p, units: u, unit_system: u }));
       const { error } = await supabase.from("profiles").update({ unit_system: u }).eq("id", coachId);
       if (error) throw new Error(error.message);
+      unitSystem = u;
+      setProfile?.((p) => ({ ...p, units: u, unit_system: u }));
     },
     async updateCurrency(code) {
-      setProfile?.((p) => ({ ...p, default_currency: code }));
       const { error } = await supabase.from("profiles").update({ default_currency: code }).eq("id", coachId);
       if (error) throw new Error(error.message);
+      setProfile?.((p) => ({ ...p, default_currency: code }));
     },
     signOut: () => onSignOut?.(),
     switchRole: () => onSwitchRole?.(),

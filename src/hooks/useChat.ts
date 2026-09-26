@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { enqueueMessage, processOfflineQueue } from "../lib/offlineQueue";
+import { enqueueMessage, processOfflineQueue, isPermanentClientError } from "../lib/offlineQueue";
 
 export type MessageStatus = "sending" | "sent" | "read";
 
@@ -272,8 +272,16 @@ export function useChat(params: {
         if (insertErr) throw insertErr;
         // Realtime INSERT event will swap the optimistic entry → confirmed
         processOfflineQueue(); // flush any other queued items
-      } catch {
-        // Mark as failed; queue for retry
+        return true;
+      } catch (err) {
+        // Refused by the server (not allowed, too long…): retrying can't help,
+        // so it used to sit on "Sending…" forever. Take it back out and say so
+        // (false), and the screen puts the text back in the box (#131).
+        if (isPermanentClientError(err)) {
+          setMessages((prev) => prev.filter((m) => m.client_id !== clientId));
+          return false;
+        }
+        // Didn't get through (offline, timeout): it goes when the connection is back.
         setMessages((prev) =>
           prev.map((m) =>
             m.client_id === clientId ? { ...m, status: "sending" } : m
@@ -286,6 +294,7 @@ export function useChat(params: {
           content: trimmed,
           createdAt: now,
         });
+        return true;
       }
     },
     [conversationId, authUser?.id]

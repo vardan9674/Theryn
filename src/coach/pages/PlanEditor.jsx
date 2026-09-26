@@ -244,8 +244,11 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     try {
       const res = await data.saveClientRoutine(client.athlete_id, templates);
       setChanges(0);
+      // A name-only client with no link yet has nowhere to see it: say how (#141).
+      let noLink = false;
+      if (client.manual && res?.routineId !== "offline_saved") { try { noLink = !(await data.getClientLink?.(client.athlete_id))?.link; } catch { /* keep the usual line */ } }
       if (res?.routineId === "offline_saved") toast(`Saved on this device. It will reach ${firstName} when you're back online.`);
-      else toast(`${client.manual ? `Saved. ${firstName} sees it next time they open their link.` : `Saved and sent to ${firstName}.`}${fromPlan ? ` Your plan "${fromPlan.name}" didn't change.` : ""}`);
+      else toast(`${noLink ? `Saved. Tap Share link to send ${firstName} their link to see it.` : client.manual ? `Saved. ${firstName} sees it next time they open their link.` : `Saved and sent to ${firstName}.`}${fromPlan ? ` Your plan "${fromPlan.name}" didn't change.` : ""}`);
       onSaved(templates);
     } catch (e) {
       toast(`Could not save: ${e.message || e}`, "error");

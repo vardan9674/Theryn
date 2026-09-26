@@ -100,3 +100,13 @@ describe("buckets and sorting", () => {
     expect(sortClients(rows).map((r) => r.name)).toEqual(["Amy", "Bob", "Zed"]);
   });
 });
+
+describe("clients that didn't load or have no plan (#132, #141)", () => {
+  it("sorts attention, then didn't load, then payments, then needs a plan, then on track", () => {
+    const rows = [
+      { name: "Okay", bucket: "ok" }, { name: "New", bucket: "new" }, { name: "Pay", bucket: "payment" },
+      { name: "Lost", bucket: "unknown" }, { name: "Alert", bucket: "attention" },
+    ];
+    expect(sortClients(rows).map((r) => r.name)).toEqual(["Alert", "Lost", "Pay", "New", "Okay"]);
+  });
+});

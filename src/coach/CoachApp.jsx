@@ -4,7 +4,7 @@ import { App as CapApp } from "@capacitor/app";
 import "./coach.css";
 import { CoachDataProvider, useCoachData, useClientDataCache } from "./data/CoachDataContext.jsx";
 import { createSupabaseCoachData } from "./data/supabaseCoachData.js";
-import { ToastProvider, useToast, Icon, Button, Avatar, useViewport, Confirm } from "./ui/primitives.jsx";
+import { ToastProvider, useToast, Icon, Button, Avatar, Empty, useViewport, Confirm } from "./ui/primitives.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import PlansPage from "./pages/PlansPage.jsx";
 import PaymentsPage, { RecordPaymentSheet, FeeSheet } from "./pages/PaymentsPage.jsx";
@@ -18,7 +18,7 @@ import NotificationsSheet, { NotificationsButton } from "./pages/NotificationsSh
 import CoachTour, { isTourDone, markTourDone } from "./pages/CoachTour.jsx";
 import { buildNotifications, unreadCount } from "./lib/notifications.js";
 import { consumeBackPress, backStackSize, subscribeBackStack } from "../lib/backStack.ts";
-import { registerNotificationTapHandlers, consumePendingDeepLink, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
+import { registerNotificationTapHandlers, consumePendingDeepLink, DEEP_LINK_EVENT, markCoachSeen, getCoachLastSeen, triggerCoachCatchUp } from "../hooks/useNotifications.ts";
 
 const TABS = [
   { id: "clients", label: "Clients", Icon: Icon.Clients },
@@ -62,6 +62,9 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const [tab, setTab] = React.useState("clients");
   const [clients, setClients] = React.useState(initialClients || []);
   const [loadedClients, setLoadedClients] = React.useState(false);
+  // Why the client list didn't load; shown with Try again instead of "No clients yet" (#135).
+  const [clientsError, setClientsError] = React.useState(null);
+  const [clientsTry, setClientsTry] = React.useState(0);
   const SELECTED_KEY = `theryn_coach_selected_${data.coachId}`;
   const [selectedId, setSelectedIdRaw] = React.useState(() => { try { return localStorage.getItem(SELECTED_KEY) || null; } catch { return null; } });
   const [search, setSearch] = React.useState("");
@@ -72,6 +75,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const [msgOpen, setMsgOpen] = React.useState(null);
   const [fees, setFees] = React.useState([]);
   const [payments, setPayments] = React.useState([]);
+  const [paymentsError, setPaymentsError] = React.useState(null);
   const [previews, setPreviews] = React.useState({});
 
   // Keep the root's mobile width cap off while the coach app is mounted.
@@ -85,13 +89,13 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     if (initialClients && !clientsLoaded) return; // root is still fetching links
     let stale = false;
     data.loadClients()
-      .then((c) => { if (!stale) { setClients(c); setLoadedClients(true); } })
-      .catch((e) => { if (!stale) { setLoadedClients(true); toast(`Could not load clients: ${e.message}`, "error"); } });
+      .then((c) => { if (!stale) { setClients(c); setClientsError(null); setLoadedClients(true); } })
+      .catch((e) => { if (!stale) { setClientsError(e.message || "Could not load clients"); setLoadedClients(true); } });
     return () => { stale = true; };
-  }, [data, initialClients, clientsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, initialClients, clientsLoaded, clientsTry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshClients = React.useCallback(async () => {
-    try { setClients(await data.loadClients()); onLinksChanged?.(); } catch (e) { toast(`Could not refresh clients: ${e.message}`, "error"); }
+    try { setClients(await data.loadClients()); setClientsError(null); onLinksChanged?.(); } catch (e) { toast(`Could not refresh clients: ${e.message}`, "error"); }
   }, [data, onLinksChanged, toast]);
   // Clients who are on the app (name-only clients have no messages, workouts, or template assignments).
   const realClients = React.useMemo(() => clients.filter((c) => !c.manual), [clients]);
@@ -108,8 +112,8 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
   // Payments data (needed by the clients table too)
   const reloadPayments = React.useCallback(async () => {
-    try { const [f, p] = await Promise.all([data.loadFees(), data.loadPayments()]); setFees(f); setPayments(p); }
-    catch (e) { toast(`Could not load payments: ${e.message}`, "error"); }
+    try { const [f, p] = await Promise.all([data.loadFees(), data.loadPayments()]); setFees(f); setPayments(p); setPaymentsError(null); }
+    catch (e) { setPaymentsError(e.message || "Could not load payments"); }
   }, [data, toast]);
   React.useEffect(() => { reloadPayments(); }, [reloadPayments]);
 
@@ -138,10 +142,11 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const [notifClearedAt, setNotifClearedAt] = React.useState(null);
   const [notifDismissed, setNotifDismissed] = React.useState([]);
   const [notifLoading, setNotifLoading] = React.useState(true);
+  const [notifError, setNotifError] = React.useState(null);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const refreshNotifications = React.useCallback(() => {
     if (!loadedClients || typeof data.loadNotificationFeed !== "function") return;
-    data.loadNotificationFeed(clients).then((f) => { setNotifFeed(f); setNotifLoading(false); }).catch(() => setNotifLoading(false));
+    data.loadNotificationFeed(clients).then((f) => { setNotifFeed(f); setNotifError(null); setNotifLoading(false); }).catch((e) => { setNotifError(e?.message || "Could not load"); setNotifLoading(false); });
   }, [data, clients, loadedClients]);
   React.useEffect(() => { refreshNotifications(); }, [refreshNotifications]);
   React.useEffect(() => {
@@ -157,11 +162,16 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
   const onUnitsChanged = React.useCallback((u) => { setUnits(u); cache.reset(); markUnitsConfirmed(data.coachId); }, [cache, data.coachId]);
   const notifications = React.useMemo(() => buildNotifications({ ...notifFeed, clients, seenAt: notifSeenAt, clearedAt: notifClearedAt, dismissed: notifDismissed, units }), [notifFeed, clients, notifSeenAt, notifClearedAt, notifDismissed, units]);
   const notifUnread = React.useMemo(() => unreadCount(buildNotifications({ ...notifFeed, clients, seenAt: [badgeSeenAt, notifSeenAt].filter(Boolean).sort().pop() || null, clearedAt: notifClearedAt, dismissed: notifDismissed })), [notifFeed, clients, badgeSeenAt, notifSeenAt, notifClearedAt, notifDismissed]);
-  const clearNotifications = () => {
+  const clearNotifications = async () => {
     const iso = new Date().toISOString();
+    const before = { cleared: notifClearedAt, seen: notifSeenAt, badge: badgeSeenAt, dismissed: notifDismissed };
     setNotifClearedAt(iso); setNotifSeenAt(iso); setBadgeSeenAt(iso); setNotifDismissed([]);
-    Promise.resolve(data.clearNotifications?.(iso)).catch(() => {});
-    toast("Notifications cleared");
+    // Only say "cleared" once it's saved; otherwise they'd be back on the next device (#137).
+    try { await data.clearNotifications?.(iso); toast("Notifications cleared"); }
+    catch (e) {
+      setNotifClearedAt(before.cleared); setNotifSeenAt(before.seen); setBadgeSeenAt(before.badge); setNotifDismissed(before.dismissed);
+      toast(`Could not clear notifications: ${e.message || e}`, "error");
+    }
   };
   const dismissNotification = (id) => {
     setNotifDismissed((d) => (d.includes(id) ? d : [...d, id]));
@@ -267,16 +277,25 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     }
   }, [closable, backTick]);
 
+  // A tapped notification: on a cold start it waits in storage until the list
+  // is in; with the app already open, the tap's event opens it right away and
+  // uses it up, so it can't replay on the next start (#142).
   React.useEffect(() => {
     if (!loadedClients) return;
-    const link = consumePendingDeepLink();
-    if (!link) return;
-    switch (link.type) {
-      case "chat": setTab("messages"); if (link.athleteId) setMsgOpen(link.athleteId); break;
-      case "athlete_detail": case "athlete_finished": if (link.athleteId) setSelectedId(link.athleteId); setTab("clients"); break;
-      case "payments": setTab("payments"); break;
-      default: setTab("clients");
-    }
+    const open = () => {
+      const link = consumePendingDeepLink();
+      if (!link) return;
+      setSheet(null);
+      switch (link.type) {
+        case "chat": setTab("messages"); if (link.athleteId) setMsgOpen(link.athleteId); break;
+        case "athlete_detail": case "athlete_finished": if (link.athleteId) setSelectedId(link.athleteId); setTab("clients"); break;
+        case "payments": setTab("payments"); break;
+        default: setTab("clients");
+      }
+    };
+    open();
+    window.addEventListener(DEEP_LINK_EVENT, open);
+    return () => window.removeEventListener(DEEP_LINK_EVENT, open);
   }, [loadedClients]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     const h = (e) => { const n = e.detail; if (n?.title) toast(n.body ? `${n.title}: ${n.body}` : n.title); };
@@ -286,6 +305,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
 
   // ── Actions shared by pages ─────────────────────────────────────────────
   const clientById = (id) => clients.find((c) => c.athlete_id === id) || null;
+  const deletingRef = React.useRef(false); // one delete at a time: a double tap sent two (#140)
   const actions = React.useMemo(() => ({
     message: (id) => { setMsgOpen(id); setTab("messages"); },
     remind: (id) => { setMsgOpen(id); setTab("messages"); },
@@ -297,6 +317,7 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
     profile: () => setSheet({ kind: "profile" }),
     editPlan: (id) => setEditor({ athleteId: id }),
     reloadClient: (id) => cache.load(id, { force: true }).catch(() => {}),
+    refreshClients: () => refreshClients(),
     exportPlan: (id) => {
       const d = cache.get(id); const c = clientById(id);
       if (!d || !c) { toast("Still loading this client. Try again in a moment."); return; }
@@ -368,14 +389,16 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
       <main className="cx-main">
         {!loadedClients ? (
           <div className="cx-page" style={{ paddingTop: 48 }}><TherynLoader fullscreen={false} /></div>
+        ) : clientsError && clients.length === 0 ? (
+          <div className="cx-page"><Empty title="Couldn't load your clients" action={<Button onClick={() => { setLoadedClients(false); setClientsTry((n) => n + 1); }}>Try again</Button>}>Check your connection and try again. Nothing has been lost.</Empty></div>
         ) : tab === "clients" ? (
           <ClientsPage clients={clients} cache={cache} selectedId={selectedId} onSelect={setSelectedId} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} search={search} actions={actions} detailTab={detailTab} onDetailTab={setDetailTab} />
         ) : tab === "plans" ? (
           <PlansPage clients={clients} onExport={(req) => setExportReq(req)} onClientsChanged={(ids) => { for (const id of ids || []) cache.load(id, { force: true }).catch(() => {}); }} />
         ) : tab === "payments" ? (
-          <PaymentsPage clients={clients} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} actions={actions} />
+          <PaymentsPage clients={clients} fees={fees} payments={payments} defaultCurrency={data.defaultCurrency} actions={actions} loadError={paymentsError} onRetry={reloadPayments} />
         ) : (
-          <MessagesPage clients={realClients} previews={previews} refreshPreviews={refreshPreviews} openAthleteId={msgOpen} onOpen={setMsgOpen} />
+          <MessagesPage clients={realClients} nameOnlyCount={clients.length - realClients.length} previews={previews} refreshPreviews={refreshPreviews} openAthleteId={msgOpen} onOpen={setMsgOpen} />
         )}
       </main>
 
@@ -396,10 +419,18 @@ function CoachShell({ initialClients, clientsLoaded, onLinksChanged }) {
         onSave={async (input) => { const saved = await data.upsertFee(sheet.athleteId, input); setFees((f) => [...f.filter((x) => x.athlete_id !== sheet.athleteId), saved]); toast("Fee saved"); }}
         onDelete={sheetFee ? async () => { await data.deleteFee(sheetFee.id); setFees((f) => f.filter((x) => x.id !== sheetFee.id)); toast("Fee removed"); } : null} />
       <Confirm open={sheet?.kind === "deletePayment"} title="Delete this payment?" body="This only removes the record. It doesn't move any money." confirmLabel="Delete" danger onClose={() => setSheet(null)}
-        onConfirm={async () => { try { await data.deletePayment(sheet.payment.id); setPayments((p) => p.filter((x) => x.id !== sheet.payment.id)); toast("Payment deleted"); } catch (e) { toast(e.message || "Could not delete", "error"); } setSheet(null); }} />
+        onConfirm={async () => {
+          if (deletingRef.current) return;
+          deletingRef.current = true;
+          const id = sheet.payment.id;
+          try { await data.deletePayment(id); setPayments((p) => p.filter((x) => x.id !== id)); toast("Payment deleted"); }
+          catch (e) { toast(e.message || "Could not delete", "error"); }
+          finally { deletingRef.current = false; }
+          setSheet(null);
+        }} />
       <AddClientSheet open={sheet?.kind === "addClient"} onClose={() => setSheet(null)} existingNames={clients.map((c) => c.athlete_name)} onAdded={async (c) => { await refreshClients(); if (c?.manual) { setTab("clients"); setSelectedId(c.athlete_id); setDetailTab("plan"); } }} />
       <ShareLinkSheet open={sheet?.kind === "shareLink"} onClose={() => setSheet(null)} client={sheetClient} />
-      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} onClearAll={clearNotifications} onDismiss={dismissNotification}
+      <NotificationsSheet open={notifOpen} onClose={closeNotifications} items={notifications} loading={notifLoading} error={notifError} onRetry={() => { setNotifLoading(true); refreshNotifications(); }} onClearAll={clearNotifications} onDismiss={dismissNotification}
         onOpenItem={(it) => { closeNotifications(); setTab("clients"); setMsgOpen(null); setSelectedId(it.clientId); setDetailTab(it.tab); loadClient(it.clientId, { force: true }).catch(() => {}); }} />
       <ProfileSheet open={sheet?.kind === "profile"} onClose={() => setSheet(null)} clients={clients} units={units} onUnitsChanged={onUnitsChanged} onRemoveClient={() => { refreshClients(); reloadPayments(); }} onTour={startTour} />
       <UnitsPromptSheet open={unitsAsk} onClose={() => setUnitsAsk(false)} onChosen={onUnitsChanged} />
