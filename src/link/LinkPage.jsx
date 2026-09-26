@@ -957,6 +957,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                       <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
                       {last && <div className="lk-ex-meta">Last time{draft?.log ? "" : " (already in the boxes)"}: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
+                      {e.alternatives?.length > 0 && <div className="lk-ex-meta">Can't do it? Try: {e.alternatives.join(", ")}</div>}
                     </div>
                     {done && !upcoming
                       ? <button type="button" className="lk-foldbtn" aria-label="Collapse" onClick={() => setReopened((o) => ({ ...o, [i]: false }))}><span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><Icon.Down size={18} /></span></button>

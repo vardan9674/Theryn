@@ -4,6 +4,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, s
 import { CSS } from "@dnd-kit/utilities";
 import { Button, Icon, Confirm, Sheet, useViewport, useToast } from "../ui/primitives.jsx";
 import { DAYS, DAY_LONG, normalizeExercise } from "../lib/format.js";
+import { cleanAlternatives } from "../lib/clientLinks.js";
+import AlternativesSheet from "./AlternativesSheet.jsx";
+import NewExerciseSheet from "./NewExerciseSheet.jsx";
 import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { lastSetsFor, setsLine as historyLine } from "../lib/workouts.js";
 import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
@@ -35,7 +38,7 @@ function toEditable(templates) {
         const o = normalizeExercise(ex);
         const mode = o.mode === "time" ? "time" : "reps";
         const rows = planSets(o).map((s) => ({ _k: mkKey("s"), reps: s.reps, weight: s.weight == null ? "" : String(s.weight), secs: s.secs ? durationInput(s.secs) : "", kind: s.kind || null }));
-        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", rows, same: setsAreSame(rows.map((r) => ({ ...r, secs: parseDuration(r.secs) }))), mode, superset: o.superset || null, rest: Number(o.rest) > 0 ? Number(o.rest) : null };
+        return { _key: mkKey("ex"), name: o.name, coachNote: o.coachNote ?? "", alternatives: cleanAlternatives(o.alternatives, o.name), rows, same: setsAreSame(rows.map((r) => ({ ...r, secs: parseDuration(r.secs) }))), mode, superset: o.superset || null, rest: Number(o.rest) > 0 ? Number(o.rest) : null };
       }),
     };
   }
@@ -56,6 +59,8 @@ export function toTemplates(days, units) {
         if (e.coachNote && e.coachNote.trim()) o.coachNote = e.coachNote.trim();
         if (e.superset) o.superset = e.superset;
         if (e.rest) o.rest = e.rest;
+        const alts = cleanAlternatives(e.alternatives, o.name);
+        if (alts.length) o.alternatives = alts;
         return o;
       }));
     out[d] = { type: day.type === "Rest" ? "Rest" : day.type, exercises };
@@ -134,6 +139,7 @@ export default function PlanEditor({ client, initialTemplates, history, unit = "
     },
     rename: (d, k, v) => update((next) => { const e = exOf(next, d, k); if (e) e.name = v; return next; }),
     note: (d, k, v) => update((next) => { const e = exOf(next, d, k); if (e) e.coachNote = v; return next; }),
+    setAlternatives: (d, k, list) => update((next) => { const e = exOf(next, d, k); if (e) e.alternatives = cleanAlternatives(list, e.name); return next; }),
     setRow: (d, k, ri, field, raw) => update((next) => {
       const e = exOf(next, d, k); if (!e) return next;
       const v = field === "reps" ? cleanRepsInput(raw) : field === "secs" ? maskDuration(raw) : cleanWeightInput(raw);
@@ -435,6 +441,7 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
                   onKind={(ri, kind) => act.setKind(dayKey, ex._key, ri, kind)} onAddDrop={() => act.addDrop(dayKey, ex._key)} onAddWarmup={() => act.addWarmup(dayKey, ex._key)} onRest={(secs) => act.setRest(dayKey, ex._key, secs)}
                   onToggle={() => setOpenKey(openKey === ex._key ? null : ex._key)}
                   onRename={(v) => act.rename(dayKey, ex._key, v)} onNote={(v) => act.note(dayKey, ex._key, v)}
+                  onAlternatives={(list) => act.setAlternatives(dayKey, ex._key, list)}
                   onRow={(ri, f, v) => act.setRow(dayKey, ex._key, ri, f, v)} onAddSet={() => act.addSet(dayKey, ex._key)} onRemoveSet={(ri) => act.removeSet(dayKey, ex._key, ri)}
                   onSame={() => act.toggleSame(dayKey, ex._key)} onRemove={() => { act.remove(dayKey, ex._key); setOpenKey(null); }} />
               ))}
@@ -447,7 +454,9 @@ function DayEditor({ dayKey, day, unit, history, firstName, openKey, setOpenKey,
   );
 }
 
-function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, nextName, onToggle, onRename, onNote, onRow, onAddSet, onRemoveSet, onSame, onRemove, onMode, onLinkNext, onUnlink, onKind, onAddDrop, onAddWarmup, onRest }) {
+function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, nextName, onToggle, onRename, onNote, onAlternatives, onRow, onAddSet, onRemoveSet, onSame, onRemove, onMode, onLinkNext, onUnlink, onKind, onAddDrop, onAddWarmup, onRest }) {
+  const [altOpen, setAltOpen] = React.useState(false);
+  const alts = ex.alternatives || [];
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ex._key });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const timed = ex.mode === "time";
@@ -468,7 +477,7 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
         <button type="button" className="pe-cardhit" onClick={onToggle} aria-expanded={false}>
           <span className="pe-cardtext">
             <b>{ssChip}{ex.name || <em>Unnamed exercise</em>}{timed && <span className="pe-timed" aria-label="timed"><Icon.Clock size={12} /></span>}</b>
-            <span>{setsLine(list, unit, ex.mode)}{ex.rest ? ` · rest ${restLabel(ex.rest)}` : ""}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}</span>
+            <span>{setsLine(list, unit, ex.mode)}{ex.rest ? ` · rest ${restLabel(ex.rest)}` : ""}{noWeight && <i> · no weight yet</i>}{ex.coachNote && " · has a note"}{alts.length > 0 && ` · ${alts.length} alternative${alts.length === 1 ? "" : "s"}`}</span>
           </span>
           <Icon.Down size={16} />
         </button>
@@ -547,6 +556,13 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
           : null}
       </div>
 
+      <div className="pe-ssrow">
+        <button type="button" className="pe-chipbtn" onClick={() => setAltOpen(true)} disabled={!ex.name}>
+          <Icon.Copy size={13} />{alts.length ? `If they can't: ${alts.join(", ")}` : "Add alternatives"}
+        </button>
+      </div>
+      <AlternativesSheet open={altOpen} exerciseName={ex.name} value={alts} firstName={firstName} onClose={() => setAltOpen(false)} onSave={onAlternatives} />
+
       <input className={`pe-note ${ex.coachNote ? "has" : ""}`} value={ex.coachNote} placeholder={`Note for ${firstName} (optional)`} onChange={(e) => onNote(e.target.value.slice(0, 200))} aria-label="Coach note" />
 
       <div className="pe-cardfoot">
@@ -559,6 +575,7 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
 
 // ── Adding exercises ───────────────────────────────────────────────────────
 function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, onAdd }) {
+  const [newOpen, setNewOpen] = React.useState(false);
   const data = useCoachData();
   const [q, setQ] = React.useState("");
   const [picked, setPicked] = React.useState([]);
@@ -612,11 +629,12 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
             {!exact && (
               <div className="pe-result">
                 <span><b>Add "{q.trim()}"</b><small>As your own exercise</small></span>
-                <button type="button" className={`pe-plus dashed ${has(q.trim()) ? "on" : ""}`} aria-label={`Add ${q.trim()} as your own exercise`} onClick={() => toggle(q.trim())}>{has(q.trim()) ? <Icon.Check size={16} /> : <Icon.Plus size={16} />}</button>
+                <button type="button" className="pe-plus dashed" aria-label={`Add ${q.trim()} as your own exercise`} onClick={() => setNewOpen(true)}><Icon.Plus size={16} /></button>
               </div>
             )}
           </div>
         )}
+        <NewExerciseSheet open={newOpen} initialName={q.trim()} onClose={() => setNewOpen(false)} onCreated={(name) => { if (!has(name)) toggle(name); }} />
         <div className="pe-addfoot">
           <span>New exercises start at 3 × {DEFAULT_REPS}{history?.length ? `, with ${firstName}'s last weight` : ""}.</span>
           <button type="button" className="pe-save dirty" disabled={picked.length === 0} onClick={() => onAdd(picked)}>{picked.length ? `Add ${picked.length}` : "Pick exercises"}</button>

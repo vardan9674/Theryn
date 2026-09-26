@@ -205,6 +205,14 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     loadSessionsSince: (sinceIso) => loadAthleteSessionsSince(coachId, sinceIso),
 
     // Exercise search for the plan editor
+    // A coach's own exercise. Their athletes can see it (RLS policy in 006_exercise_search_fuzzy.sql).
+    async createExercise({ name, equipment, muscle_group }) {
+      const { data, error } = await supabase.from("user_exercises")
+        .insert({ user_id: coachId, name: String(name).trim(), equipment: equipment || null, muscle_group: muscle_group || null })
+        .select("id, name").single();
+      if (error) throw new Error(error.message || "Couldn't save the exercise");
+      return data;
+    },
     async searchExercises(term) {
       const q = (term || "").trim();
       if (q.length < 2) {

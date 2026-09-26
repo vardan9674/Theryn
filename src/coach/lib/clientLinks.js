@@ -109,6 +109,22 @@ export const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const DAY_LONG = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
 
 /** Normalize a plan day's exercise (string or object) into what the page renders. */
+/** Alternative exercise names a coach set, cleaned: trimmed, no blanks or repeats, at most 4. */
+export function cleanAlternatives(list, exclude = "") {
+  const skip = String(exclude || "").trim().toLowerCase();
+  const seen = new Set();
+  const out = [];
+  for (const raw of Array.isArray(list) ? list : []) {
+    const n = String(raw || "").trim().slice(0, 80);
+    const k = n.toLowerCase();
+    if (!n || k === skip || seen.has(k)) continue;
+    seen.add(k);
+    out.push(n);
+    if (out.length === 4) break;
+  }
+  return out;
+}
+
 export function normalizeExercise(ex) {
   if (typeof ex === "string") return { name: ex, sets: null, reps: null, weight: null, note: null };
   if (!ex || typeof ex !== "object") return { name: "", sets: null, reps: null, weight: null, note: null };
@@ -134,6 +150,9 @@ export function normalizeExercise(ex) {
   if (ex.mode === "time" || ex.secs != null || (setList || []).some((s) => s.secs != null)) { out.mode = "time"; out.secs = secsOf(ex.secs); }
   if (ex.superset) out.superset = String(ex.superset);
   if (Number(ex.rest) > 0) out.rest = Math.round(Number(ex.rest));
+  // What to do instead when the client can't do this one.
+  const alternatives = cleanAlternatives(ex.alternatives, out.name);
+  if (alternatives.length) out.alternatives = alternatives;
   return out;
 }
 

@@ -229,6 +229,11 @@ export function createMockCoachData() {
       return { id: "a7", display_name: "New Client" };
     },
     async loadSessionsSince() { return []; },
+    async createExercise({ name, equipment, muscle_group }) {
+      const row = { id: "ex-" + name, name, equipment, muscle_group, is_custom: true };
+      EXERCISES.push(name);
+      return row;
+    },
     async searchExercises(term) {
       await wait(120);
       const q = (term || "").trim().toLowerCase();
