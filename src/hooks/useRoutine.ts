@@ -20,6 +20,8 @@ export interface ExerciseObject {
   sets?: number | string;
   reps?: string;
   weight?: number | string;
+  /** Stand-ins the coach set, shown first when the athlete swaps this exercise. */
+  alternatives?: string[];
 }
 
 export type ExerciseItem = string | ExerciseObject;
@@ -77,7 +79,9 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
   }
 
   const fetchNetwork = async () => {
-    const { data: routine, error: routineErr } = await supabase
+    // "extra" (coach-set alternatives) arrives with migration 20260926193424. Until it is
+    // applied the column is missing, so the same query is retried without it.
+    const routineQuery = (withExtra: boolean) => supabase
       .from("routines")
       .select(`
         id,
@@ -95,6 +99,7 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
             exercise_id,
             sort_order,
             notes,
+            ${withExtra ? "extra," : ""}
             target_sets,
             target_reps,
             template_exercise_id,
@@ -105,6 +110,11 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
       .eq("user_id", userId)
       .eq("is_active", true)
       .maybeSingle();
+
+    let { data: routine, error: routineErr } = await routineQuery(true);
+    if (routineErr && (routineErr.code === "42703" || routineErr.code === "PGRST204" || /extra/.test(routineErr.message || ""))) {
+      ({ data: routine, error: routineErr } = await routineQuery(false));
+    }
 
     if (routineErr) {
       console.error("loadRoutine error:", routineErr.message);
@@ -168,11 +178,16 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
         const reps = (ex as any).target_reps as string | null;
         const customSets = sets != null && sets !== 3;
         const customReps = reps != null && reps !== "8-12";
-        if (notes || customSets || customReps) {
+        const extra = (ex as any).extra as { alternatives?: unknown } | null;
+        const alternatives = Array.isArray(extra?.alternatives)
+          ? extra!.alternatives.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4)
+          : [];
+        if (notes || customSets || customReps || alternatives.length) {
           const obj: ExerciseObject = { name };
           if (notes) obj.coachNote = notes;
           if (customSets) obj.sets = sets as number;
           if (customReps) obj.reps = reps as string;
+          if (alternatives.length) obj.alternatives = alternatives;
           exercises.push(obj);
         } else {
           exercises.push(name);
@@ -317,6 +332,7 @@ export async function saveRoutine(
         notes?: string | null;
         target_sets?: number;
         target_reps?: string;
+        extra?: Record<string, unknown> | null;
       }> = [];
       for (let i = 0; i < dayData.exercises.length; i++) {
         const item = dayData.exercises[i];
@@ -339,12 +355,21 @@ export async function saveRoutine(
           if (Number.isInteger(s) && s > 0 && s < 100) row.target_sets = s;
           const r = item.reps != null ? String(item.reps).trim() : "";
           if (r) row.target_reps = r.slice(0, 20);
+          // Coach-set stand-ins, shown first when the athlete swaps this exercise.
+          const alts = Array.isArray(item.alternatives)
+            ? item.alternatives.map((x) => String(x || "").trim().slice(0, 80)).filter(Boolean).slice(0, 4)
+            : [];
+          if (alts.length) row.extra = { alternatives: alts };
         }
         exerciseRows.push(row);
       }
 
       if (exerciseRows.length > 0) {
-        const { error: exErr } = await supabase.from("routine_exercises").insert(exerciseRows);
+        let { error: exErr } = await supabase.from("routine_exercises").insert(exerciseRows);
+        // The extra column arrives with 20260926193424; without it, save the rest rather than nothing.
+        if (exErr && (exErr.code === "42703" || exErr.code === "PGRST204") && exerciseRows.some((r) => r.extra)) {
+          ({ error: exErr } = await supabase.from("routine_exercises").insert(exerciseRows.map(({ extra, ...rest }) => rest)));
+        }
         if (exErr) console.error(`Failed to insert exercises for day ${dayKey}:`, exErr.message);
       }
     }

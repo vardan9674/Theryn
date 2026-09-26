@@ -31,6 +31,14 @@ import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
 import CoachDashboard from "./coach/CoachApp.jsx";
 import PullToRefresh from "./components/PullToRefresh.jsx";
 import { consumeBackPress, useBackHandler } from "./lib/backStack";
+import ExercisePicker from "./components/exercise/ExercisePicker.jsx";
+import ExerciseInfoSheet from "./components/exercise/ExerciseInfoSheet.jsx";
+import useExerciseLibrary from "./components/exercise/useExerciseLibrary.js";
+import SwapSheet from "./components/exercise/SwapSheet.jsx";
+import QuickWorkoutSheet from "./components/exercise/QuickWorkoutSheet.jsx";
+import EquipmentScreen from "./components/exercise/EquipmentScreen.jsx";
+import { findInLibrary, EQUIPMENT_LABEL } from "./lib/exerciseLibrary.js";
+import useEquipment from "./components/exercise/useEquipment.js";
 import { signInErrorFromUrl, friendlySignInError, addressWithoutSignInError } from "./lib/signInError";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
@@ -400,131 +408,7 @@ function TabIcon({ id, active }) {
   if (id==="prs")      return <svg {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// EXERCISE PICKER OVERLAY (Global Database Search)
-// ════════════════════════════════════════════════════════════════════════
-let EXDB_CACHE = null;
-
-function ExercisePicker({ onClose, onSelect }) {
-  const [db, setDb] = useState(EXDB_CACHE || []);
-  const [q, setQ]     = useState("");
-  const [visible, setVisible] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => { requestAnimationFrame(() => { setVisible(true); setTimeout(() => inputRef.current?.focus(), 60); }); }, []);
-
-  useEffect(() => {
-    if (EXDB_CACHE) return;
-    fetch("/exercises.json").then(r => r.json()).then(data => {
-      EXDB_CACHE = data;
-      setDb(data);
-    }).catch(e => console.error("DB Load Error", e));
-  }, []);
-
-  const closeOverlay = () => {
-    setVisible(false);
-    setTimeout(onClose, 220);
-  };
-
-  const results = q.trim() ? db.filter(e => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 40) : [];
-
-  const isDesktop = window.innerWidth >= 768;
-
-  return (
-    <div
-      style={{
-        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-        background: visible ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0)",
-        zIndex: 1000, display: "flex",
-        alignItems: isDesktop ? "center" : "flex-end",
-        justifyContent: "center",
-        transition: "background 0.22s ease",
-        backdropFilter: visible ? "blur(4px)" : "none",
-      }}
-      onClick={closeOverlay}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: S1,
-          borderRadius: isDesktop ? "20px" : "24px 24px 0 0",
-          width: isDesktop ? "560px" : "100%",
-          maxWidth: isDesktop ? "560px" : undefined,
-          height: isDesktop ? "70vh" : "85vh",
-          maxHeight: "80vh",
-          borderTop: !isDesktop ? `1px solid ${BD}` : undefined,
-          border: isDesktop ? `1px solid #222` : undefined,
-          display: "flex", flexDirection: "column",
-          transform: visible ? "translateY(0) scale(1)" : isDesktop ? "scale(0.96)" : "translateY(100%)",
-          opacity: visible ? 1 : 0,
-          transition: "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease",
-          boxShadow: isDesktop ? "0 24px 80px rgba(0,0,0,0.7)" : undefined,
-          overflow: "hidden",
-        }}
-      >
-        {/* Header & Search */}
-        <div style={{ padding: "16px 20px", flexShrink: 0, borderBottom: `1px solid ${BD}` }}>
-          {!isDesktop && <div style={{ width:"40px", height:"5px", background:MT, borderRadius:"3px", margin:"0 auto 14px" }}/>}
-          <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-            <div style={{ position: "relative", flex: 1 }}>
-              <svg style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={SB} strokeWidth="2" strokeLinecap="round">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              <input
-                ref={inputRef}
-                style={{ ...inputSt, width:"100%", fontSize:"15px", padding:"12px 16px 12px 38px" }}
-                placeholder="Search 800+ exercises…"
-                value={q}
-                onChange={e => setQ(e.target.value)}
-              />
-            </div>
-            <button onClick={closeOverlay} style={{ background:"none", border:`1px solid ${BD}`, borderRadius:"10px", color:SB, fontSize:"13px", fontWeight:600, cursor:"pointer", padding:"10px 14px", whiteSpace:"nowrap" }}>Cancel</button>
-          </div>
-          {q.trim() && (
-            <div style={{ fontSize:"12px", color:SB, marginTop:"8px", paddingLeft:"2px" }}>
-              {results.length} result{results.length !== 1 ? "s" : ""} for "<span style={{ color:A }}>{q}</span>"
-            </div>
-          )}
-        </div>
-
-        {/* Results List */}
-        <div style={{ flex:1, overflowY:"auto", padding:"12px 16px 24px" }}>
-          {q.trim() && results.length === 0 && (
-            <button onClick={() => { onSelect(q.trim()); closeOverlay(); }} style={{ width:"100%", textAlign:"left", background:S2, border:`1px solid ${A}44`, borderRadius:"14px", padding:"16px 18px", cursor:"pointer", marginBottom:"8px" }}>
-              <div style={{ fontSize:"15px", fontWeight:700, color:A }}>+ Add "{q.trim()}"</div>
-              <div style={{ fontSize:"12px", color:SB, marginTop:"3px" }}>Create a custom exercise</div>
-            </button>
-          )}
-
-          {results.map(ex => (
-            <button key={ex.id} onClick={() => { onSelect(ex.name); closeOverlay(); }} style={{ width:"100%", textAlign:"left", background:"none", border:0, borderBottom:`1px solid ${MT}`, padding:"13px 4px", cursor:"pointer", display:"flex", flexDirection:"column", gap:"3px", transition:"background 0.15s" }}
-              onMouseEnter={el => el.currentTarget.style.background = S2}
-              onMouseLeave={el => el.currentTarget.style.background = "none"}
-            >
-              <div style={{ fontSize:"15px", fontWeight:600, color:TX }}>{ex.name}</div>
-              <div style={{ fontSize:"11px", color:SB, textTransform:"uppercase", letterSpacing:"0.05em" }}>
-                {[ex.primaryMuscles?.[0], ex.equipment].filter(Boolean).join(" · ")}
-              </div>
-            </button>
-          ))}
-
-          {!q.trim() && db.length > 0 && (
-            <div style={{ textAlign:"center", padding:"48px 20px", color:MT, fontSize:"14px" }}>
-              Start typing to search 800+ exercises
-            </div>
-          )}
-
-          {!q.trim() && db.length === 0 && (
-            <div style={{ textAlign:"center", padding:"48px 20px", color:MT, fontSize:"14px" }}>
-              Loading exercise database…
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// Exercise picker and exercise info: src/components/exercise/
 
 // ════════════════════════════════════════════════════════════════════════
 // ROOT APP
@@ -1141,15 +1025,23 @@ export default function GymApp() {
     if (workoutActive) return;
     const tmpl = templates[todayKey] || { type: "Rest", exercises: [] };
     setSession(
-      (tmpl.exercises || []).map((name, i) => ({
-        id: Date.now() + i, name,
-        sets: isCardioExercise(name)
-          ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done:false }]
-          : Array.from({ length:3 }, (_, si) => ({ id:`${Date.now()+i}-${si}`, w:"", r:"", done:false })),
-      }))
+      (tmpl.exercises || []).map((item, i) => {
+        const name = typeof item === "string" ? item : item?.name || "";
+        const o = typeof item === "object" && item ? item : null;
+        const targetSets = Number(o?.sets) > 0 ? Number(o.sets) : 3;
+        return {
+          id: Date.now() + i, name,
+          coachNote: o?.coachNote || "",
+          alternatives: Array.isArray(o?.alternatives) && o.alternatives.length ? o.alternatives : undefined,
+          sets: isCardioExercise(name)
+            ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done:false }]
+            : Array.from({ length: targetSets }, (_, si) => ({ id:`${Date.now()+i}-${si}`, w: o?.weight ? String(o.weight) : "", r: o?.reps ? String(o.reps) : "", done:false })),
+        };
+      })
     );
     setTodayType(tmpl.type);
-  }, [(templates[todayKey]?.exercises || []).join(','), templates[todayKey]?.type]);
+  // Exercises can be objects (coach note, targets, alternatives), so compare the whole list.
+  }, [JSON.stringify(templates[todayKey]?.exercises || []), templates[todayKey]?.type]);
 
   const TABS = [
     { id:"log",      label:"Log"      },
@@ -1482,10 +1374,18 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
   const [workoutSummary,     setWorkoutSummary]     = useState(null);
   const [pendingUndo,        setPendingUndo]        = useState(null); // { msg, action }
   const [pendingUndoTimer,   setPendingUndoTimer]   = useState(null);
+  const [infoEntry,          setInfoEntry]          = useState(null);
+  const [swapEx,             setSwapEx]             = useState(null);   // exercise being swapped
+  const [showQuick,          setShowQuick]          = useState(false);
+  const [showEquipment,      setShowEquipment]      = useState(false);
+  const exLib = useExerciseLibrary();
   const timerRef = useRef(null);
 
   // Android back-button: dismiss any open sheet inside LogScreen.
   useBackHandler(showAddEx, () => setShowAddEx(false));
+  useBackHandler(!!swapEx, () => setSwapEx(null));
+  useBackHandler(showQuick, () => setShowQuick(false));
+  useBackHandler(showEquipment, () => setShowEquipment(false));
   useBackHandler(showTypePick, () => setShowTypePick(false));
   useBackHandler(showHistory, () => setShowHistory(false));
   useBackHandler(showEndConfirm, () => setShowEndConfirm(false));
@@ -1827,9 +1727,10 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         const targetReps = typeof ex === "string" ? "" : (ex.reps || "");
         const targetWeight = typeof ex === "string" ? "" : (ex.weight || "");
         const coachNote = typeof ex === "string" ? "" : (ex.coachNote || "");
+        const alternatives = typeof ex === "string" ? undefined : (Array.isArray(ex.alternatives) && ex.alternatives.length ? ex.alternatives : undefined);
 
         return {
-          id: Date.now() + i, name, coachNote,
+          id: Date.now() + i, name, coachNote, alternatives,
           sets: isCardioExercise(name)
             ? [{ id: `${Date.now()+i}-0`, dist:"", dur:"", done: false }]
             : Array.from({ length: targetSets }, (_, si) => ({ id: `${Date.now()+i}-${si}`, w: targetWeight, r: targetReps, done: false })),
@@ -1971,6 +1872,23 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         : { id: `${exId}-${Date.now()}`, w: lastSet?.w || "", r: lastSet?.r || "", done: false };
       return { ...ex, sets: [...ex.sets, newSet] };
     }));
+  };
+
+  // Swap one exercise for another, keeping the sets already planned.
+  const swapExercise = (id, newName) => {
+    const name = String(newName || "").trim();
+    if (!name) return;
+    setSession(p => p.map(ex => {
+      if (ex.id !== id) return ex;
+      const wasCardio = isCardioExercise(ex.name), nowCardio = isCardioExercise(name);
+      const sets = wasCardio === nowCardio
+        ? ex.sets.map(st => ({ ...st, done: false }))
+        : nowCardio
+          ? [{ id: `${Date.now()}-0`, dist: "", dur: "", done: false }]
+          : Array.from({ length: 3 }, (_, si) => ({ id: `${Date.now()}-${si}`, w: "", r: "", done: false }));
+      return { ...ex, name, sets, swappedFrom: ex.name, alternatives: undefined };
+    }));
+    markExChange();
   };
 
   const removeExercise = (id) => {
@@ -2138,10 +2056,15 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
         {!showHistory && (
           <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
             {!workoutActive ? (
-              <button onClick={startWorkout} style={{ display:"flex", alignItems:"center", gap:"6px", background:A, border:"none", borderRadius:"10px", color:"#000", fontWeight:"700", fontSize:"16px", padding:"10px 20px", cursor:"pointer", flexShrink:0 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="#000"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Start
-              </button>
+              <>
+                <button onClick={startWorkout} style={{ display:"flex", alignItems:"center", gap:"6px", background:A, border:"none", borderRadius:"10px", color:"#000", fontWeight:"700", fontSize:"16px", padding:"10px 20px", cursor:"pointer", flexShrink:0 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="#000"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Start
+                </button>
+                <button onClick={() => setShowQuick(true)} style={{ display:"flex", alignItems:"center", gap:"6px", background:"none", border:`1px solid ${MT}`, borderRadius:"10px", color:TX, fontWeight:"600", fontSize:"15px", padding:"10px 16px", cursor:"pointer", flexShrink:0 }}>
+                  Quick workout
+                </button>
+              </>
             ) : (
               <>
                 {/* Timer display */}
@@ -2283,6 +2206,16 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                                 {ex.coachNote && !isCol && <span style={{ fontSize:"9px", background:`${A}20`, color:A, borderRadius:"4px", padding:"1px 5px", fontWeight:"700" }}>COACH</span>}
                                 <span style={{ fontSize:"10px", color:SB, transform: isCol ? "none" : "rotate(180deg)", transition:"transform 0.2s" }}>⌄</span>
                               </button>
+                              {workoutActive && (
+                                <button onClick={(e) => { e.stopPropagation(); setSwapEx(ex); }} aria-label={`Swap ${ex.name}`} style={{ width:"40px", height:"40px", flexShrink:0, background:"none", border:"none", color:SB, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h13l-3.5-3.5"/><path d="M20 16H7l3.5 3.5"/></svg>
+                                </button>
+                              )}
+                              {findInLibrary(exLib, ex.name) && (
+                                <button onClick={(e) => { e.stopPropagation(); setInfoEntry(findInLibrary(exLib, ex.name)); }} aria-label={`About ${ex.name}`} style={{ width:"40px", height:"40px", flexShrink:0, background:"none", border:"none", color:SB, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.5" x2="12" y2="7.6"/></svg>
+                                </button>
+                              )}
                             </div>
 
                             {/* Coach note — visible when expanded */}
@@ -2362,7 +2295,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
             {/* Add exercise — always visible, outside workout guard */}
             {showAddEx && (
-              <ExercisePicker onClose={() => setShowAddEx(false)} onSelect={(name) => {
+              <ExercisePicker history={workoutHistory} units={units} onClose={() => setShowAddEx(false)} onSelect={(name) => {
                 const exStr = name.trim();
                 setShowAddEx(false);
                 if (!exStr) return;
@@ -2375,6 +2308,24 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                 });
                 markExChange();
               }}/>
+            )}
+            {infoEntry && (
+              <ExerciseInfoSheet entry={infoEntry} history={workoutHistory} units={units} onClose={() => setInfoEntry(null)} />
+            )}
+            {swapEx && (
+              <SwapSheet exercise={swapEx} lib={exLib}
+                onSwap={(name) => swapExercise(swapEx.id, name)}
+                onBrowse={() => { setSwapEx(null); setShowAddEx(true); }}
+                onClose={() => setSwapEx(null)} />
+            )}
+            {showQuick && (
+              <QuickWorkoutSheet lib={exLib} history={workoutHistory}
+                onChangeEquipment={() => { setShowQuick(false); setShowEquipment(true); }}
+                onStart={(plan) => { resetSession(plan); setTodayType(todayType === "Rest" ? "Custom" : todayType); markExChange(); startWorkout(); }}
+                onClose={() => setShowQuick(false)} />
+            )}
+            {showEquipment && (
+              <EquipmentScreen supabase={supabase} userId={authUser?.id} onClose={() => setShowEquipment(false)} />
             )}
             {workoutActive && (
               <button onClick={() => setShowAddEx(true)} style={{ width:"100%", background:"none", border:`1px dashed ${MT}`, borderRadius:"12px", color:SB, cursor:"pointer", padding:"16px", fontSize:"16px", marginTop:"8px", marginBottom:"8px", display:"flex", alignItems:"center", justifyContent:"center", gap:"6px" }}>
@@ -2503,7 +2454,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 // ════════════════════════════════════════════════════════════════════════
 // ROUTINE EXERCISE CARD (Editable config)
 // ════════════════════════════════════════════════════════════════════════
-function RoutineExerciseCard({ ex, updateEx }) {
+function RoutineExerciseCard({ ex, updateEx, onInfo }) {
   const [expanded, setExpanded] = useState(false);
   const name = typeof ex === "string" ? ex : ex.name;
   const sets = typeof ex === "string" ? "" : ex.sets || "";
@@ -2513,7 +2464,12 @@ function RoutineExerciseCard({ ex, updateEx }) {
   return (
     <div style={{ padding:"8px 4px 8px 0", flex:1, touchAction: "pan-y" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span style={{ fontSize:"16px", fontWeight:"500", color:TX }}>{name}</span>
+        <span style={{ fontSize:"16px", fontWeight:"500", color:TX, flex:1 }}>{name}</span>
+        {onInfo && (
+          <button onClick={(e) => { e.stopPropagation(); onInfo(); }} aria-label={`About ${name}`} style={{ width:"40px", height:"40px", background:"none", border:"none", color:SB, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.5" x2="12" y2="7.6"/></svg>
+          </button>
+        )}
         <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} style={{ background:"none", border:"none", color:A, fontSize:"13px", fontWeight:"600", padding:"4px", cursor:"pointer" }}>
           {expanded ? "Done" : "Config"}
         </button>
@@ -2791,10 +2747,13 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
   const [pickingExDay,  setPickingExDay]  = useState(null);
   const [showCoach,     setShowCoach]     = useState(false);
   const [newEx,         setNewEx]         = useState("");
+  const [infoEntry,     setInfoEntry]     = useState(null);
+  const exLib = useExerciseLibrary();
   const todayDay = getToday();
 
-  // Android back-button: dismiss the coach connection sheet first.
+  // Android back-button: dismiss the coach connection sheet and the exercise picker.
   useBackHandler(showCoach, () => setShowCoach(false));
+  useBackHandler(Boolean(pickingExDay), () => setPickingExDay(null));
 
   // Any accepted connection (as athlete or coach)
   const isConnected = coachLinks.some(l => l.status === "accepted");
@@ -2942,7 +2901,7 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
                           const id = (typeof ex === "string" ? ex : ex.name)+"-"+i;
                           return (
                             <SortableExerciseRow key={id} id={id} onRemove={() => removeEx(day, i)}>
-                              <RoutineExerciseCard ex={ex} updateEx={(data) => updateEx(day, i, data)} />
+                              <RoutineExerciseCard ex={ex} updateEx={(data) => updateEx(day, i, data)} onInfo={findInLibrary(exLib, typeof ex === "string" ? ex : ex.name) ? () => setInfoEntry(findInLibrary(exLib, typeof ex === "string" ? ex : ex.name)) : undefined} />
                             </SortableExerciseRow>
                           );
                         })}
@@ -2965,6 +2924,9 @@ function RoutineScreen({ templates, setTemplates, setPrevTemplates, showUndo, pr
 
         {pickingExDay && (
            <ExercisePicker onClose={() => setPickingExDay(null)} onSelect={(name) => addEx(pickingExDay, name)} />
+        )}
+        {infoEntry && (
+          <ExerciseInfoSheet entry={infoEntry} onClose={() => setInfoEntry(null)} />
         )}
 
         {/* Coach Connection — athlete can connect but not manage athletes from here */}
@@ -4325,6 +4287,9 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
   const [color, setColor]       = useState(profile.color);
   const [selectedUnits, setSelectedUnits] = useState(profile.units || "imperial");
   const [saveState, setSaveState] = useState("idle"); // "idle" | "saved"
+  const [showEquipment, setShowEquipment] = useState(false);
+  const { equipment } = useEquipment();
+  const equipmentSummary = equipment.map((e) => EQUIPMENT_LABEL[e]).join(", ");
 
   // Track if user changed anything from the saved profile
   const hasChanges = initials.trim().toUpperCase().slice(0,2) !== profile.initials || color !== profile.color;
@@ -4449,6 +4414,16 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
             </div>
           </div>
         </div>
+        <div style={card}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0" }}>
+            <div>
+              <span style={{ fontSize:"16px" }}>Your equipment</span>
+              <div style={{ fontSize:"12px", color:SB, marginTop:"2px" }}>{equipmentSummary}</div>
+            </div>
+            <button onClick={() => setShowEquipment(true)} style={{ background:"none", border:`1px solid ${A}44`, borderRadius:"8px", cursor:"pointer", fontSize:"13px", color:A, fontWeight:"600", padding:"6px 14px" }}>Change</button>
+          </div>
+        </div>
+        {showEquipment && <EquipmentScreen supabase={supabase} userId={authUser?.id} onClose={() => setShowEquipment(false)} />}
         <div style={card}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0" }}>
             <div>
