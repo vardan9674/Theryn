@@ -185,6 +185,8 @@ export function usePushNotifications(userId: string | null | undefined): void {
           const link = buildDeepLink(data);
           if (link) {
             try { localStorage.setItem(DEEP_LINK_KEY, JSON.stringify(link)); } catch { /* ignore */ }
+            // An open dashboard acts on it now (useNotifications DEEP_LINK_EVENT, #142).
+            try { window.dispatchEvent(new Event('theryn:deeplink')); } catch { /* ignore */ }
           }
         }
       );

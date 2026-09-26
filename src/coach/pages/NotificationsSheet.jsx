@@ -18,7 +18,7 @@ export function NotificationsButton({ unread, onClick, size }) {
  * sent, and workouts logged in the app, newest first. Tapping one opens that
  * client on the right tab. Everything is marked seen when the sheet opens.
  */
-export default function NotificationsSheet({ open, onClose, items, loading, onOpenItem, onClearAll, onDismiss }) {
+export default function NotificationsSheet({ open, onClose, items, loading, error = null, onRetry, onOpenItem, onClearAll, onDismiss }) {
   const groups = React.useMemo(() => groupByDay(items || []), [items]);
   return (
     <Sheet open={open} onClose={onClose} title="Notifications" subtitle="What your clients sent, newest first.">
@@ -29,6 +29,9 @@ export default function NotificationsSheet({ open, onClose, items, loading, onOp
       )}
       {loading && (!items || items.length === 0) ? (
         <div className="cx-col"><span className="cx-skel" style={{ height: 56 }} /><span className="cx-skel" style={{ height: 56 }} /><span className="cx-skel" style={{ height: 56 }} /></div>
+      ) : error && (!items || items.length === 0) ? (
+        // Not "all caught up" when they simply didn't load (#135).
+        <Empty title="Couldn't load notifications" action={onRetry ? <Button onClick={onRetry}>Try again</Button> : null}>Check your connection and try again.</Empty>
       ) : !items || items.length === 0 ? (
         <Empty title="You're all caught up">When a client ticks off a workout or sends measurements, it shows up here.</Empty>
       ) : (

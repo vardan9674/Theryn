@@ -38,3 +38,16 @@ describe("notifications", () => {
     expect(g.map((x) => [x.label, x.items.length])).toEqual([["Today", 1], ["Yesterday", 1], ["Earlier", 1]]);
   });
 });
+
+describe("coach-logged workouts (#139)", () => {
+  it("a workout the coach logged for a client is not a notification", () => {
+    const items = buildNotifications({
+      clients,
+      submissions: [
+        { id: "c1", kind: "workout", submitted_at: "2026-09-26T10:00:00Z", manual_client_id: "m1", payload: { type: "Custom", logged_by: "coach", exercises: [] } },
+        { id: "c2", kind: "workout", submitted_at: "2026-09-26T11:00:00Z", manual_client_id: "m1", payload: { type: "Custom", exercises: [] } },
+      ],
+    });
+    expect(items.map((i) => i.id)).toEqual(["sub:c2"]);
+  });
+});

@@ -12,29 +12,34 @@ export function AddClientSheet({ open, onClose, onAdded, existingNames = [] }) {
   const [code, setCode] = React.useState("");
   const [first, setFirst] = React.useState("");
   const [last, setLast] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  // Which of the two is running ("name" | "code"), so only that button says "Adding…".
+  const [busy, setBusy] = React.useState(null);
+  // State updates land after a render; two quick Enters both saw busy=false and
+  // added the client twice (#136). The ref is set before the first await.
+  const busyRef = React.useRef(false);
   React.useEffect(() => { if (open) { setCode(""); setFirst(""); setLast(""); } }, [open]);
 
   const typedName = `${first} ${last}`;
   const dupName = first.trim() ? existingNames.find((n) => sameName(n, typedName)) : null;
   async function addByName() {
     if (!first.trim()) { toast("A first name is needed.", "error"); return; }
-    setBusy(true);
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy("name");
     try {
       const c = await data.createManualClient({ firstName: first, lastName: last });
       toast(`${c.athlete_name} added. Build their plan when you're ready.`);
       onAdded?.(c);
       onClose();
     } catch (e) { toast(e.message || "Could not add", "error"); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(null); }
   }
 
   async function add() {
-    if (!code.trim()) return;
-    setBusy(true);
+    if (!code.trim() || busyRef.current) return;
+    busyRef.current = true; setBusy("code");
     try { const p = await data.addClientByCode(code.trim()); toast(`${p.display_name || "Client"} added`); onAdded?.(); onClose(); }
     catch (e) { toast(e.message || "Could not add", "error"); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(null); }
   }
   return (
     <Sheet open={open} onClose={onClose} title="Add a client" subtitle="Two ways. Either works.">
@@ -47,7 +52,7 @@ export function AddClientSheet({ open, onClose, onAdded, existingNames = [] }) {
             <input className="cx-input" value={last} onChange={(e) => setLast(e.target.value.slice(0, 60))} onKeyDown={(e) => e.key === "Enter" && addByName()} placeholder="Last name" aria-label="Last name" autoComplete="off" />
           </div>
           {dupName && <div className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>You already have a client called {dupName}. Add a second one with the same name?</div>}
-          <Button variant="primary" icon={<Icon.Person />} onClick={addByName} disabled={!first.trim() || busy}>{busy ? "Adding…" : dupName ? "Add another" : "Add client"}</Button>
+          <Button variant="primary" icon={<Icon.Person />} onClick={addByName} disabled={!first.trim() || Boolean(busy)}>{busy === "name" ? "Adding…" : dupName ? "Add another" : "Add client"}</Button>
         </div>
         <div className="cx-small cx-muted" style={{ textAlign: "center" }}>Or, if they already use the app</div>
         <div className="cx-card cx-card-pad cx-col">
@@ -55,7 +60,7 @@ export function AddClientSheet({ open, onClose, onAdded, existingNames = [] }) {
           <div className="cx-small cx-muted">Ask them for the code shown in their app under Coach. There's nowhere for them to type yours, so it only works this way round.</div>
           <div className="cx-row">
             <input className="cx-input" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="Their code" aria-label="Client code" style={{ textTransform: "uppercase", letterSpacing: 1 }} />
-            <Button variant="primary" onClick={add} disabled={!code.trim() || busy}>{busy ? "Adding…" : "Add"}</Button>
+            <Button variant="primary" onClick={add} disabled={!code.trim() || Boolean(busy)}>{busy === "code" ? "Adding…" : "Add"}</Button>
           </div>
         </div>
       </div>
@@ -84,9 +89,10 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, u
     finally { setBusy(false); }
   }
   async function changeCurrency(code) {
+    const before = currency;
     setCurrency(code);
     try { await data.updateCurrency(code); toast(`Currency set to ${code}`); }
-    catch (e) { toast(e.message || "Could not save", "error"); }
+    catch (e) { setCurrency(before); toast(e.message || "Could not save", "error"); } // back to what's saved (#137)
   }
   async function changeUnits(u) {
     if (u === units) return;

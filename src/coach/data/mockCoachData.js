@@ -141,6 +141,11 @@ function toTemplateDays(routine) {
 
 const EXERCISES = ["Bench Press", "Incline Dumbbell Press", "Overhead Press", "Lateral Raise", "Triceps Pushdown", "Deadlift", "Pull-Up", "Barbell Row", "Face Pull", "Biceps Curl", "Back Squat", "Front Squat", "Romanian Deadlift", "Leg Press", "Walking Lunge", "Calf Raise", "Dumbbell Bench", "Lat Pulldown", "Arnold Press", "Cable Row", "Squat", "Plank", "Hip Thrust", "Leg Curl", "Leg Extension", "Hammer Curl", "Skull Crusher", "Dips", "Cable Fly", "Chest-Supported Row"];
 
+// Preview the error screens: ?coachPreview=1&fail=clients,payments,plans,notifications,client
+// ("client" fails every client's data). Removing it from the address makes them load again.
+const failing = (what) => typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("fail") || "").split(",").includes(what);
+const failIf = (what) => { if (failing(what)) throw new TypeError("Failed to fetch"); };
+
 export function createMockCoachData() {
   const st = makeState();
   const notify = () => st.listeners.forEach((fn) => fn());
@@ -177,8 +182,9 @@ export function createMockCoachData() {
     async updateUnits(u) { await wait(100); st.units = u === "metric" ? "metric" : "imperial"; },
 
     manualClientsAvailable: true,
-    async loadClients() { await wait(150); return [...st.links, ...st.manual.map(manualToClient)]; },
+    async loadClients() { await wait(150); failIf("clients"); return [...st.links, ...st.manual.map(manualToClient)]; },
     async loadClientData(athleteId) {
+      failIf("client");
       await wait(200 + Math.random() * 300);
       const mid = manualIdOf(athleteId);
       const subs = st.submissions.filter((x) => x.clientId === athleteId);
@@ -231,7 +237,7 @@ export function createMockCoachData() {
     },
 
     async loadFees() { await wait(120); return [...st.fees, ...st.manual.map((r) => manualFeeRow(r)).filter(Boolean)]; },
-    async loadPayments() { await wait(120); return [...st.payments, ...st.manual.flatMap(manualPaymentRows)].sort((a, b) => (a.received_date < b.received_date ? 1 : -1)); },
+    async loadPayments() { await wait(120); failIf("payments"); return [...st.payments, ...st.manual.flatMap(manualPaymentRows)].sort((a, b) => (a.received_date < b.received_date ? 1 : -1)); },
     async upsertFee(athleteId, input) {
       await wait(200);
       const mid = manualIdOf(athleteId);
@@ -286,7 +292,7 @@ export function createMockCoachData() {
     subscribeMessages(_clients, onMessage) { const fn = () => onMessage({}); st.listeners.add(fn); return () => st.listeners.delete(fn); },
     subscribeLiveData() { return () => {}; },
 
-    async listTemplates() { await wait(150); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length + st.manual.filter((m) => planTemplate(m.plan)?.id === t.id).length, custom_count: st.manual.filter((m) => planTemplate(m.plan)?.id === t.id && planTemplate(m.plan).overridden).length })); },
+    async listTemplates() { await wait(150); failIf("plans"); return st.templates.map(({ days, ...t }) => ({ ...t, assignment_count: (st.assignments[t.id] || []).length + st.manual.filter((m) => planTemplate(m.plan)?.id === t.id).length, custom_count: st.manual.filter((m) => planTemplate(m.plan)?.id === t.id && planTemplate(m.plan).overridden).length })); },
     async createTemplate(name) { await wait(200); const t = { id: "t" + uid(), owner_coach_id: COACH_ID, name, version: 1, visibility: "private", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), days: [] }; st.templates.push(t); st.assignments[t.id] = []; return t; },
     async getTemplateWithTree(id) { await wait(150); const t = st.templates.find((x) => x.id === id); const { days, ...template } = t; return { template, days: JSON.parse(JSON.stringify(days)) }; },
     async updateTemplateName(id, name) { await wait(100); const t = st.templates.find((x) => x.id === id); if (t) t.name = name; },
@@ -334,6 +340,7 @@ export function createMockCoachData() {
     async deleteSubmission(id) { await wait(150); st.submissions = st.submissions.filter((x) => x.id !== id); notify(); },
     async loadRecentSubmissions() { await wait(100); return st.submissions.slice(); },
     async loadNotificationFeed(clients) {
+      failIf("notifications");
       await wait(120);
       const ids = new Set((clients || []).filter((c) => !c.manual).map((c) => c.athlete_id));
       const sessions = [];

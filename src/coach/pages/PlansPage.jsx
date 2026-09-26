@@ -27,6 +27,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const [naming, setNaming] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const busyRef = React.useRef(false); // set before the first await: two quick Enters made two plans (#136)
+  const [loadError, setLoadError] = React.useState(null);
   const [giving, setGiving] = React.useState(null); // { template, assignedIds, locked }
   const [pushing, setPushing] = React.useState(null); // { template, assignments }
   const [deleting, setDeleting] = React.useState(null);
@@ -35,8 +37,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const setHow = (v) => { setShowHow(v); if (!v) { try { localStorage.setItem("theryn.plansHowSeen", "1"); } catch { /* private mode */ } } };
 
   const reload = React.useCallback(async () => {
-    try { setTemplates(await data.listTemplates()); }
-    catch (e) { toast(`Could not load plans: ${e.message}`, "error"); }
+    try { setTemplates(await data.listTemplates()); setLoadError(null); }
+    catch (e) { setLoadError(e.message || "Could not load plans"); } // shown in place of "No plans yet" (#135)
     finally { setLoading(false); }
   }, [data, toast]);
   React.useEffect(() => { reload(); }, [reload]);
@@ -44,7 +46,8 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   const dupPlan = templates.find((t) => sameName(t.name, newName)) || null;
   async function create() {
     const name = newName.trim();
-    if (!name) return;
+    if (!name || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       const t = await data.createTemplate(name);
@@ -52,7 +55,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
       setEditing({ template: t, days: [], plan: templateDaysToPlan([]), clientCount: 0 });
       await reload();
     } catch (e) { toast(e.message || "Could not create plan", "error"); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(false); }
   }
 
   async function openEditor(t) {
@@ -148,7 +151,7 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
   async function duplicate(t) {
     setMenuFor(null);
     try { await data.duplicateTemplate(t.id, `${t.name} (copy)`); toast("Plan duplicated"); await reload(); }
-    catch (e) { toast(e.message || "Could not duplicate", "error"); }
+    catch (e) { toast(e.message || "Could not duplicate", "error"); reload(); } // the list shows what really exists
   }
 
   async function confirmDelete() {
@@ -229,7 +232,9 @@ export default function PlansPage({ clients, onExport, onClientsChanged }) {
 
       {showHow && <HowPlansWork onClose={() => setHow(false)} />}
 
-      {loading ? <Spinner label="Loading plans…" /> : templates.length === 0 ? (
+      {loading ? <Spinner label="Loading plans…" /> : loadError && templates.length === 0 ? (
+        <Empty title="Couldn't load your plans" action={<Button onClick={() => { setLoading(true); reload(); }}>Try again</Button>}>Check your connection and try again.</Empty>
+      ) : templates.length === 0 ? (
         <Empty title="No plans yet" action={<Button variant="primary" icon={<Icon.Plus />} onClick={() => setNaming(true)}>Create your first plan</Button>}>
           A plan is a week of workouts you can give to any client and update for everyone at once.
         </Empty>

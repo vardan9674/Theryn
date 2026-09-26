@@ -114,7 +114,8 @@ export function attentionBucket({ todo, payment, history }, now = new Date()) {
 }
 
 export function sortClients(rows) {
-  const rank = { attention: 0, payment: 1, ok: 2 };
+  // "unknown": their data didn't load; "new": no plan and nothing logged yet.
+  const rank = { attention: 0, unknown: 1, payment: 2, new: 3, ok: 4 };
   return [...rows].sort((a, b) => {
     const ra = rank[a.bucket] ?? 3;
     const rb = rank[b.bucket] ?? 3;

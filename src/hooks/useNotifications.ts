@@ -414,6 +414,9 @@ export async function triggerCoachCatchUp(
 // ── DEEP-LINK TAP HANDLER ─────────────────────────────────────────────────
 
 const DEEP_LINK_KEY = 'theryn_pending_deeplink';
+// Fired when a tap stores a link, so a screen that is already open acts on it
+// now; the stored copy covers a cold start (#142).
+export const DEEP_LINK_EVENT = 'theryn:deeplink';
 
 export function consumePendingDeepLink(): { type: string; [k: string]: any } | null {
   try {
@@ -441,6 +444,7 @@ export function registerNotificationTapHandlers() {
       try {
         localStorage.setItem(DEEP_LINK_KEY, JSON.stringify(extra));
       } catch {}
+      try { window.dispatchEvent(new Event(DEEP_LINK_EVENT)); } catch {}
     });
   } catch (e) {
     console.error('Failed to register notification tap handler', e);

@@ -17,7 +17,7 @@ function useRates() {
  * Manual ledger. The coach writes down what each client paid; Theryn works
  * out who is due and who is late.
  */
-export default function PaymentsPage({ clients, fees, payments, defaultCurrency, actions }) {
+export default function PaymentsPage({ clients, fees, payments, defaultCurrency, actions, loadError = null, onRetry }) {
   const vp = useViewport();
   const [filter, setFilter] = React.useState("all");
   const now = new Date();
@@ -43,6 +43,17 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
   const rateDay = fx?.day ? new Date(fx.day + "T12:00:00").toLocaleDateString("en-US", { day: "numeric", month: "short" }) : null;
   const rateHint = `Converted to ${defaultCurrency} at the ${rateDay || "latest"} rate (${RATES_SOURCE}). Each client still pays in their own currency.`;
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
+
+  // Fees and payments didn't load: say so, rather than showing every client
+  // as "No fee set" with totals of 0 (#135).
+  if (loadError) {
+    return (
+      <div className="cx-page">
+        <div className="cx-page-head"><div><h1 className="cx-h1">{monthName}</h1></div></div>
+        <Empty title="Couldn't load payments" action={<Button onClick={onRetry}>Try again</Button>}>Check your connection and try again.</Empty>
+      </div>
+    );
+  }
 
   return (
     <div className="cx-page">
@@ -207,7 +218,7 @@ export function FeeSheet({ open, onClose, client, fee, defaultCurrency, onSave, 
         </div>
         <Checkbox checked={active} onChange={setActive}>Fee is active (untick to pause reminders)</Checkbox>
         <div className="cx-actions-2"><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save fee"}</Button></div>
-        {fee && onDelete && <Button variant="danger" onClick={async () => { setBusy(true); try { await onDelete(); onClose(); } finally { setBusy(false); } }} disabled={busy}>Remove fee</Button>}
+        {fee && onDelete && <Button variant="danger" onClick={async () => { if (busy) return; setBusy(true); try { await onDelete(); onClose(); } catch (e) { toast(`Could not remove the fee: ${e.message || e}`, "error"); } finally { setBusy(false); } }} disabled={busy}>Remove fee</Button>}
       </div>
     </Sheet>
   );
@@ -220,7 +231,14 @@ function AmountInput({ value, onChange }) {
   return (
     <>
       <input className="cx-input" inputMode="decimal" value={value} placeholder="0" aria-label="Amount"
-        onChange={(e) => { const raw = e.target.value; onChange(cleanDecimal(raw, 9)); setNote(/[^0-9.]/.test(raw) ? (raw.includes("-") ? "Amounts can't be negative." : "Numbers only.") : null); }} />
+        onChange={(e) => {
+          const raw = e.target.value;
+          onChange(cleanDecimal(raw, 9));
+          // Keep the word up until the box is cleared: typing "-50" leaves 50
+          // there, and the note saying why must not vanish on the next digit (#141).
+          const bad = /[^0-9.]/.test(raw) ? (raw.includes("-") ? "Amounts can't be negative, so the minus sign was left out." : "Numbers only.") : null;
+          setNote((prev) => bad || (raw === "" ? null : prev));
+        }} />
       {note && <span className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>{note}</span>}
     </>
   );

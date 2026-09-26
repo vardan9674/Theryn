@@ -269,7 +269,8 @@
   background: var(--cx-a); color: var(--cx-bg); padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; z-index: 400;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-width: calc(100vw - 32px); text-align: center;
 }
-.cx-toast.err { background: var(--cx-red); color: #fff; }
+.cx-toast.err { background: var(--cx-red); color: #fff; display: flex; align-items: center; gap: 10px; text-align: left; padding-right: 8px; }
+.cx-toast-x { background: none; border: none; color: inherit; font-size: 20px; line-height: 1; padding: 2px 6px; cursor: pointer; font-family: inherit; }
 .cx-toast.over-sheet { bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px)); }
 
 /* ── Forms ────────────────────────────────────────────────────────── */

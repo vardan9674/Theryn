@@ -29,7 +29,13 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
       const fee = fees.find((f) => f.athlete_id === link.athlete_id) || null;
       const pays = payments.filter((p) => p.athlete_id === link.athlete_id);
       const payment = paymentFact(fee, pays, defaultCurrency, now);
-      if (!data) return { link, name: link.athlete_name, loading: true, payment, bucket: "ok" };
+      if (!data) {
+        // Still loading, or the load failed: then say so and offer a retry (#132).
+        const loadError = cache.error(link.athlete_id);
+        return { link, name: link.athlete_name, loading: !loadError, loadError, payment, bucket: loadError ? "unknown" : "ok" };
+      }
+      // No plan and nothing logged yet: they need a plan, which isn't "on track" (#141).
+      const noPlan = !(data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length));
       const cnow = clientNow(data, now); // the client's day, not the coach's (#95)
       if (link.manual) {
         const hasPlan = data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length);
@@ -47,7 +53,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
           last: hasHistory ? lastWorkoutLabel(data.history, cnow) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, cnow) : "muted",
           week: hasHistory ? weekProgress(data.history, data.routine, cnow) : null, todo, payment, manual: true,
           streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow) };
-        row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : "ok";
+        row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : noPlan && !hasHistory ? "new" : "ok";
         return row;
       }
       const todo = whatToDo(data, cnow);
@@ -58,6 +64,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow),
       };
       row.bucket = attentionBucket(row, cnow);
+      if (row.bucket === "ok" && noPlan && !(data.history || []).length) row.bucket = "new";
       return row;
     });
     return sortClients(list);
@@ -67,6 +74,8 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
     attention: rows.filter((r) => r.bucket === "attention").length,
     payment: rows.filter((r) => r.payment?.status === "overdue" || r.payment?.status === "due").length,
     ok: rows.filter((r) => r.bucket === "ok").length,
+    new: rows.filter((r) => r.bucket === "new").length,
+    failed: rows.filter((r) => r.loadError).length,
   }), [rows]);
 
   const q = (search || "").trim().toLowerCase();
@@ -97,6 +106,10 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
           <h1 className="cx-h1">{plural(clients.length, "client")}</h1>
           {counts.attention > 0
             ? <div className="cx-sub">{counts.attention === 1 ? "1 client needs attention." : `${counts.attention} clients need attention.`}</div>
+            : counts.new > 0
+            ? <div className="cx-sub">{counts.new === 1 ? "1 client needs a plan." : `${counts.new} clients need a plan.`}</div>
+            : counts.failed > 0
+            ? <div className="cx-sub">Some clients didn't load.</div>
             : <div className="cx-sub">Everyone is on track.</div>}
         </div>
         <div className="cx-chips" role="group" aria-label="Filter clients">
@@ -109,7 +122,7 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
 
       {clients.length === 0 ? (
         <Empty title="No clients yet" action={<Button variant="primary" onClick={actions.addClient} icon={<Icon.Plus />}>Add your first client</Button>}>
-          Share your invite code and your client appears here once they join.
+          Add someone by name to build their plan and send them their link. If they already use the app, enter the code from their app.
         </Empty>
       ) : visible.length === 0 ? (
         <Empty title="Nothing here">No clients match this filter{q ? ` or search` : ""}.</Empty>
@@ -177,6 +190,8 @@ export function StreakCell({ s }) {
   return <span className="cx-muted">{s.current === 1 ? "1" : "—"}</span>;
 }
 
+const LOAD_FAILED = "Couldn't load their data. Open to try again.";
+
 function Skeleton({ w = 80 }) { return <span className="cx-skel" style={{ display: "inline-block", width: w, height: 14 }} />; }
 
 function TableRow({ row, selected, onClick, tour }) {
@@ -188,7 +203,7 @@ function TableRow({ row, selected, onClick, tour }) {
       <div>{row.loading ? <Skeleton w={40} /> : <StreakCell s={row.streak} />}</div>
       <div className="cx-col-week">{row.loading ? <Skeleton w={90} /> : <WeekSquares week={row.week} />}</div>
       <div className="cx-col-pay"><Tone tone={pay.tone}>{pay.label}</Tone></div>
-      <div className={`todo ${row.todo?.severity ? "" : "ok"}`}>{row.loading ? <Skeleton w={160} /> : row.todo.text}</div>
+      <div className={`todo ${row.todo?.severity || row.loadError ? "" : "ok"}`}>{row.loading ? <Skeleton w={160} /> : row.loadError ? LOAD_FAILED : row.todo.text}</div>
       <div className="chev"><Icon.Chevron /></div>
     </button>
   );
@@ -210,7 +225,8 @@ function CardRow({ row, onClick, tour }) {
         <div><span className="k">This week</span>{row.loading ? <Skeleton w={60} /> : <WeekSquares week={row.week} />}</div>
         <div><span className="k">Payment</span><Tone tone={pay.tone}>{pay.label}</Tone></div>
       </div>
-      {!row.loading && (row.todo?.severity || row.manual) && <div className={`todo ${row.manual ? "cx-muted" : ""}`}>{row.todo.text}</div>}
+      {row.loadError ? <div className="todo">{LOAD_FAILED}</div>
+        : !row.loading && (row.todo?.severity || row.manual) && <div className={`todo ${row.manual ? "cx-muted" : ""}`}>{row.todo.text}</div>}
     </button>
   );
 }
