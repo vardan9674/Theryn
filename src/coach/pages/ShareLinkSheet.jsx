@@ -2,6 +2,7 @@ import React from "react";
 import { Sheet, Button, Icon, Checkbox, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, ALL_FIELD_IDS, DEFAULT_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, askedFields, inviteUrl, inviteMessage } from "../lib/clientLinks.js";
+import { isLinkSetupError } from "../../link/linkErrors.js";
 
 /**
  * "Share link" on a client page. One durable link per client; the coach
@@ -15,6 +16,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
   const [requested, setRequested] = React.useState(DEFAULT_FIELD_IDS);
   const [busy, setBusy] = React.useState(false);
   const [confirm, setConfirm] = React.useState(null); // "rotate" | "off"
+  const [loadTry, setLoadTry] = React.useState(0);     // bumped by "Try again"
   const first = (client?.athlete_name || "").split(" ")[0];
 
   React.useEffect(() => {
@@ -26,7 +28,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
       .then((r) => { if (cancelled) return; setState({ loading: false, link: r?.link || null, token: r?.token || null, error: null }); setRequested(r?.link ? askedFields(r.link.requested) : DEFAULT_FIELD_IDS); })
       .catch((e) => { if (!cancelled) setState({ loading: false, link: null, token: null, error: e.message }); });
     return () => { cancelled = true; };
-  }, [open, client?.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, client?.athlete_id, loadTry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const url = state.token ? linkUrl(state.token) : null;
   const text = url ? shareMessage(first, url) : "";
@@ -47,10 +49,17 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     finally { setBusy(false); setConfirm(null); }
   }
   async function saveRequested(next) {
+    const before = requested;
     setRequested(next);
     if (!state.link) return;
     // The link on the client's phone reads this every time it opens: no new link needed.
-    try { await data.updateClientLinkRequested(client.athlete_id, next); toast(`Saved. ${first} sees it next time they open the link.`); } catch (e) { toast(e.message || "Could not save", "error"); }
+    try { await data.updateClientLinkRequested(client.athlete_id, next); toast(`Saved. ${first} sees it next time they open the link.`); }
+    catch (e) {
+      // Untick what didn't save, so the boxes match what the client sees. If
+      // another tick came in meanwhile, it saves the whole list and wins.
+      setRequested((cur) => (cur === next ? before : cur));
+      toast(e.message || "Could not save", "error");
+    }
   }
   async function copy() {
     try { await navigator.clipboard.writeText(url); toast("Link copied"); }
@@ -96,8 +105,14 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     <Sheet open={open} onClose={onClose} title={`${first}'s link`} subtitle={`One link ${first} keeps. It opens today's workout to tick off, and a Measurements tab. No app needed.`}>
       {state.loading ? (
         <div className="cx-spinner" style={{ margin: "24px auto" }} />
-      ) : state.error ? (
+      ) : state.error && isLinkSetupError(state.error) ? (
         <div className="cx-empty"><b>Links need a one-time database update</b>{state.error}</div>
+      ) : state.error ? (
+        // Usually a dropped connection. Nothing is wrong with the link itself.
+        <div className="cx-form">
+          <div className="cx-empty"><b>Couldn't load the link.</b>Check your connection and try again.</div>
+          <Button onClick={() => setLoadTry((n) => n + 1)}>Try again</Button>
+        </div>
       ) : !url && state.link ? (
         // The link is live but was made on a device that never synced it. Never
         // replace it without saying so: the client may have it pinned in WhatsApp.
@@ -159,7 +174,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
                 </div>
               </div>
             ))}
-            <div className="cx-small cx-muted">None ticked: {first} sees chest, waist, hips, left arm and left thigh.</div>
+            {requested.length === 0 && <div className="cx-small cx-muted">None ticked: {first} sees chest, waist, hips, left arm and left thigh.</div>}
           </div>
 
           <div className="cx-row" style={{ justifyContent: "space-between", paddingTop: 4 }}>

@@ -9,10 +9,10 @@ import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
-import { signInErrorFromUrl } from "../lib/signInError.js";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
+import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
@@ -120,11 +120,18 @@ export default function LinkPage({ token, api }) {
   const [connect, setConnect] = React.useState({ open: false, error: null, busy: false });
   const [dayIso, setDayIso] = React.useState(null);        // a day they picked; null = today
   const [extrasByDate, setExtrasByDate] = React.useState({}); // date → exercises they added
+  const [loadTry, setLoadTry] = React.useState(0);          // bumped by "Try again" on the error screen
+  // Set once the server says this link was turned off or replaced. Both tabs
+  // then stop offering to send, since trying again can never work.
+  const [linkOff, setLinkOff] = React.useState(false);
 
   // An invite the coach sent carries its code in the address. Taken once, then
   // wiped from the address bar so a forwarded screenshot of the URL is just
   // the everyday link.
   const [invite] = React.useState(() => (typeof window === "undefined" ? null : joinCodeFrom(window.location.search)));
+  // Back from Google with an error (took too long, or cancelled): read once, like
+  // the invite, so it survives the effect below running more than once (#130).
+  const [signInFailed] = React.useState(() => (typeof window === "undefined" ? null : failedSignIn(window.location)));
   React.useEffect(() => {
     if (!invite || typeof window === "undefined") return;
     const url = new URL(window.location.href);
@@ -140,10 +147,15 @@ export default function LinkPage({ token, api }) {
       try {
         const m = await fetchMe(token);
         if (!m?.ok) return;
-        const oauthError = typeof window !== "undefined" ? signInErrorFromUrl(window.location) : null;
-        if (oauthError) {
+        const failed = signInFailed;
+        if (failed) {
+          // The round trip is over: nothing left pending to finish later, and the
+          // error comes out of the address so a reload doesn't repeat it (#130).
           store.setPendingCode(null);
-          if (!cancelled) { setMe(m); setConnect({ open: true, busy: false, error: oauthError }); }
+          store.setJoinStarted(false);
+          forgetJoinLink();
+          try { window.history.replaceState(window.history.state, "", failed.address); } catch { /* old browser */ }
+          if (!cancelled) { setMe(m); setConnect({ open: true, busy: false, error: failed.message }); }
           return;
         }
         // Signed in, holding the link, not in yet: finish what they started.
@@ -161,9 +173,9 @@ export default function LinkPage({ token, api }) {
     let cancelled = false;
     fetchLink(token).then((d) => { if (!cancelled) setState({ loading: false, data: d, error: d?.ok ? null : d?.reason || "invalid" }); })
       // A thrown error is the server or the network, never the link itself.
-      .catch((e) => { if (!cancelled) setState({ loading: false, data: null, error: /fetch|network|offline/i.test(e.message || "") ? "network" : "server" }); });
+      .catch((e) => { if (!cancelled) setState({ loading: false, data: null, error: loadFailure(e) }); });
     return () => { cancelled = true; };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, loadTry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     document.title = "Your coach sent you a form · Theryn";
@@ -173,7 +185,7 @@ export default function LinkPage({ token, api }) {
 
   // Continues the tumble the Suspense fallback started — no second replay.
   if (state.loading) return <div className="lk-page"><TherynLoader /></div>;
-  if (state.error || !state.data?.ok) return <Unavailable reason={state.error} />;
+  if (state.error || !state.data?.ok) return <Unavailable reason={state.error} onRetry={() => { setState({ loading: true, data: null, error: null }); setLoadTry((n) => n + 1); }} />;
   // The coach's editor stamps the plan with the units the coach typed in; the
   // client sees every target converted to their own.
   const coachUnits = planUnits(state.data.plan) || state.data.unit_system || "imperial";
@@ -264,8 +276,9 @@ export default function LinkPage({ token, api }) {
             onPickDay={joined ? (iso) => { setDayIso(iso === isoToday() ? null : iso); window.scrollTo(0, 0); } : null}
             extras={extras} onExtras={joined ? setExtras : null}
             onSubmit={(payload) => submitLink(token, "workout", payload)}
+            linkOff={linkOff} onLinkOff={() => setLinkOff(true)}
             onSent={(summary) => { setSent({ kind: "workout", summary }); refreshMe(); }} onMeasure={() => setTab("measurements")} />
-        : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
+        : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} linkOff={linkOff} onLinkOff={() => setLinkOff(true)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
       {connect.open && !me?.waiting && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} invited={Boolean(invite)}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
     </div>
@@ -556,7 +569,7 @@ function AddExercise({ unit, dayLabel = "today", onAdd, onClose }) {
 
 // ── Today's workout ────────────────────────────────────────────────────────
 function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks,
-  joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null }) {
+  joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null, linkOff = false, onLinkOff }) {
   const [adding, setAdding] = React.useState(false);
   const planCount = today.exercises.length - extras.length; // the coach's, before theirs
   // A day they have already sent opens as a receipt, not as the workout again.
@@ -780,7 +793,12 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         ...(mode === "edit" && sentInfo?.id ? { replaces: sentInfo.id } : {}),
       };
       const res = await sendWithRetry(onSubmit, payload);
-      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent several workouts in the last 24 hours already. Your coach has them." : "Could not send. Try again in a moment.");
+      if (!res?.ok) {
+        const no = submitRefusal(res, "workout");
+        // Turned off or replaced: nothing to retry. Their ticks stay on screen.
+        if (no.gone) { onLinkOff?.(); return; }
+        throw new Error(no.message);
+      }
       store?.setKey(date, null);
       const before = streakStats(d.doneDates || [], d.plan).current;
       // Enough to show them what went, and to open it again if they want to
@@ -1017,7 +1035,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
             {sentInfo && mode && <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>{mode === "edit"
               ? `Changing the workout your coach already has${sentInfo.at ? `, sent at ${clock(sentInfo.at)}` : ""}. Sending replaces it, so they see one workout.`
               : `You already sent this day${sentInfo.at ? ` at ${clock(sentInfo.at)}` : ""}. This goes over as a second workout.`}</span></div>}
-            {error && <div className="lk-error" role="alert">{error}</div>}
+            {(linkOff || error) && <div className="lk-error" role="alert">{linkOff ? LINK_OFF_MESSAGE : error}</div>}
           </>
         )}
 
@@ -1042,7 +1060,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
               <button type="button" className="lk-rest-skip" onClick={() => setRest(null)}>Skip</button>
             </div>
           )}
-          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything}><Icon.Check size={20} />{busy ? "Sending…"
+          <button type="button" className="lk-send" onClick={send} disabled={busy || !anything || linkOff}><Icon.Check size={20} />{busy ? "Sending…"
             : mode === "edit" ? "Save the changes"
             : mode === "again" ? "Send this as well"
             : isToday ? "Finish workout" : `Send ${DAY_LONG[today.key]}'s workout`}</button>
@@ -1054,7 +1072,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
 }
 
 // ── Measurements ───────────────────────────────────────────────────────────
-function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }) {
+function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues, linkOff = false, onLinkOff }) {
   // The coach's picks come first; any other measurement is one tap away.
   // Everything is optional: at least one number is all it takes to send.
   const requested = askedFields(d.requested);
@@ -1103,7 +1121,12 @@ function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }
       if (!key) { key = sendKey(); store?.setKey(`m:${date}`, key); }
       const res = await sendWithRetry(onSubmit, { ...measurementsPayload(values, unit, date), client_key: key, ...(browserTimeZone() ? { tz: browserTimeZone() } : {}) });
       store?.setKey(`m:${date}`, null);
-      if (!res?.ok) throw new Error(res?.reason === "too_many" ? "You've sent measurements a few times today already. Your coach has them." : res?.reason === "out_of_range" ? "One of the numbers looks off. Please check it." : "Could not send. Try again in a moment.");
+      if (!res?.ok) {
+        const no = submitRefusal(res, "measurements");
+        // Turned off or replaced: nothing to retry. Their numbers stay on screen.
+        if (no.gone) { onLinkOff?.(); return; }
+        throw new Error(no.message);
+      }
       onSent({ count: added + (values.weight ? 1 : 0), date });
     } catch (e) { setError({ error: isNetworkError(e) ? "No connection just now. Your numbers are still here — tap Send again when you have signal." : e.message }); }
     finally { setBusy(false); }
@@ -1162,11 +1185,11 @@ function MeasurementsTab({ d, store = null, onSubmit, onSent, controlledValues }
           )}
         </div>
         <div className="lk-small">Measure without pulling the tape tight.</div>
-        {error && <div className="lk-error" role="alert">{error.error}</div>}
+        {(linkOff || error?.error) && <div className="lk-error" role="alert">{linkOff ? LINK_OFF_MESSAGE : error.error}</div>}
         <div className="lk-note"><Icon.Lock size={16} /><span>Shared with Coach {d.coach_name} only. Your previous measurements aren't shown on this link.</span></div>
       </main>
       <div className="lk-footer"><div className="lk-footer-inner">
-        <button type="button" className="lk-send" onClick={send} disabled={busy}><Icon.Send size={20} />{busy ? "Sending…" : "Send measurements"}</button>
+        <button type="button" className="lk-send" onClick={send} disabled={busy || linkOff}><Icon.Send size={20} />{busy ? "Sending…" : "Send measurements"}</button>
       </div></div>
     </>
   );
@@ -1252,7 +1275,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
   );
 }
 
-function Unavailable({ reason }) {
+function Unavailable({ reason, onRetry }) {
   const revoked = reason === "revoked";
   return (
     <div className="lk-page cx-app">
@@ -1263,6 +1286,8 @@ function Unavailable({ reason }) {
           : reason === "network" ? "Couldn't reach Theryn. Check your connection and try again."
           : reason === "server" ? "Theryn had a problem on our side. Your link is fine. Try again in a minute."
           : "Check the link your coach sent you, or ask them to send it again."}</p>
+        {/* Only when the trouble was getting here. A turned-off link stays off. */}
+        {onRetry && canRetryLoad(reason) && <button type="button" className="lk-send lk-retry" onClick={onRetry}>Try again</button>}
         <div className="lk-nudge"><a href={APP_URL}>About Theryn</a></div>
       </div>
     </div>

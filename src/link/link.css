@@ -107,6 +107,7 @@
 .lk-mark.muted { background: var(--cx-s2); color: var(--cx-mu); }
 .lk-center h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
 .lk-center p { font-size: 16px; color: var(--cx-tx2); line-height: 1.45; margin: 0; max-width: 320px; }
+.lk-retry { max-width: 320px; }
 .lk-keep { width: 100%; text-align: left; display: flex; gap: 12px; }
 .lk-nudge { font-size: 15px; color: var(--cx-mu); min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
 .lk-weeknote { margin-top: 8px; font-size: 13px; color: var(--cx-mu); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
