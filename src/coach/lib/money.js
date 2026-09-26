@@ -8,8 +8,11 @@
 // only swapped the symbol.
 import { fmtMoney } from "../../hooks/usePayments.ts";
 
-const RATES_URL = "https://open.er-api.com/v6/latest/USD";
-export const RATES_CREDIT = { label: "Rates by ExchangeRate-API", href: "https://www.exchangerate-api.com" };
+// European Central Bank reference rates via Frankfurter: no key, no link to
+// show. The ECB doesn't publish the UAE dirham; it is pegged to the dollar.
+const RATES_URL = "https://api.frankfurter.dev/v1/latest?base=USD";
+export const RATES_SOURCE = "European Central Bank";
+const PEGGED = { AED: 3.6725 };
 const CACHE_KEY = "theryn_fx_usd";
 const FRESH_MS = 12 * 60 * 60 * 1000;
 
@@ -33,8 +36,8 @@ export async function loadRates({ fetchImpl = globalThis.fetch, now = Date.now()
       try {
         const res = await fetchImpl(RATES_URL);
         const j = await res.json();
-        if (j?.result !== "success" || !j.rates?.USD) throw new Error("bad rates");
-        const fresh = { rates: j.rates, day: j.time_last_update_utc ? new Date(j.time_last_update_utc).toISOString().slice(0, 10) : null, at: now };
+        if (!j?.rates || typeof j.rates.INR !== "number") throw new Error("bad rates");
+        const fresh = { rates: { ...PEGGED, ...j.rates, USD: 1 }, day: /^\d{4}-\d{2}-\d{2}$/.test(j.date || "") ? j.date : null, at: now };
         cache.set(fresh);
         return fresh;
       } catch {

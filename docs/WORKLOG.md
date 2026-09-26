@@ -4,6 +4,22 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-26 (later) — Payments: no rates line; rates from the ECB (#122 follow-up), branch `fix/payments-quiet-totals`
+
+**Asked**
+- Owner, on the line "Totals in USD, converted at the Sep 26 rate… Rates by ExchangeRate-API": "you don't need to show this".
+
+**Done**
+- Line removed. The "≈" and the amounts underneath already say a total is converted; the rate day and source are a hover hint on the card.
+- ExchangeRate-API's free terms require a visible credit link, so rates now come from Frankfurter (European Central Bank reference rates; no key, no link). The ECB doesn't publish AED, so it uses the fixed USD peg of 3.6725.
+
+**Verified**
+- Live, before this change, with two test clients on the owner's demo account (₹8,000 and $150 a month, ₹8,000 paid):
+  - In USD: Received ≈ $83.40 (₹8,000); Still expected $150 ($233.40 before the payment).
+  - In INR: Received ₹8,000; Still expected ≈ ₹14,388 ($150).
+  - Client rows kept their own currency.
+- Preview: line gone, hint "Converted to INR at the Sep 25 rate (European Central Bank)…", no console errors. 237 tests, typecheck, build pass.
+
 ## 2026-09-26 — Payment totals convert between currencies (#122), branch `fix/payments-currency`
 
 **Asked**

@@ -4,7 +4,7 @@ import { paymentFact } from "../lib/clientFacts.js";
 import { shortDate, isoDate, plural } from "../lib/format.js";
 import { fmtMoney, computeMonthlySummary, SUPPORTED_CURRENCIES } from "../../hooks/usePayments.ts";
 import { cleanDecimal } from "../lib/clientLinks.js";
-import { loadRates, sumByCurrency, describeTotal, RATES_CREDIT } from "../lib/money.js";
+import { loadRates, sumByCurrency, describeTotal, RATES_SOURCE } from "../lib/money.js";
 
 /** Today's exchange rates (cached), or null while loading / unavailable. */
 function useRates() {
@@ -39,9 +39,9 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
   const received = describeTotal(summary.receivedByCurrency, defaultCurrency, fx?.rates);
   const expected = describeTotal(summary.outstandingByCurrency, defaultCurrency, fx?.rates);
   const late = describeTotal(lateByCurrency, defaultCurrency, fx?.rates);
-  const anyConverted = received.converted || expected.converted || late.converted;
   const lateTotal = Object.values(lateByCurrency).reduce((a, b) => a + b, 0);
   const rateDay = fx?.day ? new Date(fx.day + "T12:00:00").toLocaleDateString("en-US", { day: "numeric", month: "short" }) : null;
+  const rateHint = `Converted to ${defaultCurrency} at the ${rateDay || "latest"} rate (${RATES_SOURCE}). Each client still pays in their own currency.`;
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
 
   return (
@@ -55,15 +55,12 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
       </div>
 
       <div className="cx-stats">
-        <Stat label="Received this month" t={received} />
-        <Stat label="Still expected" t={expected} />
-        <Stat label="Late" t={late} color={lateTotal > 0 ? "var(--cx-red)" : undefined} />
+        {/* The "≈" and the amounts underneath say it's converted; the rate day
+            and source are on hover rather than a line of text (owner's call). */}
+        <Stat label="Received this month" t={received} hint={rateHint} />
+        <Stat label="Still expected" t={expected} hint={rateHint} />
+        <Stat label="Late" t={late} hint={rateHint} color={lateTotal > 0 ? "var(--cx-red)" : undefined} />
       </div>
-      {anyConverted && (
-        <div className="cx-small cx-muted cx-mb16">
-          Totals in {defaultCurrency}, converted at {rateDay ? `the ${rateDay} rate` : "today's rate"}. Each client still pays in their own currency. <a href={RATES_CREDIT.href} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>{RATES_CREDIT.label}</a>
-        </div>
-      )}
 
       <div className="cx-chips cx-mb16" role="group" aria-label="Filter payments">
         <Chip active={filter === "all"} onClick={() => setFilter("all")}>Everyone</Chip>
@@ -231,9 +228,9 @@ function AmountInput({ value, onChange }) {
 
 /** One total card: the amount in the coach's currency, and underneath, the
  * amounts it was converted from when there were other currencies. */
-function Stat({ label, t, color }) {
+function Stat({ label, t, color, hint }) {
   return (
-    <div className="cx-card cx-stat">
+    <div className="cx-card cx-stat" title={t.converted ? hint : undefined}>
       <span className="k">{label}</span>
       <span className="v" style={color ? { color } : undefined}>{t.main}</span>
       {t.note && <span className="cx-small cx-muted">{t.note}</span>}
