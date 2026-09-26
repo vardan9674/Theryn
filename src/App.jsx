@@ -608,8 +608,6 @@ export default function GymApp() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("theryn_pending_role_landing");
   });
-  const pendingRoleRef = useRef(pendingRole);
-  useEffect(() => { pendingRoleRef.current = pendingRole; }, [pendingRole]);
   // Onboarding status lives in profiles.onboarding_completed (Supabase = source
   // of truth). Local state: 'loading' until the DB round-trip settles, then
   // 'needed' or 'done'. We no longer use localStorage for this — it was the
@@ -632,7 +630,7 @@ export default function GymApp() {
     }
     let cancelled = false;
     supabase.from("profiles")
-      .select("display_name, height_cm, unit_system, default_currency, onboarding_completed")
+      .select("display_name, height_cm, unit_system, default_currency, onboarding_completed, role")
       .eq("id", authUser.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -641,6 +639,24 @@ export default function GymApp() {
           setOnboardingStatus("done");
         } else {
           setOnboardingStatus("needed");
+        }
+        // profiles.role is the source of truth for the role choice, so a
+        // returning user never sees the picker again — new device, cleared
+        // storage or a fresh login all read the same answer back.
+        if (data?.role) {
+          try { localStorage.setItem(`theryn_role_${authUser.id}`, data.role); } catch {}
+          setRole(data.role);
+          if (data.role === "athlete") {
+            try {
+              if (!localStorage.getItem(`theryn_tour_done_${authUser.id}`)) setShowTour(true);
+            } catch {}
+          }
+        } else if (data) {
+          // Users who picked a role before it was stored server-side: lift this
+          // device's cached choice up to the row so it follows them elsewhere.
+          let cached = null;
+          try { cached = localStorage.getItem(`theryn_role_${authUser.id}`); } catch {}
+          if (cached) saveRole(authUser.id, cached);
         }
         // Hydrate profile state with anything already on the row. Initials
         // are re-derived from display_name so the avatar reflects what the
@@ -667,6 +683,23 @@ export default function GymApp() {
       });
     return () => { cancelled = true; };
   }, [authUser?.id]);
+
+  // Role lives in profiles.role — that's what makes the choice stick across
+  // devices and logins. localStorage stays a cache so the app can route
+  // instantly, before the profile fetch lands.
+  function saveRole(uid, r) {
+    if (!uid) return;
+    // athlete_web is only how the web build renders an athlete; the stored
+    // role stays canonical so the native app reads it back correctly.
+    const canonical = r === "athlete_web" ? "athlete" : (r || null);
+    try {
+      if (canonical) localStorage.setItem(`theryn_role_${uid}`, canonical);
+      else localStorage.removeItem(`theryn_role_${uid}`);
+    } catch {}
+    supabase.from("profiles")
+      .upsert({ id: uid, role: canonical }, { onConflict: "id" })
+      .then(({ error }) => { if (error) console.error("Role save error:", error.message); });
+  }
 
   function handleNameSetupComplete() {
     setOnboardingStatus("done");
@@ -725,14 +758,14 @@ export default function GymApp() {
           if (error) console.error("Profile upsert error:", error.message);
         });
 
-        // Load stored role — if none, role stays null → RolePickerScreen will show.
-        // If the user is entering from a landing CTA (pendingRole set), we want
-        // the role picker to run regardless of stale stored state — skip restore.
+        // Load the cached role for instant routing; the profiles.role fetch
+        // above is the authority and corrects this if the cache is stale. If
+        // neither has a role, it stays null → RolePickerScreen shows once.
         const storedRole = localStorage.getItem(`theryn_role_${user.id}`);
-        if (!pendingRoleRef.current) setRole(storedRole || null);
+        if (storedRole) setRole(storedRole);
 
         // Show athlete tour on first-ever login (only for athlete role)
-        if (storedRole === "athlete" && !pendingRoleRef.current) {
+        if (storedRole === "athlete") {
           const tourKey = `theryn_tour_done_${user.id}`;
           if (!localStorage.getItem(tourKey)) {
             setShowTour(true);
@@ -1087,7 +1120,6 @@ export default function GymApp() {
       // into a screen that can blank out (e.g. stale `athlete_web`).
       const wantRole = intendedRole === "athlete" || intendedRole === "coach" ? intendedRole : null;
       setPendingRole(wantRole);
-      pendingRoleRef.current = wantRole;
       // Persist across the OAuth page reload; React state is wiped on redirect back.
       if (wantRole) localStorage.setItem("theryn_pending_role_landing", wantRole);
       else localStorage.removeItem("theryn_pending_role_landing");
@@ -1168,11 +1200,11 @@ export default function GymApp() {
             if (r === "athlete" && isWeb) {
               // Athletes on web → download page
               setRole("athlete_web");
-              localStorage.setItem(`theryn_role_${authUser.id}`, "athlete_web");
+              saveRole(authUser.id, "athlete");
               return;
             }
             setRole(r);
-            localStorage.setItem(`theryn_role_${authUser.id}`, r);
+            saveRole(authUser.id, r);
           }}
         />
       );
@@ -1184,7 +1216,7 @@ export default function GymApp() {
           setPendingRole(null);
           localStorage.removeItem("theryn_pending_role_landing");
           setRole(r);
-          localStorage.setItem(`theryn_role_${authUser.id}`, r);
+          saveRole(authUser.id, r);
           if (r === "athlete") {
             const tourKey = `theryn_tour_done_${authUser.id}`;
             if (!localStorage.getItem(tourKey)) setShowTour(true);
@@ -1199,7 +1231,7 @@ export default function GymApp() {
     <WebAthleteDownloadPage
       onSwitchToCoach={() => {
         setRole("coach");
-        localStorage.setItem(`theryn_role_${authUser.id}`, "coach");
+        saveRole(authUser.id, "coach");
       }}
       onSignOut={() => {
         supabase.auth.signOut();
@@ -1220,7 +1252,7 @@ export default function GymApp() {
       coachLinksLoaded={coachLinksLoaded}
       onSwitchRole={() => {
         setRole(null);
-        if (authUser?.id) localStorage.removeItem(`theryn_role_${authUser.id}`);
+        saveRole(authUser?.id, null);
       }}
       onSignOut={() => {
         supabase.auth.signOut();
@@ -1261,7 +1293,7 @@ export default function GymApp() {
         {tab==="body"     && <BodyScreen weightLog={weightLog} setWeightLog={setWeightLog} measureLog={measureLog} setMeasureLog={setMeasureLog} measureFields={measureFields} setMeasureFields={setMeasureFields} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} authUser={authUser}/>}
         {tab==="progress" && <ProgressScreen profile={profile} onProfileTap={() => setTab("profile")} workoutHistory={workoutHistory} units={profile.units||"imperial"} templates={templates}/>}
         {tab==="prs"      && <PRsScreen prs={prs} profile={profile} onProfileTap={() => setTab("profile")} units={profile.units||"imperial"} workoutHistory={workoutHistory}/>}
-        {tab==="profile"  && <ProfileScreen authUser={authUser} profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }} onSwitchRole={() => { setRole("coach"); if (authUser?.id) localStorage.setItem(`theryn_role_${authUser.id}`, "coach"); }}/>}
+        {tab==="profile"  && <ProfileScreen authUser={authUser} profile={profile} setProfile={setProfile} workoutHistory={workoutHistory} onSignOut={() => { setAuthUser(null); setShowTour(false); setHasCustomizedRoutine(false); }} onSwitchRole={() => { setRole("coach"); saveRole(authUser?.id, "coach"); }}/>}
       </div>
 
       {/* AthleteView removed — coaches manage athletes from the Coach Dashboard */}
