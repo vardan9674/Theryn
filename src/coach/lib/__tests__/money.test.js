@@ -48,13 +48,14 @@ describe("helpers", () => {
 
 describe("loadRates", () => {
   const memory = () => { let v = null; return { get: () => v, set: (x) => { v = x; } }; };
-  const ok = (rates) => async () => ({ json: async () => ({ result: "success", rates, time_last_update_utc: "Sat, 26 Sep 2026 00:02:32 +0000" }) });
+  // Frankfurter's shape: no USD (it's the base) and no AED (pegged here).
+  const ok = (rates) => async () => ({ json: async () => ({ amount: 1, base: "USD", date: "2026-09-25", rates: { INR: rates.INR, EUR: rates.EUR } }) });
   it("fetches, caches for 12 hours, then refreshes", async () => {
     const cache = memory();
     let calls = 0;
     const f = async (...a) => { calls++; return ok(RATES)(...a); };
     const r1 = await loadRates({ fetchImpl: f, now: 0, cache });
-    expect(r1.rates.INR).toBe(96); expect(r1.day).toBe("2026-09-26");
+    expect(r1.rates.INR).toBe(96); expect(r1.rates.USD).toBe(1); expect(r1.rates.AED).toBe(3.6725); expect(r1.day).toBe("2026-09-25");
     await loadRates({ fetchImpl: f, now: 60 * 60 * 1000, cache });
     expect(calls).toBe(1);
     await loadRates({ fetchImpl: f, now: 13 * 60 * 60 * 1000, cache });
