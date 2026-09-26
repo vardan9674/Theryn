@@ -11,6 +11,7 @@
 // just have sets and reps.
 import { DAYS } from "./format.js";
 import { convertWeight, normUnits } from "./units.js";
+import { cleanAlternatives } from "./clientLinks.js";
 
 const unitsOfRow = (e) => (e.weight_unit === "kg" ? "metric" : e.weight_unit === "lb" ? "imperial" : null);
 
@@ -39,6 +40,8 @@ export function templateDaysToPlan(days, units) {
         if (extra?.mode === "time") { o.mode = "time"; if (extra.secs != null) o.secs = Number(extra.secs); delete o.reps; }
         if (extra?.superset) o.superset = String(extra.superset);
         if (Number(extra?.rest) > 0) o.rest = Number(extra.rest);
+        const alts = cleanAlternatives(extra?.alternatives, o.name);
+        if (alts.length) o.alternatives = alts;
         if (e.notes) o.coachNote = e.notes;
         return o;
       }),
@@ -62,6 +65,7 @@ export function planToTemplateDays(plan, units, previous = []) {
       const o = typeof ex === "string" ? { name: ex } : ex;
       const prev = known.get(String(o.name || "").toLowerCase()) || {};
       const hasWeight = o.weight != null || (o.setList || []).some((s) => s.weight != null);
+      const alternatives = cleanAlternatives(o.alternatives, o.name);
       return {
         sort_order,
         exercise_name: o.name,
@@ -72,7 +76,7 @@ export function planToTemplateDays(plan, units, previous = []) {
         target_weight: o.weight ?? null,
         set_list: Array.isArray(o.setList) && o.setList.length ? o.setList : null,
         weight_unit: hasWeight ? unit : null,
-        extra: o.mode === "time" || o.superset || o.rest ? { ...(o.mode === "time" ? { mode: "time", ...(o.secs != null ? { secs: o.secs } : {}) } : {}), ...(o.superset ? { superset: o.superset } : {}), ...(o.rest ? { rest: o.rest } : {}) } : null,
+        extra: o.mode === "time" || o.superset || o.rest || alternatives.length ? { ...(o.mode === "time" ? { mode: "time", ...(o.secs != null ? { secs: o.secs } : {}) } : {}), ...(o.superset ? { superset: o.superset } : {}), ...(o.rest ? { rest: o.rest } : {}), ...(alternatives.length ? { alternatives } : {}) } : null,
         notes: o.coachNote || "",
       };
     });
