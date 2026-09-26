@@ -648,6 +648,8 @@ export default function GymApp() {
     // Clear the error from the address so a reload or a shared link doesn't repeat it.
     try { window.history.replaceState(window.history.state, "", addressWithoutSignInError(window.location)); } catch {}
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Someone already signed in doesn't need it, and it mustn't reappear if they sign out later.
+  useEffect(() => { if (authUser) setWebSignInError(null); }, [authUser]);
 
   // Server push: register FCM token and capture timezone. No-op on web.
   usePushNotifications(authUser?.id);

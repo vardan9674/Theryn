@@ -20,6 +20,7 @@ Newest first. One entry per working session. Record what was done, what was foun
 - Preview: `/?error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+has+expired` shows the notice and the address becomes `/`. **Sign in again** opens Google's account chooser (I didn't sign in).
 - `/oauth/consent#error=access_denied…` at 375px shows the cancelled message with no sideways scroll. × closes the notice, and a reload doesn't bring it back. No console errors.
 - 243 tests (6 new), build pass.
+- Live on theryn.fit: the error address is cleaned. A browser that is already signed in goes straight to the dashboard, as it should. Follow-up: the notice is cleared once someone is signed in, so it can't reappear later if they sign out.
 
 ## 2026-09-26 (later) — Payments: no rates line; rates from the ECB (#122 follow-up), branch `fix/payments-quiet-totals`
 
