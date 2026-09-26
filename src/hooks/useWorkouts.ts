@@ -258,7 +258,7 @@ export interface WorkoutHistoryEntry {
 export async function loadWorkoutHistory(
   userId: string,
   onFreshData?: (data: WorkoutHistoryEntry[]) => void,
-  opts: { fresh?: boolean } = {}
+  opts: { fresh?: boolean; strict?: boolean } = {}
 ): Promise<WorkoutHistoryEntry[]> {
   const cacheKey = `theryn_history_${userId}`;
   
@@ -286,6 +286,8 @@ export async function loadWorkoutHistory(
       ({ data: sessions, error } = await query("exercise_id, set_number, weight, reps"));
     }
 
+    // `strict` (the coach dashboard): a failed read is an error, not "no workouts" (#132).
+    if (error && opts.strict) throw new Error(`Could not load workouts: ${error.message}`);
     if (error || !sessions) return [];
 
     const idToName: Record<string, string> = {};

@@ -16,7 +16,7 @@ export interface BodyWeightEntry {
 }
 
 /** Fetches up to 90 body weight entries, newest first. `fresh` skips the local cache (coach reads). */
-export async function loadBodyWeights(userId: string, opts: { fresh?: boolean } = {}): Promise<BodyWeightEntry[]> {
+export async function loadBodyWeights(userId: string, opts: { fresh?: boolean; strict?: boolean } = {}): Promise<BodyWeightEntry[]> {
   const cacheKey = `theryn_weights_${userId}`;
   let cachedData = null;
   if (!opts.fresh) try {
@@ -34,6 +34,7 @@ export async function loadBodyWeights(userId: string, opts: { fresh?: boolean } 
 
     if (error) {
       console.error("loadBodyWeights error:", error.message);
+      if (opts.strict) throw new Error(`Could not load body weights: ${error.message}`);
       return [];
     }
 
@@ -148,7 +149,7 @@ function rowToEntry(row: any): MeasurementEntry {
 }
 
 /** Fetches up to 20 measurement entries, newest first. `fresh` skips the local cache (coach reads). */
-export async function loadMeasurements(userId: string, opts: { fresh?: boolean } = {}): Promise<MeasurementEntry[]> {
+export async function loadMeasurements(userId: string, opts: { fresh?: boolean; strict?: boolean } = {}): Promise<MeasurementEntry[]> {
   const cacheKey = `theryn_measurements_${userId}`;
   let cachedData = null;
   if (!opts.fresh) try {
@@ -166,6 +167,7 @@ export async function loadMeasurements(userId: string, opts: { fresh?: boolean }
 
     if (error) {
       console.error("loadMeasurements error:", error.message);
+      if (opts.strict) throw new Error(`Could not load measurements: ${error.message}`);
       return [];
     }
 
