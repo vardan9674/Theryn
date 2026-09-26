@@ -2,6 +2,7 @@ import { supabase } from "../lib/supabase";
 import { getExerciseId } from "./useWorkouts";
 import { enqueueAction } from "../lib/offlineQueue";
 import { registerActionHandler } from "../lib/actionRegistry";
+import { targetColumns, targetsFromRow, unitsFromRows } from "../lib/routineTargets";
 
 // ── Day index mapping ────────────────────────────────────────────────────────
 const DAY_TO_INDEX: Record<string, number> = {
@@ -20,6 +21,12 @@ export interface ExerciseObject {
   sets?: number | string;
   reps?: string;
   weight?: number | string;
+  // Per-set targets, timed sets, supersets and rest (#129).
+  setList?: Array<{ reps?: string; weight?: number; secs?: number; kind?: string }>;
+  mode?: "time";
+  secs?: number;
+  superset?: string;
+  rest?: number;
 }
 
 export type ExerciseItem = string | ExerciseObject;
@@ -27,6 +34,8 @@ export type ExerciseItem = string | ExerciseObject;
 export interface DayTemplate {
   type: string;
   exercises: ExerciseItem[];
+  /** The unit the day's weights were typed in; the plan editor stamps it. */
+  units?: "metric" | "imperial";
 }
 
 export type Templates = Record<string, DayTemplate>;
@@ -66,7 +75,12 @@ function fillMissingDays(templates: Templates): Templates {
   return filled;
 }
 
-export async function loadRoutine(userId: string, forceNetwork = false): Promise<Templates | null> {
+/**
+ * `strict`: a failed read throws instead of returning null. The coach
+ * dashboard uses it, so a network blip isn't shown as "No plan yet" (and a
+ * plan saved from that screen can't replace the real one, #132).
+ */
+export async function loadRoutine(userId: string, forceNetwork = false, { strict = false }: { strict?: boolean } = {}): Promise<Templates | null> {
   const cacheKey = `theryn_routine_${userId}`;
   let cachedData = null;
   if (!forceNetwork) {
@@ -77,7 +91,7 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
   }
 
   const fetchNetwork = async () => {
-    const { data: routine, error: routineErr } = await supabase
+    const query = (targets: boolean) => supabase
       .from("routines")
       .select(`
         id,
@@ -98,16 +112,20 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
             target_sets,
             target_reps,
             template_exercise_id,
-            removed_at
+            removed_at${targets ? ", target_weight, set_list, weight_unit, extra" : ""}
           )
         )
       `)
       .eq("user_id", userId)
       .eq("is_active", true)
       .maybeSingle();
+    let { data: routine, error: routineErr } = await query(true);
+    // A database without the #129 columns yet: read the rest.
+    if (routineErr && isMissingTargetColumn(routineErr)) ({ data: routine, error: routineErr } = await query(false));
 
     if (routineErr) {
       console.error("loadRoutine error:", routineErr.message);
+      if (strict) throw new Error(`Could not load the plan: ${routineErr.message}`);
       return null;
     }
 
@@ -168,11 +186,14 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
         const reps = (ex as any).target_reps as string | null;
         const customSets = sets != null && sets !== 3;
         const customReps = reps != null && reps !== "8-12";
-        if (notes || customSets || customReps) {
+        const targets = targetsFromRow(ex);
+        const hasTargets = Object.keys(targets).length > 0;
+        if (notes || customSets || customReps || hasTargets) {
           const obj: ExerciseObject = { name };
           if (notes) obj.coachNote = notes;
-          if (customSets) obj.sets = sets as number;
-          if (customReps) obj.reps = reps as string;
+          if (customSets || hasTargets) obj.sets = (sets ?? 3) as number;
+          if (customReps && targets.mode !== "time") obj.reps = reps as string;
+          Object.assign(obj, targets);
           exercises.push(obj);
         } else {
           exercises.push(name);
@@ -182,6 +203,9 @@ export async function loadRoutine(userId: string, forceNetwork = false): Promise
         type: (day as any).workout_type,
         exercises,
       };
+      // The unit the weights were typed in, so they convert right for the reader.
+      const units = unitsFromRows(sortedExercises);
+      if (units) templates[dayKey].units = units;
     }
 
     if (Object.keys(templates).length > 0) {
@@ -220,10 +244,23 @@ export function getRoutineMeta(userId: string): RoutineMeta | null {
   }
 }
 
+// A database without the #129 columns (migration 20260926190000) yet.
+const isMissingTargetColumn = (err: any) =>
+  /target_weight|set_list|weight_unit|\bextra\b/.test(String(err?.message || "")) && /column|schema cache/i.test(String(err?.message || ""));
+let targetColumnsMissing = false;
+
+/** Offline or the request never got through: worth queueing. Anything the server refused is not. */
+export function shouldQueueRoutine(err: any): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  return /failed to fetch|networkerror|network request failed|load failed|fetch failed|timed? ?out/i.test(String(err?.message || err || ""));
+}
+
 /**
  * Saves the templates object as the user's active routine.
  * Upserts the routine, deletes old days, re-inserts all days and exercises.
- * Returns the routine id.
+ * Returns the routine id, or "offline_saved" when the device is offline and
+ * the save was queued. Any other failure throws, so the screen can say so
+ * (#129: it used to report every failure as "saved offline").
  */
 export async function saveRoutine(
   userId: string,
@@ -236,33 +273,10 @@ export async function saveRoutine(
   }
 
   try {
-    let routineId: string;
-    const { data: existing } = await supabase
-      .from("routines")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (existing?.id) {
-      routineId = existing.id;
-    } else {
-      const { data: inserted, error: insertErr } = await supabase
-        .from("routines")
-        .insert({ user_id: userId, name: "My Routine", is_active: true })
-        .select("id")
-        .single();
-      if (insertErr || !inserted?.id) throw new Error(`Failed to create routine: ${insertErr?.message}`);
-      routineId = inserted.id;
-    }
-
-    const { error: deleteErr } = await supabase.from("routine_days").delete().eq("routine_id", routineId);
-    if (deleteErr) throw new Error(`Failed to delete routine days: ${deleteErr.message}`);
-
-    // Resolve every exercise name across every day in one round-trip via the
-    // batch_resolve_exercises RPC (migration 007). Old code did one query (or
-    // two, on miss + insert) per exercise — a 7-day × 5-exercise routine was
-    // ~35 round-trips. Now it's 1.
+    // Resolve every exercise name first, in one round-trip via the
+    // batch_resolve_exercises RPC (migration 007), and before anything is
+    // deleted: a name that can't be resolved stops the save with the old plan
+    // still in place, instead of quietly dropping that exercise.
     const allNames = new Set<string>();
     for (const dayData of Object.values(templates)) {
       for (const item of dayData.exercises ?? []) {
@@ -293,7 +307,33 @@ export async function saveRoutine(
           if (r?.name && r?.id) idByLowerName.set(r.name.toLowerCase(), r.id);
         }
       }
+      const missing = namesArr.filter((n) => !idByLowerName.has(n.toLowerCase()));
+      if (missing.length) throw new Error(`Couldn't find ${missing.map((n) => `"${n}"`).join(", ")}. Nothing was changed; try again.`);
     }
+
+    let routineId: string;
+    const { data: existing, error: existingErr } = await supabase
+      .from("routines")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (existingErr) throw new Error(existingErr.message);
+
+    if (existing?.id) {
+      routineId = existing.id;
+    } else {
+      const { data: inserted, error: insertErr } = await supabase
+        .from("routines")
+        .insert({ user_id: userId, name: "My Routine", is_active: true })
+        .select("id")
+        .single();
+      if (insertErr || !inserted?.id) throw new Error(`Failed to create routine: ${insertErr?.message}`);
+      routineId = inserted.id;
+    }
+
+    const { error: deleteErr } = await supabase.from("routine_days").delete().eq("routine_id", routineId);
+    if (deleteErr) throw new Error(`Failed to delete routine days: ${deleteErr.message}`);
 
     for (const [dayKey, dayData] of Object.entries(templates)) {
       const dayIndex = DAY_TO_INDEX[dayKey];
@@ -305,19 +345,12 @@ export async function saveRoutine(
         .select("id")
         .single();
 
-      if (dayErr || !dayRow?.id) continue;
+      if (dayErr || !dayRow?.id) throw new Error(`Could not save ${dayKey}: ${dayErr?.message || "no row came back"}`);
       const dayId = dayRow.id;
 
       if (!dayData.exercises || dayData.exercises.length === 0) continue;
 
-      const exerciseRows: Array<{
-        routine_day_id: string;
-        exercise_id: string;
-        sort_order: number;
-        notes?: string | null;
-        target_sets?: number;
-        target_reps?: string;
-      }> = [];
+      const exerciseRows: Array<Record<string, unknown>> = [];
       for (let i = 0; i < dayData.exercises.length; i++) {
         const item = dayData.exercises[i];
         const name = exerciseName(item);
@@ -327,8 +360,8 @@ export async function saveRoutine(
             ? item.coachNote.trim()
             : "";
         const exId = idByLowerName.get(name.toLowerCase());
-        if (!exId) continue;
-        const row: (typeof exerciseRows)[number] = {
+        if (!exId) continue; // can't happen: checked above
+        const row: Record<string, unknown> = {
           routine_day_id: dayId,
           exercise_id: exId,
           sort_order: i,
@@ -339,20 +372,28 @@ export async function saveRoutine(
           if (Number.isInteger(s) && s > 0 && s < 100) row.target_sets = s;
           const r = item.reps != null ? String(item.reps).trim() : "";
           if (r) row.target_reps = r.slice(0, 20);
+          // Weight, per-set targets, timed sets, supersets and rest (#129).
+          if (!targetColumnsMissing) Object.assign(row, targetColumns(item, dayData.units));
         }
         exerciseRows.push(row);
       }
 
       if (exerciseRows.length > 0) {
-        const { error: exErr } = await supabase.from("routine_exercises").insert(exerciseRows);
-        if (exErr) console.error(`Failed to insert exercises for day ${dayKey}:`, exErr.message);
+        let { error: exErr } = await supabase.from("routine_exercises").insert(exerciseRows);
+        if (exErr && !targetColumnsMissing && isMissingTargetColumn(exErr)) {
+          // Only until the migration runs: save what the table can hold.
+          targetColumnsMissing = true;
+          const bare = exerciseRows.map((r) => { const o = { ...r }; delete o.target_weight; delete o.set_list; delete o.weight_unit; delete o.extra; return o; });
+          ({ error: exErr } = await supabase.from("routine_exercises").insert(bare));
+        }
+        if (exErr) throw new Error(`Could not save ${dayKey}'s exercises: ${exErr.message}`);
       }
     }
 
     await supabase.from("routines").update({ updated_at: new Date().toISOString() }).eq("id", routineId);
     return routineId;
   } catch (err: any) {
-    if (!isBackgroundSync) {
+    if (!isBackgroundSync && shouldQueueRoutine(err)) {
       enqueueAction({ type: "SAVE_ROUTINE", userId, payload: templates });
       return "offline_saved";
     }

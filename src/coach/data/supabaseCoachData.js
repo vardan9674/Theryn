@@ -142,11 +142,14 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         const routine = row.plan ? convertPlan(row.plan, u, { assumeFrom: u }) : base.routine;
         return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions, timeZone: linked.timeZone };
       }
-      const [d, subs] = await Promise.all([loadAthleteData(clientId), loadSubmissions({ athlete_id: clientId })]);
+      const [d, subs] = await Promise.all([loadAthleteData(clientId, { strict: true }), loadSubmissions({ athlete_id: clientId })]);
       // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.
       // Timezone: what their app reported, unless it's the untouched 'UTC' default; else their link sends.
       const appTz = d.profile?.timezone && d.profile.timezone !== "UTC" ? validTimeZone(d.profile.timezone) : null;
-      return { ...d, submissions: subs, timeZone: appTz || timeZoneFromSubmissions(subs) };
+      // Weights come back in the unit they were typed in (#129); show them in the client's.
+      const u = d.profile?.unit_system === "metric" ? "metric" : "imperial";
+      const routine = d.routine ? convertPlan(d.routine, u, { assumeFrom: u }) : d.routine;
+      return { ...d, routine, submissions: subs, timeZone: appTz || timeZoneFromSubmissions(subs) };
     },
     async saveClientRoutine(clientId, templates) {
       const mid = manualIdOf(clientId);
