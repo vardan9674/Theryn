@@ -2,6 +2,7 @@ import React from "react";
 import "../coach/coach.css";
 import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
+import MuscleHeat from "./MuscleHeat.jsx";
 import TherynLoader from "../components/TherynLoader.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
@@ -323,7 +324,9 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   const noop = () => {};
   const tickState = React.useMemo(() => Object.fromEntries(Array.from({ length: ticks }, (_, i) => [i, 3])), [ticks]);
   const valueState = React.useMemo(() => Object.fromEntries([["weight", "138"], ["waist", "29"], ["hips", "37"]].slice(0, filled)), [filled]);
-  if (screen === "sent") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets" } }} />;
+  // The muscle picture comes from the same exercises the demo just ticked, so the
+  // marketing screens stay true to each other.
+  if (screen === "sent") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets", worked: today.exercises.map((e) => ({ name: e.name, sets: e.sets })) } }} />;
   if (screen === "measured") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "measurements", summary: { count: 3, date: isoToday() } }} />;
   const measuring = screen === "measure";
   return <div className="lk-page cx-app">
@@ -816,7 +819,10 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
       store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
       const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
       const setsDone = payload.exercises.reduce((a, e) => a + e.sets_done, 0);
-      onSent({ date, streakBefore: before, ...(setsPlanned > 0
+      // Exercise by exercise, only what they actually ticked: the receipt draws the
+      // muscle picture from this, and a skipped exercise must leave its muscles cold.
+      const worked = payload.exercises.filter((e) => e.sets_done > 0).map((e) => ({ name: e.name, sets: e.sets_done }));
+      onSent({ date, streakBefore: before, worked, ...(setsPlanned > 0
         ? { day: DAY_LONG[today.key], type: today.type, done: setsDone, planned: setsPlanned, what: "sets" }
         : { day: DAY_LONG[today.key], type: today.type, done: payload.exercises.filter((e) => e.sets_done > 0).length, planned: payload.exercises.length, what: "exercises" }) });
     } catch (e) {
@@ -1263,6 +1269,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
             <div><span>This month</span><b>{st.thisMonth}</b></div>
           </div>
         )}
+        {sent.kind === "workout" && <MuscleHeat exercises={s.worked} />}
         <div className="lk-card lk-keep"><Icon.Link size={20} /><span style={{ fontSize: 15, color: "var(--cx-tx2)", lineHeight: 1.45 }}>{next
           ? `Keep this link. ${next.label} is ${next.type}; tick it to make ${st.current + 1}.`
           : "Keep this link. Open it on training days to tick off your workout, and come back when your coach asks for measurements."}</span></div>

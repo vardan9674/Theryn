@@ -6,13 +6,22 @@ import { SLUG_TO_GROUP, GROUP_LABEL } from "../lib/exerciseLibrary.js";
 // everything else grey. With `onToggle`, tapping a muscle calls onToggle(groupId).
 // The drawing is decorative for screen readers; pair it with real buttons for each
 // muscle (the picker's muscle chips) so keyboard and screen-reader users can choose too.
+//
+// `levels` is the other way to colour it: groupId → 1, 2 or 3, brightest at 3. It
+// takes the place of main/helpers and is what the workout heat map uses, where the
+// question is how hard a muscle worked rather than whether it is the target.
 
 const A = "#C8FF00";
 const HELPER = "#5E7310";
 const MUSCLE = "#3D3D3D";
 const SKIN = "#2A2A2A";
 
-export default function BodyMap({ view = "front", main = [], helpers = [], onToggle, width = 120, stroke = "#101010", label }) {
+// Three steps, not a smooth gradient: the numbers behind this are sets counted off
+// a name-matched exercise list, which is nowhere near precise enough to justify a
+// shade per muscle. Three steps say "most", "a fair bit", "some" and no more.
+const LEVEL_FILL = { 3: A, 2: "#93BC00", 1: "#49590F" };
+
+export default function BodyMap({ view = "front", main = [], helpers = [], levels = null, onToggle, width = 120, stroke = "#101010", label }) {
   const parts = view === "back" ? BODY_BACK : BODY_FRONT;
   const height = Math.round(width * 2);
   return (
@@ -26,7 +35,11 @@ export default function BodyMap({ view = "front", main = [], helpers = [], onTog
     >
       {parts.map((part) => {
         const group = SLUG_TO_GROUP[part.slug];
-        const fill = group ? (main.includes(group) ? A : helpers.includes(group) ? HELPER : MUSCLE) : SKIN;
+        const fill = !group ? SKIN
+          : levels ? (LEVEL_FILL[levels[group]] || MUSCLE)
+          : main.includes(group) ? A
+          : helpers.includes(group) ? HELPER
+          : MUSCLE;
         const tappable = Boolean(group && onToggle);
         return part.paths.map((d, i) => (
           <path
