@@ -31,6 +31,7 @@ import CoachTemplatesTab from "./components/templates/CoachTemplatesTab.jsx";
 import CoachDashboard from "./coach/CoachApp.jsx";
 import PullToRefresh from "./components/PullToRefresh.jsx";
 import { consumeBackPress, useBackHandler } from "./lib/backStack";
+import { signInErrorFromUrl, friendlySignInError, addressWithoutSignInError } from "./lib/signInError";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -636,6 +637,17 @@ export default function GymApp() {
   const [authUser,   setAuthUser]   = useState(null);   // Supabase user object
   const [authLoading, setAuthLoading] = useState(true); // true while session is being checked
   const [authError,  setAuthError]  = useState(null);   // error message from OAuth callback
+  // Web: a Google sign-in that came back with ?error=… (expired, cancelled).
+  // Read once on load and shown above the landing page, which used to show
+  // nothing, so the sign-in just looked like it did nothing (#125).
+  const [webSignInError, setWebSignInError] = useState(() =>
+    !Capacitor.isNativePlatform() && typeof window !== "undefined" ? signInErrorFromUrl(window.location) : null
+  );
+  useEffect(() => {
+    if (!webSignInError) return;
+    // Clear the error from the address so a reload or a shared link doesn't repeat it.
+    try { window.history.replaceState(window.history.state, "", addressWithoutSignInError(window.location)); } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server push: register FCM token and capture timezone. No-op on web.
   usePushNotifications(authUser?.id);
@@ -1174,8 +1186,8 @@ export default function GymApp() {
 
   // Landing only shows when there's no live session. Authenticated users skip
   // straight into the app on refresh; signing out still routes back here.
-  const renderLanding = () => (
-    <LandingPage onEnterApp={async (intendedRole) => {
+  const startWebSignIn = async (intendedRole) => {
+      setWebSignInError(null);
       // Landing CTA must always run sign-in → role picker, even for users with
       // an existing Supabase session. Otherwise the stored role silently routes
       // into a screen that can blank out (e.g. stale `athlete_web`).
@@ -1205,11 +1217,22 @@ export default function GymApp() {
           if (error) throw error;
         } catch (err) {
           console.error("Landing sign-in failed:", err);
-          setAuthError(err?.message || "Sign-in failed. Please try again.");
+          setWebSignInError(friendlySignInError({ message: err?.message }));
           setShowLanding(true);
         }
       }
-    }} />
+  };
+  const renderLanding = () => (
+    <>
+      {webSignInError && (
+        <SignInErrorNotice
+          message={webSignInError}
+          onRetry={() => startWebSignIn(localStorage.getItem("theryn_pending_role_landing") || "coach")}
+          onDismiss={() => setWebSignInError(null)}
+        />
+      )}
+      <LandingPage onEnterApp={startWebSignIn} />
+    </>
   );
 
   if (showLanding && !authUser) return renderLanding();
@@ -4442,6 +4465,29 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
 // ════════════════════════════════════════════════════════════════════════
 // LOGIN SCREEN — with first-time onboarding walkthrough
 // ════════════════════════════════════════════════════════════════════════
+// Shown over the web landing page when a Google sign-in didn't go through.
+function SignInErrorNotice({ message, onRetry, onDismiss }) {
+  return (
+    <div role="alert" style={{
+      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 1000,
+      width: "min(520px, calc(100vw - 32px))", boxSizing: "border-box",
+      display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+      background: S1, border: `1px solid ${RED}55`, borderRadius: 14, padding: "14px 16px",
+      boxShadow: "0 12px 32px rgba(0,0,0,0.45)", color: TX, fontSize: 14, lineHeight: 1.45,
+    }}>
+      <span style={{ flex: "1 1 220px" }}>{message}</span>
+      <button type="button" onClick={onRetry} style={{
+        background: A, color: "#000", border: "none", borderRadius: 10, padding: "9px 14px",
+        fontWeight: 700, fontSize: 14, cursor: "pointer",
+      }}>Sign in again</button>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss" style={{
+        background: "transparent", color: SB, border: "none", fontSize: 20, lineHeight: 1,
+        padding: "4px 6px", cursor: "pointer",
+      }}>×</button>
+    </div>
+  );
+}
+
 function LoginScreen({ authError, onClearError }) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);

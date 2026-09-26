@@ -4,6 +4,23 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-09-26 (evening) — A failed Google sign-in says so (#125), branch `fix/signin-error-message`
+
+**Asked**
+- "fix #125 too."
+
+**Found**
+- When a Google sign-in expires or is cancelled, Supabase sends the person back with `?error=…&error_code=bad_oauth_state…` (or the same after `#`). On the web nothing read those parameters. `authError` was only shown by the native `LoginScreen`, so the landing page looked as if the button had done nothing. A sign-in that failed to start was also silent on web.
+
+**Done** (no database change)
+- `src/lib/signInError.js` reads the error from the query or hash and turns it into one sentence: expired ("That sign-in took too long…"), cancelled, network, or a generic retry. It never shows raw error text.
+- `GymApp` reads it once on load, removes the error parameters from the address (and moves off `/oauth/consent`), and shows a notice above the landing page with **Sign in again** and ×. **Sign in again** uses the same flow as the landing buttons and keeps the role the person picked. Failures to start a sign-in use the same notice.
+
+**Verified**
+- Preview: `/?error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+has+expired` shows the notice and the address becomes `/`. **Sign in again** opens Google's account chooser (I didn't sign in).
+- `/oauth/consent#error=access_denied…` at 375px shows the cancelled message with no sideways scroll. × closes the notice, and a reload doesn't bring it back. No console errors.
+- 243 tests (6 new), build pass.
+
 ## 2026-09-26 (later) — Payments: no rates line; rates from the ECB (#122 follow-up), branch `fix/payments-quiet-totals`
 
 **Asked**
