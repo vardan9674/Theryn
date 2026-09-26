@@ -4,6 +4,14 @@ import { paymentFact } from "../lib/clientFacts.js";
 import { shortDate, isoDate, plural } from "../lib/format.js";
 import { fmtMoney, computeMonthlySummary, SUPPORTED_CURRENCIES } from "../../hooks/usePayments.ts";
 import { cleanDecimal } from "../lib/clientLinks.js";
+import { loadRates, sumByCurrency, describeTotal, RATES_CREDIT } from "../lib/money.js";
+
+/** Today's exchange rates (cached), or null while loading / unavailable. */
+function useRates() {
+  const [rates, setRates] = React.useState(null);
+  React.useEffect(() => { let on = true; loadRates().then((r) => { if (on) setRates(r); }); return () => { on = false; }; }, []);
+  return rates;
+}
 
 /**
  * Manual ledger. The coach writes down what each client paid; Theryn works
@@ -24,7 +32,16 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
 
   const counts = { late: rows.filter((r) => r.fact.status === "overdue").length, due: rows.filter((r) => r.fact.status === "due" || r.fact.status === "upcoming").length, paid: rows.filter((r) => r.fact.status === "paid").length, none: rows.filter((r) => r.fact.status === "no_fee").length };
   const visible = rows.filter((r) => filter === "all" || (filter === "late" && r.fact.status === "overdue") || (filter === "due" && (r.fact.status === "due" || r.fact.status === "upcoming")) || (filter === "paid" && r.fact.status === "paid") || (filter === "none" && r.fact.status === "no_fee"));
-  const lateTotal = rows.filter((r) => r.fact.status === "overdue").reduce((s, r) => s + (r.fee?.amount || 0), 0);
+  // Totals are shown in the coach's currency; other currencies are converted
+  // at today's rate, never just relabelled.
+  const fx = useRates();
+  const lateByCurrency = sumByCurrency(rows.filter((r) => r.fact.status === "overdue"), (r) => r.fee?.amount, (r) => r.fee?.currency, defaultCurrency);
+  const received = describeTotal(summary.receivedByCurrency, defaultCurrency, fx?.rates);
+  const expected = describeTotal(summary.outstandingByCurrency, defaultCurrency, fx?.rates);
+  const late = describeTotal(lateByCurrency, defaultCurrency, fx?.rates);
+  const anyConverted = received.converted || expected.converted || late.converted;
+  const lateTotal = Object.values(lateByCurrency).reduce((a, b) => a + b, 0);
+  const rateDay = fx?.day ? new Date(fx.day + "T12:00:00").toLocaleDateString("en-US", { day: "numeric", month: "short" }) : null;
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
 
   return (
@@ -38,10 +55,15 @@ export default function PaymentsPage({ clients, fees, payments, defaultCurrency,
       </div>
 
       <div className="cx-stats">
-        <div className="cx-card cx-stat"><span className="k">Received this month</span><span className="v">{fmtMoney(summary.receivedThisMonth, defaultCurrency)}</span></div>
-        <div className="cx-card cx-stat"><span className="k">Still expected</span><span className="v">{fmtMoney(summary.outstanding, defaultCurrency)}</span></div>
-        <div className="cx-card cx-stat"><span className="k">Late</span><span className="v" style={{ color: lateTotal > 0 ? "var(--cx-red)" : undefined }}>{fmtMoney(lateTotal, defaultCurrency)}</span></div>
+        <Stat label="Received this month" t={received} />
+        <Stat label="Still expected" t={expected} />
+        <Stat label="Late" t={late} color={lateTotal > 0 ? "var(--cx-red)" : undefined} />
       </div>
+      {anyConverted && (
+        <div className="cx-small cx-muted cx-mb16">
+          Totals in {defaultCurrency}, converted at {rateDay ? `the ${rateDay} rate` : "today's rate"}. Each client still pays in their own currency. <a href={RATES_CREDIT.href} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>{RATES_CREDIT.label}</a>
+        </div>
+      )}
 
       <div className="cx-chips cx-mb16" role="group" aria-label="Filter payments">
         <Chip active={filter === "all"} onClick={() => setFilter("all")}>Everyone</Chip>
@@ -204,5 +226,17 @@ function AmountInput({ value, onChange }) {
         onChange={(e) => { const raw = e.target.value; onChange(cleanDecimal(raw, 9)); setNote(/[^0-9.]/.test(raw) ? (raw.includes("-") ? "Amounts can't be negative." : "Numbers only.") : null); }} />
       {note && <span className="cx-small" role="status" style={{ color: "var(--cx-warn, #E0A95A)" }}>{note}</span>}
     </>
+  );
+}
+
+/** One total card: the amount in the coach's currency, and underneath, the
+ * amounts it was converted from when there were other currencies. */
+function Stat({ label, t, color }) {
+  return (
+    <div className="cx-card cx-stat">
+      <span className="k">{label}</span>
+      <span className="v" style={color ? { color } : undefined}>{t.main}</span>
+      {t.note && <span className="cx-small cx-muted">{t.note}</span>}
+    </div>
   );
 }

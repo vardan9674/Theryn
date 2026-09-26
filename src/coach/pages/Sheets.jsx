@@ -188,10 +188,11 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, u
           <span className="cx-small cx-muted">What you see and type in. Clients who use the other unit see their own, converted.</span>
         </Field>
 
-        <Field label="Currency for fees and payments">
+        <Field label="Your currency">
           <select className="cx-select" value={currency} onChange={(e) => changeCurrency(e.target.value)}>
             {SUPPORTED_CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} {c.code} · {c.label}</option>)}
           </select>
+          <span className="cx-small cx-muted">Payment totals are shown in it, converted at today's rate, and new fees start in it. A client's fee stays in the currency you set for them; change it under their Payments tab.</span>
         </Field>
 
         {clients.length > 0 && (

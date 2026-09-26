@@ -113,8 +113,8 @@ function makeState() {
   const manual = [{
     id: "m1", coach_id: COACH_ID, first_name: "Ravi", last_name: "Patel", created_at: daysAgo(20).toISOString(), updated_at: daysAgo(2).toISOString(),
     plan: JSON.parse(JSON.stringify(FULLBODY)),
-    fee: { amount: 100, currency: "USD", cadence: "monthly", start_date: isoDate(daysAgo(20)), active: true },
-    payments: [{ id: "mp1", amount: 100, currency: "USD", received_date: isoDate(daysAgo(20)), notes: "cash" }],
+    fee: { amount: 8000, currency: "INR", cadence: "monthly", start_date: isoDate(daysAgo(20)), active: true },
+    payments: [{ id: "mp1", amount: 8000, currency: "INR", received_date: isoDate(daysAgo(20)), notes: "cash" }],
     notes: null,
   }];
   // Client links: Ravi (name-only) already has one and has sent a workout and measurements through it.
@@ -170,7 +170,7 @@ export function createMockCoachData() {
     coachId: COACH_ID,
     coachName: "Coach Vardan",
     coachEmail: "coach@example.com",
-    defaultCurrency: "USD",
+    defaultCurrency: (typeof location !== "undefined" && new URLSearchParams(location.search).get("currency")) || "USD",
     get unitSystem() { return st.units; },
     async updateUnits(u) { await wait(100); st.units = u === "metric" ? "metric" : "imperial"; },
 
@@ -344,7 +344,8 @@ export function createMockCoachData() {
     async dismissNotification(id) { st.notifDismissed = [...(st.notifDismissed || []), id]; return st.notifDismissed; },
     async setClientUnits(clientId, units) { await wait(150); const m = st.manual.find((r) => r.id === manualIdOf(clientId)); if (!m) throw new Error("Clients on the app use their own setting in the app."); m.unit_system = units === "metric" ? "metric" : "imperial"; notify(); return m.unit_system; },
     async updateDisplayName() { await wait(100); },
-    async updateCurrency() { await wait(100); },
+    // Preview only: reload on the chosen currency so the whole dashboard follows.
+    async updateCurrency(code) { await wait(100); const u = new URL(location.href); u.searchParams.set("currency", code); location.replace(u); },
     signOut() { alert("Preview mode: sign out does nothing."); },
     switchRole() { alert("Preview mode: switch role does nothing."); },
   };
