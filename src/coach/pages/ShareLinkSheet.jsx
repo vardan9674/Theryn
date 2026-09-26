@@ -1,7 +1,7 @@
 import React from "react";
 import { Sheet, Button, Icon, Checkbox, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
-import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, ALL_FIELD_IDS, DEFAULT_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, askedFields } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, ALL_FIELD_IDS, DEFAULT_FIELD_IDS, linkUrl, shareMessage, whatsappUrl, askedFields, inviteUrl, inviteMessage } from "../lib/clientLinks.js";
 
 /**
  * "Share link" on a client page. One durable link per client; the coach
@@ -56,9 +56,19 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     try { await navigator.clipboard.writeText(url); toast("Link copied"); }
     catch { toast("Could not copy. Use Share instead.", "error"); }
   }
-  async function copyCode() {
-    try { await navigator.clipboard.writeText(state.link.connect_code); toast("Code copied"); }
-    catch { toast("Could not copy the code", "error"); }
+  // The invite: their link with the join code in it, so one tap sets them up.
+  const invite = state.token ? inviteUrl(state.token, state.link?.connect_code) : null;
+  const inviteText = invite ? inviteMessage(first, invite) : "";
+  async function shareInvite() {
+    try {
+      if (data.isNative) { const { Share } = await import("@capacitor/share"); await Share.share({ text: inviteText }); return; }
+      if (navigator.share) { await navigator.share({ text: inviteText }); return; }
+      await navigator.clipboard.writeText(inviteText); toast("Invite copied. Send it to them.");
+    } catch { /* they closed the share sheet */ }
+  }
+  async function copyInvite() {
+    try { await navigator.clipboard.writeText(inviteText); toast("Invite copied"); }
+    catch { toast("Could not copy. Use Invite instead.", "error"); }
   }
   async function newCode() {
     if (typeof data.resetConnectCode !== "function") return;
@@ -66,7 +76,7 @@ export default function ShareLinkSheet({ open, onClose, client }) {
     try {
       const code = await data.resetConnectCode(client.athlete_id);
       setState((s) => ({ ...s, link: { ...s.link, connect_code: code, connect_tries: 0 } }));
-      toast("New code. The old one stopped working.");
+      toast("Any invite you sent has been cancelled.");
     } catch (e) { toast(e.message || "Could not make a new code", "error"); }
     finally { setBusy(false); }
   }
@@ -120,22 +130,20 @@ export default function ShareLinkSheet({ open, onClose, client }) {
             <span className="cx-muted">Message that goes with it</span><br />{text.replace(url, "").trim()}
           </div>
 
-          {/* The second half of getting in: the link opens today, the code opens
-              the rest. Kept out of the message on purpose. */}
+          {/* Setting up an account. The invite is the same link with a code
+              inside it, so there is nothing for {first} to type. */}
           <div className="cx-col">
-            <div style={{ fontWeight: 700 }}>{state.link?.connected_at ? "Connected" : "Connect code"}</div>
+            <div style={{ fontWeight: 700 }}>{state.link?.connected_at ? "Connected" : "Their account"}</div>
             {state.link?.connected_at ? (
-              <>
-                <div className="cx-small cx-muted">{state.link.connected_name || "They"} connected an account on {new Date(state.link.connected_at).toLocaleDateString("en-US", { day: "numeric", month: "long" })}. {first} can open every day of the plan and add their own sessions.{state.link.connected_email ? ` (${state.link.connected_email})` : ""}</div>
-              </>
+              <div className="cx-small cx-muted">{state.link.connected_name || "They"} set up an account on {new Date(state.link.connected_at).toLocaleDateString("en-US", { day: "numeric", month: "long" })}{state.link.connected_email ? ` (${state.link.connected_email})` : ""}. {first} can open every day of the plan and add their own sessions.</div>
             ) : (
               <>
-                <div className="cx-small cx-muted">Send this to {first} separately — a message, or read it out. With it they can open every day of the plan and add their own sessions. The link alone still only opens today.</div>
-                <div className="cx-row" style={{ minHeight: 48, borderRadius: 10, border: "1px solid var(--cx-bd2)", background: "var(--cx-bg)", padding: "6px 6px 6px 12px", gap: 10 }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 800, letterSpacing: "0.22em" }}>{state.link?.connect_code || "—"}</span>
-                  {state.link?.connect_code && <Button size="sm" variant="soft" onClick={copyCode} style={{ color: "var(--cx-a)" }}>Copy</Button>}
+                <div className="cx-small cx-muted">Send {first} an invite and they're set up in one tap — same link, nothing to type. If they set one up on their own instead, you'll be asked to confirm it's them.</div>
+                <div className="cx-actions-2">
+                  <Button variant="primary" icon={<Icon.Share size={18} />} onClick={shareInvite} disabled={busy}>Invite to the app</Button>
+                  <Button onClick={copyInvite} disabled={busy}>Copy invite</Button>
                 </div>
-                <button type="button" className="cx-linkbtn cx-small" style={{ alignSelf: "flex-start" }} onClick={newCode} disabled={busy}>New code</button>
+                <button type="button" className="cx-linkbtn cx-small" style={{ alignSelf: "flex-start" }} onClick={newCode} disabled={busy}>Cancel any invite I sent</button>
               </>
             )}
           </div>

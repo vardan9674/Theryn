@@ -10,7 +10,7 @@ import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
-import { MEASUREMENT_FIELDS } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage } from "../lib/clientLinks.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 import { clientNow, theirTimeNote } from "../lib/clientClock.js";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
@@ -40,8 +40,11 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
   const tab = controlledTab && tabs.some((t) => t.id === controlledTab) ? controlledTab : (todo ? suggested : "plan");
   const setTab = (t) => onTab?.(t);
 
+  // A name-only client's account state is its own line below (ClientAccount),
+  // which knows whether they have connected; saying it twice here would only
+  // contradict it.
   const statusLine = manual
-    ? <span className="cx-muted">Not on the app yet</span>
+    ? null
     : todo?.severity
     ? <Tone tone={todo.severity === "urgent" ? "bad" : todo.severity === "warn" ? "attention" : "ok"} bold>{todo.text}</Tone>
     : todo ? <span className="cx-muted">{todo.text}</span> : null;
@@ -66,7 +69,7 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
           : <Button icon={<Icon.Messages size={16} />} onClick={() => actions.message(athleteId)}>Message</Button>}
       </div>
       {manual && <ClientUnits clientId={athleteId} units={data?.profile?.unit_system} firstName={row.name.split(" ")[0]} onChanged={() => actions?.reloadClient?.(athleteId)} />}
-      {manual && <ClientEmail clientId={athleteId} initial={link.email} firstName={row.name.split(" ")[0]} />}
+      {manual && <ClientAccount clientId={athleteId} firstName={row.name.split(" ")[0]} />}
 
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
@@ -113,55 +116,101 @@ function ClientUnits({ clientId, units, firstName, onChanged }) {
 }
 
 // ── Email (name-only clients) ─────────────────────────────────────────────
-// Optional. Nothing is merged on it: when this person later signs in with the
-// same email, they're offered their history and choose (decision 0007).
-function ClientEmail({ clientId, initial, firstName }) {
+/**
+ * Whether this client has an account, on one line under their name.
+ *
+ * Three states: nobody yet (send them an invite), somebody asking (their name
+ * and email, wave them in or dismiss), and connected (who, and when).
+ *
+ * Connecting moves nothing — their plan, check-ins and payments stay on this
+ * client record either way. It only records who they are, so the link can open
+ * the rest of their week to them.
+ */
+function ClientAccount({ clientId, firstName }) {
   const data = useCoachData();
   const toast = useToast();
-  const [email, setEmail] = React.useState(initial || "");
-  const [draft, setDraft] = React.useState(initial || "");
-  const [editing, setEditing] = React.useState(false);
-  const [open, setOpen] = React.useState(false); // the explanation, shown only after "Link to app"
-  const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { setEmail(initial || ""); setDraft(initial || ""); setEditing(false); setOpen(false); }, [clientId, initial]);
-  if (typeof data.updateManualEmail !== "function") return null;
-  async function save() {
-    setBusy(true);
-    try { const saved = await data.updateManualEmail(clientId, draft); setEmail(saved || ""); setEditing(false); setOpen(false); toast(saved ? "Email saved" : "Email removed"); }
-    catch (e) { toast(e.message || "Could not save", "error"); }
-    finally { setBusy(false); }
+  const [state, setState] = React.useState({ loading: true, link: null, token: null, requests: [] });
+  const [busy, setBusy] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    if (typeof data.getClientLink !== "function") return;
+    try {
+      const [r, reqs] = await Promise.all([
+        data.getClientLink(clientId),
+        typeof data.loadJoinRequests === "function" ? data.loadJoinRequests(clientId).catch(() => []) : [],
+      ]);
+      setState({ loading: false, link: r?.link || null, token: r?.token || null, requests: reqs || [] });
+    } catch { setState({ loading: false, link: null, token: null, requests: [] }); }
+  }, [clientId, data]);
+  React.useEffect(() => { setState({ loading: true, link: null, token: null, requests: [] }); load(); }, [clientId, load]);
+
+  async function decide(id, approve) {
+    setBusy(id);
+    try {
+      await data.decideJoinRequest(id, approve);
+      toast(approve ? `${firstName} is connected.` : "Dismissed.");
+      await load();
+    } catch (e) { toast(e.message || "Could not do that", "error"); }
+    finally { setBusy(null); }
   }
-  // Collapsed: one line. The explanation and the email field open on "Link to app".
-  if (!open && !editing) {
+
+  if (state.loading || !state.link) return null;
+  const connectedAt = state.link.connected_at ? new Date(state.link.connected_at) : null;
+
+  if (connectedAt) {
     return (
       <div className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
-        <span className="cx-small cx-muted" style={{ minWidth: 0 }}>{email ? <>Uses their link · <span style={{ color: "var(--cx-tx2)" }}>{email}</span></> : "Uses their link, not the app"}</span>
-        <button type="button" className="cx-linkbtn cx-small" style={{ minHeight: 32, flex: "none" }} onClick={() => { setOpen(true); setEditing(true); }} aria-expanded={false}>{email ? "Change" : "Link to app"}</button>
+        <span className="cx-small" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <span style={{ color: "var(--cx-a)", fontWeight: 700 }}>Connected</span>
+          <span className="cx-muted"> · {state.link.connected_name || firstName}{state.link.connected_email ? ` · ${state.link.connected_email}` : ""}</span>
+        </span>
       </div>
     );
   }
-  const why = <span className="cx-small cx-muted">{firstName} sends workouts and measurements through their link. Add their email: when they sign up for the app with it, their history comes with them.</span>;
-  if (editing) {
+
+  if (state.requests.length) {
     return (
-      <div className="cx-col" style={{ gap: 6 }}>
-      {why}
-      <div className="cx-row" style={{ gap: 6 }}>
-        <input className="cx-input" type="email" inputMode="email" autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`${firstName}'s email`} aria-label={`${firstName}'s email`} style={{ flex: 1, minWidth: 0 }} autoFocus />
-        <Button size="sm" variant="primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
-        <Button size="sm" onClick={() => { setDraft(email); setEditing(false); setOpen(false); }} disabled={busy}>Cancel</Button>
-      </div>
+      <div className="cx-col" style={{ gap: 8 }}>
+        {state.requests.map((r) => (
+          <div key={r.id} className="cx-card cx-card-pad cx-col" style={{ gap: 8, borderColor: "rgba(200,255,0,0.35)" }}>
+            <div className="cx-small">
+              <b>{r.name || "Someone"}</b> wants to set up an account for {firstName}.
+              {r.email ? <span className="cx-muted"> · {r.email}</span> : null}
+            </div>
+            <div className="cx-actions-2">
+              <Button size="sm" variant="primary" disabled={busy === r.id} onClick={() => decide(r.id, true)}>Yes, that's {firstName}</Button>
+              <Button size="sm" disabled={busy === r.id} onClick={() => decide(r.id, false)}>Not them</Button>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
+
   return (
     <div className="cx-row" style={{ justifyContent: "space-between", gap: 8 }}>
-      <span className="cx-small" style={{ minWidth: 0 }}>
-        {email ? <><span className="cx-muted">Email </span>{email}</> : <span className="cx-muted">No email yet. Add it so their history can follow them into the app later.</span>}
-      </span>
-      <Button size="sm" onClick={() => setEditing(true)}>{email ? "Change" : "Add email"}</Button>
+      <span className="cx-small cx-muted" style={{ minWidth: 0 }}>Uses their link, no account yet</span>
+      {state.token && <InviteButton token={state.token} code={state.link.connect_code} firstName={firstName} isNative={data.isNative} />}
     </div>
   );
 }
+
+/** Sends the everyday link with the join code already in it. */
+function InviteButton({ token, code, firstName, isNative }) {
+  const toast = useToast();
+  const url = inviteUrl(token, code);
+  const text = inviteMessage(firstName, url);
+  async function share() {
+    try {
+      if (isNative) { const { Share } = await import("@capacitor/share"); await Share.share({ text }); return; }
+      if (navigator.share) { await navigator.share({ text }); return; }
+      await navigator.clipboard.writeText(text);
+      toast("Invite copied. Send it to them.");
+    } catch { /* they closed the share sheet */ }
+  }
+  return <button type="button" className="cx-linkbtn cx-small" style={{ minHeight: 32, flex: "none" }} onClick={share}>Invite to the app</button>;
+}
+
 
 // ── Plan ──────────────────────────────────────────────────────────────────
 function PlanTab({ data, row, actions }) {

@@ -89,6 +89,14 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
 
   // ── Client links (decision 0006) ───────────────────────────────────────
   const LINK_SETUP_MSG = "Run supabase/migrations/20260912120000_client_links.sql in the Supabase SQL editor.";
+  // Why a request could not be answered, in the coach's words.
+  const joinDecideError = (res) => ({
+    gone: "That request is no longer there.",
+    not_yours: "That request belongs to another coach.",
+    taken: "Someone else is already connected to this link. Make a new link first.",
+    revoked: "That link has been turned off. Make a new one first.",
+    signin: "Sign in again and retry.",
+  }[res?.reason] || "Could not do that. Try again in a moment.");
   function isMissingLinks(error) {
     const msg = String(error?.message || "");
     return error?.code === "42P01" || error?.code === "PGRST205" || error?.code === "PGRST202" || (/client_links|client_link_upsert|client_submissions/.test(msg) && /not exist|not find|schema cache/i.test(msg));
@@ -477,6 +485,29 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       q = t.athlete_id ? q.eq("athlete_id", t.athlete_id) : q.eq("manual_client_id", t.manual_client_id);
       const { error } = await q;
       if (error) throw new Error(error.message);
+    },
+    // Who has asked to set up an account on this client's link. Usually none;
+    // one when the client taps it; more than one only if the link was passed
+    // around, which is exactly when the coach needs to see the names.
+    async loadJoinRequests(clientId) {
+      const t = linkTarget(clientId);
+      let q = supabase.from("client_link_requests").select("id, user_id, name, email, created_at, link_id").order("created_at", { ascending: false });
+      const { data: links, error: le } = await (t.athlete_id
+        ? supabase.from("client_links").select("id").eq("coach_id", coachId).is("revoked_at", null).eq("athlete_id", t.athlete_id)
+        : supabase.from("client_links").select("id").eq("coach_id", coachId).is("revoked_at", null).eq("manual_client_id", t.manual_client_id));
+      if (le) { if (isMissingLinks(le)) return []; throw new Error(le.message); }
+      const ids = (links || []).map((l) => l.id);
+      if (!ids.length) return [];
+      const { data, error } = await q.in("link_id", ids);
+      if (error) { if (isMissingLinks(error)) return []; throw new Error(error.message); }
+      return data || [];
+    },
+    /** Wave them in, or dismiss them. Either way the request is gone afterwards. */
+    async decideJoinRequest(requestId, approve) {
+      const { data, error } = await supabase.rpc("link_join_decide", { p_request_id: requestId, p_approve: Boolean(approve) });
+      if (error) throw new Error(isMissingLinks(error) ? LINK_SETUP_MSG : error.message);
+      if (!data?.ok) throw new Error(joinDecideError(data));
+      return data;
     },
     // A fresh connect code: the old one stops working and wrong tries are forgiven.
     async resetConnectCode(clientId) {

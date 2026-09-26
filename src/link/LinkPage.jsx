@@ -7,8 +7,10 @@ import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
-import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets } from "../coach/lib/clientLinks.js";
-import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom } from "../coach/lib/clientLinks.js";
+import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
+import { signInErrorFromUrl } from "../lib/signInError.js";
+import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
@@ -74,6 +76,10 @@ function linkStore(token) {
     // second one. Cleared once the coach has it.
     key: (date) => read().keys?.[date] || null,
     setKey: (date, k) => { const s = read(); const keys = { ...(s.keys || {}) }; if (k) keys[date] = k; else delete keys[date]; write({ ...s, keys: keepRecent(keys) }); },
+    // Whether a sign-in is in flight for this link, so coming back — even to
+    // the wrong page — can be finished rather than silently dropped.
+    joinStarted: () => Boolean(read().joining),
+    setJoinStarted: (on) => { const s = read(); if (on) write({ ...s, joining: true }); else { const { joining: _drop, ...rest } = s; write(rest); } },
     // The coach's code, kept only across the hop to Google and back.
     pendingCode: () => read().code || null,
     setPendingCode: (code) => { const s = read(); if (code) write({ ...s, code }); else { const { code: _drop, ...rest } = s; write(rest); } },
@@ -99,6 +105,7 @@ export default function LinkPage({ token, api }) {
   const submitLink = api?.submitLink || realSubmit;
   const fetchMe = api?.fetchMe || realMe;
   const connectLink = api?.connectLink || realConnect;
+  const requestConnect = api?.requestConnect || realRequest;
   const signIn = api?.signInWithGoogle || realSignIn;
   const signOut = api?.signOutLink || realSignOut;
   const [state, setState] = React.useState({ loading: true, data: null, error: null });
@@ -114,21 +121,37 @@ export default function LinkPage({ token, api }) {
   const [dayIso, setDayIso] = React.useState(null);        // a day they picked; null = today
   const [extrasByDate, setExtrasByDate] = React.useState({}); // date → exercises they added
 
-  // Who is holding this link, and — coming back from Google with the coach's
-  // code — the last step of connecting.
+  // An invite the coach sent carries its code in the address. Taken once, then
+  // wiped from the address bar so a forwarded screenshot of the URL is just
+  // the everyday link.
+  const [invite] = React.useState(() => (typeof window === "undefined" ? null : joinCodeFrom(window.location.search)));
+  React.useEffect(() => {
+    if (!invite || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("join");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  }, [invite]);
+
+  // Who is holding this link, and — coming back from Google — the last step of
+  // connecting: straight in with an invite code, otherwise ask the coach.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        let m = await fetchMe(token);
-        const code = store.pendingCode();
-        if (m?.ok && m.signed_in && !m.you && code) {
-          const res = await connectLink(token, code);
+        const m = await fetchMe(token);
+        if (!m?.ok) return;
+        const oauthError = typeof window !== "undefined" ? signInErrorFromUrl(window.location) : null;
+        if (oauthError) {
           store.setPendingCode(null);
-          if (res?.ok) m = await fetchMe(token);
-          else if (!cancelled) setConnect({ open: true, busy: false, error: connectError(res) });
+          if (!cancelled) { setMe(m); setConnect({ open: true, busy: false, error: oauthError }); }
+          return;
         }
-        if (!cancelled && m?.ok) setMe(m);
+        // Signed in, holding the link, not in yet: finish what they started.
+        if (m.signed_in && !m.you && !m.waiting && (store.pendingCode() || store.joinStarted())) {
+          if (!cancelled) await finishConnect(cancelled);
+          return;
+        }
+        if (!cancelled) setMe(m);
       } catch { /* the page works whether or not this lands */ }
     })();
     return () => { cancelled = true; };
@@ -177,21 +200,51 @@ export default function LinkPage({ token, api }) {
     try { const m = await fetchMe(token); if (m?.ok) setMe(m); } catch { /* the page works without it */ }
   }
 
-  async function startConnect(code) {
+  /**
+   * The last step, once they are back from Google. An invite code puts them
+   * straight in; anything else — no invite, or one that has since been
+   * replaced — asks the coach instead of failing in their face.
+   */
+  async function finishConnect(cancelled = false) {
+    forgetJoinLink();  // the round trip is over, whichever way it went
+    const code = store.pendingCode();
+    if (code) {
+      const res = await connectLink(token, code);
+      store.setPendingCode(null);
+      if (res?.ok) {
+        store.setJoinStarted(false);
+        if (!cancelled) { setMe(await fetchMe(token)); setConnect({ open: false, busy: false, error: null }); }
+        return;
+      }
+      // "taken" means somebody else already has this link: asking won't help.
+      if (res?.reason === "taken" || res?.reason === "revoked") {
+        store.setJoinStarted(false);
+        if (!cancelled) { setMe(await fetchMe(token)); setConnect({ open: true, busy: false, error: connectError(res) }); }
+        return;
+      }
+    }
+    const asked = await requestConnect(token);
+    store.setJoinStarted(false);
+    if (cancelled) return;
+    if (asked?.ok) { setMe(await fetchMe(token)); setConnect({ open: false, busy: false, error: null }); return; }
+    setConnect({ open: true, busy: false, error: connectError(asked) });
+  }
+
+  async function startConnect() {
     setConnect((c) => ({ ...c, busy: true, error: null }));
     try {
-      store.setPendingCode(code);
+      if (invite) store.setPendingCode(invite);
+      // Remembered so that a sign-in which comes back to the home page instead
+      // of here can be sent back to this link (see the app's boot).
+      store.setJoinStarted(true);
+      rememberJoinLink(token);
       await signIn(token);
       // The real flow leaves for Google here. The preview comes straight back.
       const m = await fetchMe(token);
-      if (m?.signed_in) {
-        const res = await connectLink(token, code);
-        store.setPendingCode(null);
-        if (res?.ok) { setMe(await fetchMe(token)); setConnect({ open: false, busy: false, error: null }); return; }
-        setConnect({ open: true, busy: false, error: connectError(res) });
-      }
+      if (m?.signed_in) await finishConnect();
     } catch (e) {
       store.setPendingCode(null);
+      store.setJoinStarted(false);
       setConnect({ open: true, busy: false, error: e.message || "Could not connect. Try again." });
     }
   }
@@ -213,7 +266,7 @@ export default function LinkPage({ token, api }) {
             onSubmit={(payload) => submitLink(token, "workout", payload)}
             onSent={(summary) => { setSent({ kind: "workout", summary }); refreshMe(); }} onMeasure={() => setTab("measurements")} />
         : <MeasurementsTab d={d} store={store} onSubmit={(payload) => submitLink(token, "measurements", payload)} onSent={(summary) => setSent({ kind: "measurements", summary })} />}
-      {connect.open && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} locked={me?.locked}
+      {connect.open && !me?.waiting && <ConnectSheet first={d.first_name} coach={d.coach_name} busy={connect.busy} error={connect.error} invited={Boolean(invite)}
         onClose={() => setConnect({ open: false, busy: false, error: null })} onConnect={startConnect} />}
     </div>
   );
@@ -417,31 +470,36 @@ function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
  * code the coach sends separately — opens the rest of the week and lets them
  * add their own sessions. A forwarded link without the code gets nowhere.
  */
-function ConnectSheet({ first, coach, busy, error, locked, onClose, onConnect }) {
-  const [code, setCode] = React.useState("");
-  const clean = code.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 6);
+function ConnectSheet({ first, coach, busy, error, invited, onClose, onConnect }) {
+  const who = coach ? `Coach ${coach}` : "your coach";
   return (
-    <div className="lk-overlay" role="dialog" aria-modal="true" aria-label="Connect your account" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="lk-overlay" role="dialog" aria-modal="true" aria-label="Set up your account" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="lk-sheet">
         <button type="button" className="lk-sheet-x" aria-label="Close" onClick={onClose}><Icon.Close size={18} /></button>
-        <h2 className="lk-sheet-h">Connect your account</h2>
-        <p className="lk-sheet-p">{first ? `${first}, connecting` : "Connecting"} keeps this the same page — it just opens up more of it.</p>
+        <h2 className="lk-sheet-h">Set up your account</h2>
+        <p className="lk-sheet-p">{first ? `${first}, this` : "This"} stays the same page — it just opens up more of it.</p>
         <ul className="lk-perks">
           <li><Icon.Check size={16} /><span>Every day of your plan, not only today</span></li>
           <li><Icon.Check size={16} /><span>Add your own sessions — a run, a swim, anything extra</span></li>
           <li><Icon.Check size={16} /><span>Your history and streak stay with you</span></li>
         </ul>
-        <label className="lk-field">
-          <span>Code from {coach ? `Coach ${coach}` : "your coach"}</span>
-          <input className="lk-input lk-code" value={clean} onChange={(e) => setCode(e.target.value)} placeholder="ABC123"
-            autoCapitalize="characters" autoCorrect="off" spellCheck="false" inputMode="text" aria-label="Code from your coach" />
-        </label>
         {error && <div className="lk-error" role="alert">{error}</div>}
-        <button type="button" className="lk-send" disabled={busy || locked || clean.length < 6} onClick={() => onConnect(clean)}>
-          {busy ? "Connecting…" : "Continue with Google"}
+        <button type="button" className="lk-send" disabled={busy} onClick={onConnect}>
+          {busy ? "Just a moment…" : "Continue with Google"}
         </button>
-        <small className="lk-small">Google only tells us your name and email, so your coach knows it's you. Ask your coach for the code if you don't have it.</small>
+        <small className="lk-small">{invited
+          ? `${who} sent you this, so you'll be straight in. Google only tells us your name and email.`
+          : `${who} gets a note to check it's you, then you're in. Google only tells us your name and email.`}</small>
       </div>
+    </div>
+  );
+}
+
+/** Asked, and waiting on the coach. Nothing about the page changes meanwhile. */
+function WaitingNote({ coach, first }) {
+  return (
+    <div className="lk-weeknote waiting">
+      <span><Icon.Clock size={14} /> Waiting for {coach ? `Coach ${coach}` : "your coach"} to check it's you{first ? `, ${first}` : ""}. Keep using the link as normal.</span>
     </div>
   );
 }
@@ -797,10 +855,12 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                   <span><Icon.Check size={14} /> Connected{me?.name ? ` as ${me.name}` : ""}. Tap any day to see it{onExtras ? ", or add your own session" : ""}.</span>
                   {onSignOut && <button type="button" className="lk-linkbtn" onClick={onSignOut}>Sign out</button>}
                 </div>
+              : me?.waiting
+              ? <WaitingNote coach={d.coach_name} first={d.first_name} />
               : onConnect
               ? <div className="lk-weeknote">
                   <span>Want the whole week, and your own sessions on top?</span>
-                  <button type="button" className="lk-connect" onClick={onConnect}>Connect</button>
+                  <button type="button" className="lk-connect" onClick={onConnect}>Set up my account</button>
                 </div>
               : <div className="lk-weeknote"><span>Every day's workout will be in the Theryn app.</span> <b className="soon">App coming soon</b></div>)}
           </section>

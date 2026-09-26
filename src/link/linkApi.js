@@ -22,6 +22,13 @@ export async function fetchMe(token) {
   return data;
 }
 
+/** Asks the coach to wave this account in. For a link with no invite code in it. */
+export async function requestConnect(token) {
+  const { data, error } = await supabase.rpc("link_request_connect", { p_token: token });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /** Ties this link to the signed-in Google account. Needs the code the coach sent. */
 export async function connectLink(token, code) {
   const { data, error } = await supabase.rpc("link_connect", { p_token: token, p_code: code });
@@ -82,8 +89,19 @@ export function createPreviewApi() {
     async connectLink(_t, code) {
       await new Promise((r) => setTimeout(r, 400));
       if (String(code || "").trim().toUpperCase() !== "DEMO24") return { ok: false, reason: "code", left: 7 };
-      connected = { ...connected, connected: true, you: true, name: "Alex Preview" };
+      connected = { ...connected, connected: true, you: true, waiting: false, name: "Alex Preview" };
       return { ok: true };
+    },
+    // No invite code: the coach is asked. `?approve` in the preview's address
+    // waves them straight in, so the whole flow can be walked without a coach.
+    async requestConnect() {
+      await new Promise((r) => setTimeout(r, 400));
+      if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("approve")) {
+        connected = { ...connected, connected: true, you: true, waiting: false, name: "Alex Preview" };
+        return { ok: true, already: true };
+      }
+      connected = { ...connected, waiting: true };
+      return { ok: true, pending: true };
     },
     async signInWithGoogle() { await new Promise((r) => setTimeout(r, 300)); connected = { ...connected, signed_in: true }; },
     async signOutLink() { connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] }; },
