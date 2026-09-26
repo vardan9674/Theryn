@@ -317,3 +317,17 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-sent-by { margin: -2px 0 10px; font-size: 13px; color: var(--cx-mu); }
 .lk-weeknote.waiting span { display: inline-flex; align-items: flex-start; gap: 6px; color: var(--cx-tx2); }
 .lk-weeknote.waiting svg { color: var(--cx-a); flex: none; margin-top: 2px; }
+
+/* What you worked: the muscle picture on the receipt after a workout is sent.
+   Brighter means more sets. The names under the figures carry the same three
+   shades, so they double as the legend and as what a screen reader reads. */
+.lk-heat { width: 100%; text-align: left; gap: 10px; }
+.lk-heat-h { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-mu); }
+.lk-heat-figs { display: flex; justify-content: center; gap: 10px; }
+.lk-heat-p { margin: 0; font-size: 16px; font-weight: 700; color: var(--cx-tx); }
+.lk-heat-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.lk-heat-m { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--cx-tx2); }
+.lk-heat-dot { width: 8px; height: 8px; border-radius: 50%; background: #93BC00; flex-shrink: 0; }
+.lk-heat-m.l3 .lk-heat-dot { background: var(--cx-a); }
+.lk-heat-m.l3 { color: var(--cx-tx); font-weight: 600; }
+.lk-heat-note { font-size: 12px; color: var(--cx-mu); line-height: 1.45; }
