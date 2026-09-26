@@ -123,7 +123,9 @@ function makeState() {
     { id: "sub-1", kind: "workout", submitted_at: daysAgo(1, 18).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(1)), day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][daysAgo(1).getDay()], type: "Full Body", exercises: [{ name: "Lateral Raise", sets_planned: 3, sets_done: 3, reps: "12", weight_target: 7.5, weight_used: 75, sets: [{ n: 1, done: true, weight: 75 }, { n: 2, done: true, weight: 75 }, { n: 3, done: true, weight: 7.5 }] }, { name: "Squat", sets_planned: 3, sets_done: 3, reps: "8-12", weight_used: 60 }, { name: "Bench Press", sets_planned: 3, sets_done: 2, reps: "8-12", weight_target: 45, weight_used: 45, sets: [{ n: 1, done: true, reps: 10 }, { n: 2, done: true, reps: 6, weight: 40 }, { n: 3, done: false }] }, { name: "Barbell Row", sets_planned: 3, sets_done: 0, reps: "8-12", weight_used: null }, { name: "Evening run", sets_planned: 1, sets_done: 1, mode: "time", secs_target: 1500, added_by_client: true, sets: [{ n: 1, done: true, secs: 1620 }] }], note: "Shoulder felt tight, skipped the last one.", feel: "hard" } },
     { id: "sub-2", kind: "measurements", submitted_at: daysAgo(3, 9).toISOString(), clientId: "manual:m1", payload: { date: isoDate(daysAgo(3)), unit: "metric", weight: 74, neck: 38, chest: 96, waist: 82, hips: 97, arm: 33, arm_r: 34, thigh: 56, thigh_r: 57, body_fat: 19 } },
   ];
-  return { units: "imperial", links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, clientLinks, submissions, listeners: new Set() };
+  // Someone waiting to be waved in, so the coach preview shows that state.
+  const joinRequests = { "manual:m1": [{ id: "req-1", user_id: "u-ravi", name: "Ravi Patel", email: "ravi.patel@gmail.com", created_at: daysAgo(0, 9).toISOString() }] };
+  return { units: "imperial", links, routines, histories, weights, measurements, fees, payments, messages, reads, templates, assignments, manual, clientLinks, joinRequests, submissions, listeners: new Set() };
 }
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -322,6 +324,22 @@ export function createMockCoachData() {
     async getClientLink(clientId) { await wait(150); const l = st.clientLinks[clientId]; const elsewhere = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("linkElsewhere"); return l ? { link: l, token: elsewhere ? null : l.token } : { link: null, token: null }; },
     async createClientLink(clientId, { requested } = {}) { await wait(300); const l = { id: "lnk-" + uid(), token: generateToken(), requested: requested || ["chest", "waist", "hips", "arm", "thigh"], opens: 0, submissions: 0, created_at: new Date().toISOString(), connect_code: newCode(), connect_tries: 0 }; st.clientLinks[clientId] = l; return { link: l, token: l.token }; },
     async resetConnectCode(clientId) { await wait(120); const l = st.clientLinks[clientId]; if (!l) throw new Error("No link yet."); l.connect_code = newCode(); l.connect_tries = 0; return l.connect_code; },
+    async loadJoinRequests(clientId) { await wait(100); const l = st.clientLinks[clientId]; return l && !l.connected_at ? (st.joinRequests[clientId] || []) : []; },
+    async decideJoinRequest(requestId, approve) {
+      await wait(180);
+      for (const [clientId, list] of Object.entries(st.joinRequests)) {
+        const req = (list || []).find((r) => r.id === requestId);
+        if (!req) continue;
+        if (approve) {
+          const l = st.clientLinks[clientId];
+          if (l) { l.connected_at = new Date().toISOString(); l.connected_name = req.name; l.connected_email = req.email; }
+        }
+        st.joinRequests[clientId] = [];
+        notify();
+        return { ok: true, approved: Boolean(approve) };
+      }
+      throw new Error("That request is no longer there.");
+    },
     async revokeClientLink(clientId) { await wait(150); delete st.clientLinks[clientId]; },
     async updateClientLinkRequested(clientId, requested) { await wait(100); if (st.clientLinks[clientId]) st.clientLinks[clientId].requested = requested; },
     async logWorkoutForClient(clientId, payload) { await wait(250); st.submissions.unshift({ id: "sub-" + uid(), kind: "workout", submitted_at: new Date().toISOString(), clientId, payload }); notify(); },

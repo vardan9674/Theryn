@@ -75,6 +75,31 @@ export function whatsappUrl(text) {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
+/**
+ * The same link with the join code already in it. A client who opens this is
+ * waved in the moment they sign in — the coach sent it, so there is nobody
+ * else to check with. Their everyday link stays what it always was.
+ */
+export function inviteUrl(token, code, origin) {
+  const url = linkUrl(token, origin);
+  const c = String(code || "").trim().toUpperCase();
+  return c ? `${url}?join=${encodeURIComponent(c)}` : url;
+}
+
+/** Message that goes with an invite. */
+export function inviteMessage(firstName, url) {
+  const name = (firstName || "").trim();
+  return `Hi${name ? " " + name : ""}, tap this to set up your Theryn account. Same link as always — you'll just be signed in, so you get your whole week and can log extra sessions yourself: ${url}`;
+}
+
+/** The join code out of a link's address, or null. Case and spacing are forgiven. */
+export function joinCodeFrom(search) {
+  const raw = new URLSearchParams(String(search || "")).get("join");
+  if (!raw) return null;
+  const code = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
+  return code || null;
+}
+
 /** Day key ("Mon".."Sun") for a Date, weeks starting Monday. */
 export function dayKeyOf(d = new Date()) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];

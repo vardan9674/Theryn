@@ -314,3 +314,5 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 @media (max-width: 380px) { .lk-sent-acts { grid-template-columns: minmax(0, 1fr); } .lk-sent { padding: 24px 14px 16px; } }
 .lk-sent-acts.one { grid-template-columns: minmax(0, 1fr); }
 .lk-sent-by { margin: -2px 0 10px; font-size: 13px; color: var(--cx-mu); }
+.lk-weeknote.waiting span { display: inline-flex; align-items: flex-start; gap: 6px; color: var(--cx-tx2); }
+.lk-weeknote.waiting svg { color: var(--cx-a); flex: none; margin-top: 2px; }
