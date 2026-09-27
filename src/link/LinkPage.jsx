@@ -303,7 +303,7 @@ function connectError(res) {
 export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }) {
   const exercises = [
     { name: "Bench Press", sets: 3, reps: "8", weight: 135, coachNote: "Keep each rep controlled." },
-    { name: "Overhead Press", sets: 3, reps: "10", weight: 65 },
+    { name: "Overhead Press", sets: 3, reps: "10", weight: 65, alternatives: ["Dumbbell Shoulder Press", "Push-Up"] },
     { name: "Cable Fly", sets: 3, reps: "12", weight: 25 },
   ];
   // A realistic push/pull/legs week, rotated so today is always the push day

@@ -22,6 +22,7 @@ const COMPARE = [
   ["Works on", "Any phone browser", "App store installs"],
   ["Your plans", "Export to Excel anytime", "Kept inside the app"],
   ["See who trained", "The second they tap Finish", "When they open the app"],
+  ["A machine is taken", "Your stand-ins are already on the link", "They skip it, or text you"],
   ["Cost to start", "Free", "Usually a monthly fee"],
 ];
 
@@ -30,6 +31,7 @@ const FAQ = [
   ["How do I send the link?", "Copy it and send it however you already talk to them: WhatsApp, iMessage, SMS or email. Each athlete gets their own private link."],
   ["Can I bring my Excel plans?", "Build the week once in the plan builder, save it as a template and give it to any athlete. You can export any plan back to Excel whenever you want."],
   ["Do athletes have to log weights?", "No. They can just tick each set. If they want, they can add reps and weight, rate how it felt and leave you a note."],
+  ["What if they can’t do an exercise?", "Put a couple of stand-ins on it when you build the plan and they show up on the link under that exercise, so a busy machine means they swap instead of skip. After they finish, the link shows them which muscles the session worked."],
   ["Can I track payments and measurements?", "Yes. Mark who has paid and see who is overdue. Ask for body measurements and they fill them in on the same link."],
   ["Is it really free?", "Yes, for coaches and athletes. Sign in with Google and start. No card needed."],
 ];
@@ -40,7 +42,7 @@ const BENCH = [95, 95, 100, 105, 105, 110, 115, 115, 120, 125, 130, 135];
 
 const TABS = {
   dashboard: ["Athletes", <><b>Every athlete, one screen.</b> Last workout, streak, this week, payment, and what to do next.</>],
-  plan: ["Plan builder", <><b>Build the week once.</b> Exercises, sets and notes, with a live preview of what your athlete sees.</>],
+  plan: ["Plan builder", <><b>Build the week once.</b> Exercises, sets and notes, with a live preview of what your athlete sees. Add stand-ins for anything they might not get to.</>],
   templates: ["Templates", <><b>Save it as a template.</b> Give it to any number of athletes, update them all in one tap, or export to Excel.</>],
 };
 
@@ -407,7 +409,7 @@ const FLOW = [
   { key: "text", title: "Get the text", text: "You send the link however you already talk.", body: <MessageScreen /> },
   { key: "plan", title: "See today’s plan", text: "Opens in the browser. No account, no password.", body: <LinkScreen screen="workout" /> },
   { key: "tick", title: "Tick it off", text: "Tap each set. Logging weights is optional.", body: <LinkScreen screen="workout" ticks={3} scroll={330} /> },
-  { key: "sent", title: "Send to coach", text: "One tap. You see it the same second.", body: <LinkScreen screen="sent" /> },
+  { key: "sent", title: "Send to coach", text: "One tap. You see it the same second — they see the muscles they worked.", body: <LinkScreen screen="sent" /> },
   { key: "measure", title: "Check-ins too", text: "Measurements live on the same link.", body: <LinkScreen screen="measure" filled={3} scroll={200} /> },
 ];
 
