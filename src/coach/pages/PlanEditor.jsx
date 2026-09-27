@@ -7,6 +7,8 @@ import { DAYS, DAY_LONG, normalizeExercise } from "../lib/format.js";
 import { cleanAlternatives } from "../lib/clientLinks.js";
 import AlternativesSheet from "./AlternativesSheet.jsx";
 import NewExerciseSheet from "./NewExerciseSheet.jsx";
+import ExercisePicker from "../../components/exercise/ExercisePicker.jsx";
+import { checkNewExercise } from "../lib/exerciseMatch.js";
 import { lastLiftedWeight } from "../lib/exportPlan.ts";
 import { lastSetsFor, setsLine as historyLine } from "../lib/workouts.js";
 import { planTemplate, stampTemplate } from "../lib/manualTemplates.js";
@@ -576,6 +578,8 @@ function ExerciseCard({ ex, index, unit, firstName, history, open, ss, hasNext, 
 // ── Adding exercises ───────────────────────────────────────────────────────
 function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, onAdd }) {
   const [newOpen, setNewOpen] = React.useState(false);
+  const [browse, setBrowse] = React.useState(false);
+  const [newName, setNewName] = React.useState("");
   const data = useCoachData();
   const [q, setQ] = React.useState("");
   const [picked, setPicked] = React.useState([]);
@@ -595,6 +599,27 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
 
   const has = (n) => picked.some((p) => p.toLowerCase() === n.toLowerCase());
   const toggle = (n) => setPicked((p) => (has(n) ? p.filter((x) => x.toLowerCase() !== n.toLowerCase()) : [...p, n]));
+
+  // A pick from the body-map picker is a name out of the exercise library, which is
+  // not the same list the plan saves against. Taking it on trust would quietly make a
+  // second "Bench Press" the first time the two spell it differently, so the name is
+  // matched against the real list first: an exact match is added under the name that
+  // list already uses, and anything else goes through the same duplicate check a coach
+  // gets when they type a new exercise.
+  const addFromLibrary = async (name, entry) => {
+    if (has(name)) return;
+    let found = [];
+    try { found = await data.searchExercises(name); } catch { found = []; }
+    const check = checkNewExercise(name, entry?.equipment || "", found);
+    if (check.verdict === "exists") { toggle(check.matches[0].name); return; }
+    setNewName(name);
+    // Wait for the picker to finish sliding out. Both sheets portal to the body at the
+    // same depth, so whichever mounts last sits on top: opening this one while the
+    // picker is still unmounting reorders the portals and leaves the "New exercise"
+    // sheet stranded behind "Add to ...".
+    setBrowse(false);
+    setTimeout(() => setNewOpen(true), 260);
+  };
   // A rest or custom day has no defaults of its own (a new saved plan starts all rest), so offer the common lifts.
   const typed = TYPE_DEFAULTS[type]?.length > 0;
   const base = typed ? TYPE_DEFAULTS[type] : [...new Set([...TYPE_DEFAULTS["Full Body"], ...TYPE_DEFAULTS.Push, ...TYPE_DEFAULTS.Pull, ...TYPE_DEFAULTS.Legs])];
@@ -609,6 +634,12 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
           <Icon.Search size={18} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search exercises" aria-label="Search exercises" autoFocus />
         </label>
+        {q.trim().length < 2 && (
+          <button type="button" className="pe-browse" onClick={() => setBrowse(true)}>
+            <Icon.Search size={16} />
+            <span><b>Browse by muscle</b><small>Tap the body to see every exercise for it</small></span>
+          </button>
+        )}
         {suggestions.length > 0 && q.trim().length < 2 && (
           <div className="pe-sugs">
             <span className="pe-label">{typed ? `Good for a ${type} day` : "Popular"}</span>
@@ -634,7 +665,8 @@ function AddSheet({ open, dayKey, type, existing, firstName, history, onClose, o
             )}
           </div>
         )}
-        <NewExerciseSheet open={newOpen} initialName={q.trim()} onClose={() => setNewOpen(false)} onCreated={(name) => { if (!has(name)) toggle(name); }} />
+        {browse && <ExercisePicker history={history} onClose={() => setBrowse(false)} onSelect={(name, entry) => addFromLibrary(name, entry)} />}
+        <NewExerciseSheet open={newOpen} initialName={newName || q.trim()} onClose={() => { setNewOpen(false); setNewName(""); }} onCreated={(name) => { if (!has(name)) toggle(name); }} />
         <div className="pe-addfoot">
           <span>New exercises start at 3 × {DEFAULT_REPS}{history?.length ? `, with ${firstName}'s last weight` : ""}.</span>
           <button type="button" className="pe-save dirty" disabled={picked.length === 0} onClick={() => onAdd(picked)}>{picked.length ? `Add ${picked.length}` : "Pick exercises"}</button>
