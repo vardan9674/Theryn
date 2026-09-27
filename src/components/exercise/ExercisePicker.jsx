@@ -22,8 +22,11 @@ const sectionLabel = { fontSize: "12px", fontWeight: 700, letterSpacing: "0.06em
 
 /**
  * Pick an exercise: search, tap muscles on the body, filter by equipment and type.
- * Calls onSelect(name) with the exercise name (or the typed name for a custom exercise),
- * then closes. `history` (optional) shows what the person lifted last time.
+ * Calls onSelect(name, entry) with the exercise name (or the typed name for a custom
+ * exercise, where entry is null), then closes. `entry` is the library row, so a caller
+ * that keeps its own exercise list — the coach's plan builder — can match the pick
+ * against it instead of taking the name on trust. `history` (optional) shows what the
+ * person lifted last time.
  */
 export default function ExercisePicker({ onClose, onSelect, history, units = "imperial" }) {
   const lib = useExerciseLibrary();
@@ -49,7 +52,7 @@ export default function ExercisePicker({ onClose, onSelect, history, units = "im
   useEffect(() => { setLimit(PAGE); }, [q, groups, equipment, types]);
 
   const close = () => { setVisible(false); setTimeout(onClose, 220); };
-  const choose = (name) => { onSelect(name); close(); };
+  const choose = (name, entry = null) => { onSelect(name, entry); close(); };
   const toggle = (list, setList, v) => setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   const results = useMemo(() => (lib ? filterLibrary(lib, { groups, equipment, types, query: q }) : []), [lib, groups, equipment, types, q]);
@@ -150,7 +153,7 @@ export default function ExercisePicker({ onClose, onSelect, history, units = "im
           <div role="list" style={{ display: "flex", flexDirection: "column" }}>
             {results.slice(0, limit).map((e) => (
               <div role="listitem" key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: `1px solid ${BD}` }}>
-                <button type="button" onClick={() => choose(e.name)} style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: "12px 0", cursor: "pointer", display: "flex", flexDirection: "column", gap: "3px", fontFamily: "inherit" }}>
+                <button type="button" onClick={() => choose(e.name, e)} style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: "12px 0", cursor: "pointer", display: "flex", flexDirection: "column", gap: "3px", fontFamily: "inherit" }}>
                   <span style={{ fontSize: "16px", fontWeight: 600, color: TX }}>{e.name}</span>
                   <span style={{ fontSize: "13px", color: TX2 }}>{GROUP_LABEL[e.group]} · {EQUIPMENT_LABEL[e.equipment]}{lastTime[e.id] ? ` · last time ${lastTime[e.id].replace(/^(\S+) ×/, `$1 ${unit} ×`)}` : ""}</span>
                   {alsoWorks(e) && <span style={{ fontSize: "12px", color: MU }}>{alsoWorks(e)}</span>}
@@ -177,7 +180,7 @@ export default function ExercisePicker({ onClose, onSelect, history, units = "im
 
       {info && (
         <div onClick={(ev) => ev.stopPropagation()}>
-          <ExerciseInfoSheet entry={info} history={history} units={units} onClose={() => setInfo(null)} onAdd={(name) => { setInfo(null); choose(name); }} />
+          <ExerciseInfoSheet entry={info} history={history} units={units} onClose={() => setInfo(null)} onAdd={(name) => { setInfo(null); choose(name, info); }} />
         </div>
       )}
     </div>

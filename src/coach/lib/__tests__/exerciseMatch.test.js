@@ -50,3 +50,44 @@ describe("checkNewExercise", () => {
     expect(v("   ", "barbell")).toEqual({ verdict: "new", matches: [] });
   });
 });
+
+// The plan builder's "Browse by muscle" hands back a name from the exercise library,
+// which is a different list from the one plans are saved against. PlanEditor only adds
+// a pick straight to the day when this says "exists"; anything else goes through the
+// New exercise sheet, so a near-miss can never quietly become a second bench press.
+describe("resolving a library pick against the coach's own list", () => {
+  const OWN = [
+    { id: "a", name: "Barbell Bench Press", equipment: "barbell" },
+    { id: "b", name: "Dumbbell Bench Press", equipment: "dumbbell" },
+    { id: "c", name: "Lateral Raise", equipment: "dumbbell" },
+  ];
+
+  it("adds a pick whose name the list already has", () => {
+    expect(checkNewExercise("Dumbbell Bench Press", "dumbbell", OWN).verdict).toBe("exists");
+    expect(checkNewExercise("Lateral Raise", "dumbbell", OWN).verdict).toBe("exists");
+  });
+
+  it("adds a library variant under the name the coach's list already uses", () => {
+    // The library calls it "… - Medium Grip"; the coach's list just says "Barbell Bench
+    // Press". Same bar, same lift, so it resolves to their name rather than adding a
+    // second one spelled the library's way.
+    const check = checkNewExercise("Barbell Bench Press - Medium Grip", "barbell", OWN);
+    expect(check.verdict).toBe("exists");
+    expect(check.matches[0].name).toBe("Barbell Bench Press");
+  });
+
+  it("still refuses to fold a dumbbell lift into the barbell one", () => {
+    const check = checkNewExercise("Dumbbell Bench Press", "dumbbell", OWN);
+    expect(check.matches[0].name).toBe("Dumbbell Bench Press");
+  });
+
+  it("keeps a barbell lift apart from the dumbbell one with the same name", () => {
+    const check = checkNewExercise("Barbell Bench Press", "barbell", OWN);
+    expect(check.verdict).toBe("exists");
+    expect(check.matches[0].name).toBe("Barbell Bench Press");
+  });
+
+  it("treats a pick the list has never seen as new", () => {
+    expect(checkNewExercise("Jefferson Curl", "barbell", OWN).verdict).toBe("new");
+  });
+});

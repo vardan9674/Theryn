@@ -712,6 +712,12 @@
 .pe-search { display: flex; align-items: center; gap: 10px; height: 50px; border-radius: 14px; border: 1.5px solid var(--cx-bd2); background: var(--cx-bg); padding: 0 14px; color: var(--cx-mu); }
 .pe-search:focus-within { border-color: var(--cx-a); }
 .pe-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--cx-tx); font-family: inherit; font-size: 17px; }
+/* Opens the full exercise library: tap a muscle on the body to browse it. */
+.pe-browse { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-tx); cursor: pointer; font-family: inherit; text-align: left; }
+.pe-browse:hover { border-color: var(--cx-a); }
+.pe-browse > span { display: flex; flex-direction: column; gap: 2px; }
+.pe-browse b { font-size: 15px; font-weight: 700; }
+.pe-browse small { font-size: 12px; color: var(--cx-mu); }
 .pe-sugs { display: flex; flex-direction: column; gap: 8px; }
 .pe-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .pe-chip { height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-tx); font-family: inherit; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: background 0.12s, color 0.12s, transform 0.08s; }
