@@ -17,7 +17,23 @@ const typed = { ticks: { 0: 2, 1: 3 }, log: { 0: { 0: { r: "8", w: "60" } } }, n
 describe("keeping what the coach typed", () => {
   it("gives it back for the same client and day", () => {
     saveDraft("c1", "2026-09-25", typed, full, s);
-    expect(readDraft("c1", "2026-09-25", s)).toEqual({ ticks: { 0: 2, 1: 3 }, log: { 0: { 0: { r: "8", w: "60" } } }, note: "felt strong" });
+    expect(readDraft("c1", "2026-09-25", s)).toEqual({ ticks: { 0: 2, 1: 3 }, log: { 0: { 0: { r: "8", w: "60" } } }, note: "felt strong", skipped: {}, swaps: {}, sets: {} });
+  });
+
+  it("keeps a skip, a swap and a changed set count, with nothing typed", () => {
+    const changed = { ticks: { 0: 0, 1: 4 }, log: {}, note: "", skipped: { 0: true }, swaps: { 1: "Hack Squat" }, sets: { 1: 4 } };
+    saveDraft("c1", "2026-09-25", changed, full, s);
+    const back = readDraft("c1", "2026-09-25", s);
+    expect(back.skipped).toEqual({ 0: true });
+    expect(back.swaps).toEqual({ 1: "Hack Squat" });
+    expect(back.sets).toEqual({ 1: 4 });
+  });
+
+  it("a day that is only ticked as planned is still not worth keeping", () => {
+    expect(isEmpty({ ticks: full, log: {}, note: "", skipped: {}, swaps: {}, sets: {} }, full)).toBe(true);
+    expect(isEmpty({ ticks: full, log: {}, note: "", skipped: { 0: true } }, full)).toBe(false);
+    expect(isEmpty({ ticks: full, log: {}, note: "", swaps: { 0: "Hack Squat" } }, full)).toBe(false);
+    expect(isEmpty({ ticks: full, log: {}, note: "", sets: { 0: 4 } }, full)).toBe(false);
   });
 
   it("keeps days and clients apart", () => {

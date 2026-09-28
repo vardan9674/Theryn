@@ -596,6 +596,23 @@
 .lw-hint { font-size: 12px; color: var(--cx-mu); }
 .lw-save { width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--cx-a); background: none; color: var(--cx-a); font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
 .lw-save:disabled, .lw-quick:disabled { opacity: 0.5; cursor: default; }
+/* Skipped, swapped, or done for a different number of sets (that day only) */
+.lw-ex.skipped { opacity: 0.68; border-style: dashed; }
+.lw-ex.skipped .lw-exname b { text-decoration: line-through; text-decoration-color: var(--cx-mu); }
+.lw-ex.skipped .lw-tick { border-color: var(--cx-bd2); color: var(--cx-mu); }
+.lw-exacts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.lw-act { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--cx-bd2); background: var(--cx-s2); color: var(--cx-tx2); font: inherit; font-size: 12px; font-weight: 700; line-height: 1.2; cursor: pointer; }
+.lw-act svg { flex: none; }
+.lw-act.danger { color: #F5A742; border-color: rgba(245, 167, 66, 0.4); }
+.lw-act.on { color: var(--cx-a); border-color: rgba(200, 255, 0, 0.45); }
+/* Picking what they did instead */
+.lw-swap { display: flex; flex-direction: column; gap: 12px; }
+.lw-picks { display: flex; flex-direction: column; gap: 6px; }
+.lw-pick { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 12px; border-radius: 11px; border: 1px solid var(--cx-bd); background: var(--cx-s1); color: var(--cx-tx); font: inherit; text-align: left; cursor: pointer; }
+.lw-pick span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lw-pick b { font-size: 14px; overflow-wrap: anywhere; }
+.lw-pick small { font-size: 12px; color: var(--cx-mu); overflow-wrap: anywhere; }
+.lw-pick svg { flex: none; color: var(--cx-mu); }
 /* Reps / Time switch on an exercise */
 .pe-mode { display: inline-flex; align-self: flex-start; gap: 2px; padding: 2px; border: 1px solid var(--cx-bd2); border-radius: 10px; background: var(--cx-s1); }
 .pe-mode button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--cx-mu); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
