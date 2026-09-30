@@ -295,8 +295,12 @@ export default function LinkPage({ token, api }) {
       // of here can be sent back to this link (see the app's boot).
       store.setJoinStarted(true);
       rememberJoinLink(token);
-      await signIn(token);
-      // The real flow leaves for Google here. The preview comes straight back.
+      // The real flow leaves for Google here, and must stop: signInWithOAuth
+      // returns before the page unloads, and a phone already signed in to
+      // another Theryn account would otherwise "finish" as that account — asking
+      // the coach as the wrong person and wiping the way back to this link.
+      if (await signIn(token)) return;
+      // The preview has no Google; it comes straight back.
       const m = await fetchMe(token);
       if (m?.signed_in) await finishConnect();
     } catch (e) {
