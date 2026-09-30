@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Theryn — Migration 008: Fix unassign_template RPC
 -- ============================================================================
--- The original unassign_template (in 005_routine_templates.sql) used a bare
+-- The original unassign_template (in 0052_routine_templates.sql) used a bare
 -- SELECT without INTO to gate on template ownership:
 --
 --     SELECT owner_coach_id FROM routine_templates WHERE ...;
