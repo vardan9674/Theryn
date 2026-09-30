@@ -90,7 +90,30 @@ describe("older and awkward sends", () => {
   });
 
   it("copes with nothing at all", () => {
-    expect(editStateFromPayload(null, plan, "metric")).toEqual({ ticks: {}, log: {}, skipped: {}, note: "", feel: null, extras: [] });
+    expect(editStateFromPayload(null, plan, "metric")).toEqual({ ticks: {}, log: {}, skipped: {}, swaps: {}, band: {}, note: "", feel: null, extras: [] });
     expect(editStateFromPayload({}, plan, "metric").ticks).toEqual({});
+  });
+});
+
+describe("done as something else", () => {
+  const abs = [{ name: "Banded Leg Raise", sets: 3, reps: "15" }, { name: "Plank", sets: 3, reps: "30" }];
+  it("lines a swap up with the plan exercise it replaced, and remembers what they did", () => {
+    const st = editStateFromPayload({ exercises: [
+      { name: "Leg Raise", swapped_from: "Banded Leg Raise", sets_planned: 3, sets_done: 3, sets: [{ n: 1, done: true, reps: 12 }] },
+      { name: "Plank", sets_planned: 3, sets_done: 2, mode: "time" },
+    ] }, abs, "metric");
+    expect(st.swaps).toEqual({ 0: { name: "Leg Raise", mode: "reps" } });
+    expect(st.ticks).toEqual({ 0: 3, 1: 2 });
+    expect(st.log[0]).toEqual({ 0: { r: "12" } });
+    expect(st.extras).toEqual([]);
+  });
+  it("keeps a timed swap timed", () => {
+    const st = editStateFromPayload({ exercises: [{ name: "Side Plank", swapped_from: "Banded Leg Raise", mode: "time", sets_planned: 3, sets_done: 3 }] }, abs, "metric");
+    expect(st.swaps[0]).toEqual({ name: "Side Plank", mode: "time" });
+  });
+  it("brings back how hard the band was", () => {
+    const st = editStateFromPayload({ exercises: [{ name: "Banded Leg Raise", band: "hard", sets_planned: 3, sets_done: 3 }] }, abs, "metric");
+    expect(st.band).toEqual({ 0: "hard" });
+    expect(editStateFromPayload({ exercises: [{ name: "Banded Leg Raise", band: "heavy", sets_planned: 3, sets_done: 3 }] }, abs, "metric").band).toEqual({});
   });
 });

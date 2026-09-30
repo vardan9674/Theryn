@@ -3,6 +3,7 @@ import "../coach/coach.css";
 import "./link.css";
 import BodyFigure from "./BodyFigure.jsx";
 import MuscleHeat from "./MuscleHeat.jsx";
+import BodyMap from "../components/BodyMap.jsx";
 import TherynLoader from "../components/TherynLoader.jsx";
 import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
@@ -19,6 +20,10 @@ import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
+import { loadKind, BAND_LEVELS, withoutKit, asLogged, swapFor } from "../lib/exerciseLoad.js";
+import { MUSCLE_MAP } from "../lib/muscleMap.generated.js";
+import { musclesForExercise } from "../lib/muscleHeat.js";
+import { GROUP_LABEL, EQUIPMENT, filterLibrary, loadLibrary } from "../lib/exerciseLibrary.js";
 
 /** "Set 1", "Set 2"… for working sets; "Warm-up", "Drop", "AMRAP" for the rest. */
 function setNames(e) {
@@ -610,23 +615,141 @@ function AddExercise({ unit, dayLabel = "today", onAdd, onClose }) {
   );
 }
 
+const ALL_EQUIPMENT = EQUIPMENT.map((x) => x.id);
+/** Escape closes a sheet. */
+function useEscape(onClose) {
+  React.useEffect(() => {
+    const on = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [onClose]);
+}
+const SEARCH_TYPES = ["strength", "plyo", "cardio"];
+
+/**
+ * The plan said one exercise and they did another: no band, so plain leg
+ * raises. The quickest answers come first — the same exercise without its kit,
+ * then what the coach suggested — each one tap. Anything else they type, with
+ * names from the exercise list as they go. It changes this workout only.
+ */
+function DidInstead({ ex, onPick, onClose }) {
+  const [name, setName] = React.useState("");
+  const [timed, setTimed] = React.useState(false);
+  const [touched, setTouched] = React.useState(false); // they picked Reps/Time themselves
+  const [lib, setLib] = React.useState(null);
+  useEscape(onClose);
+  // The full list is big; it is only fetched once someone opens this.
+  React.useEffect(() => { let on = true; loadLibrary().then((l) => { if (on) setLib(l); }).catch(() => {}); return () => { on = false; }; }, []);
+  const quick = [];
+  for (const n of [withoutKit(ex.name), ...(ex.alternatives || [])]) {
+    if (n && n.toLowerCase() !== ex.name.toLowerCase() && !quick.some((q) => q.toLowerCase() === n.toLowerCase())) quick.push(n);
+  }
+  const q = name.trim().toLowerCase();
+  const matches = React.useMemo(() => {
+    if (!lib || q.length < 2) return [];
+    return filterLibrary(lib, { equipment: ALL_EQUIPMENT, types: SEARCH_TYPES, query: q })
+      .filter((x) => x.name.toLowerCase() !== q)
+      .sort((a, b) => Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)) || a.name.length - b.name.length)
+      .slice(0, 5);
+  }, [lib, q]);
+  const onName = (v) => { setName(v); if (!touched) setTimed(defaultMode(v) === "time"); };
+  const pick = (n, mode) => onPick({ name: n.trim().slice(0, 60), mode: mode || defaultMode(n) });
+  return (
+    <div className="lk-overlay" role="dialog" aria-modal="true" aria-label="What did you do instead?" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="lk-sheet">
+        <button type="button" className="lk-sheet-x" aria-label="Close" onClick={onClose}><Icon.Close size={18} /></button>
+        <h2 className="lk-sheet-h">What did you do instead?</h2>
+        <p className="lk-sheet-p">Instead of <b>{ex.name}</b>. Your coach sees both, and your plan stays the same.</p>
+        {quick.length > 0 && (
+          <div className="lk-quick">
+            {quick.map((n) => <button key={n} type="button" className="lk-quick-opt" onClick={() => pick(n)}><span>{n}</span><Icon.Chevron size={16} /></button>)}
+          </div>
+        )}
+        <label className="lk-field"><span>{quick.length ? "Something else" : "Exercise"}</span>
+          <input className="lk-input" value={name} onChange={(e) => onName(e.target.value)} placeholder="Type what you did" aria-label="What you did instead" autoFocus={!quick.length} />
+        </label>
+        {matches.length > 0 && (
+          <div className="lk-suggest" role="listbox" aria-label="Matching exercises">
+            {matches.map((m) => <button key={m.id} type="button" role="option" aria-selected={false} onClick={() => pick(m.name, touched ? (timed ? "time" : "reps") : null)}>{m.name}</button>)}
+          </div>
+        )}
+        <div className="lk-segment" role="group" aria-label="Reps or time">
+          <button type="button" aria-pressed={!timed} onClick={() => { setTimed(false); setTouched(true); }}>Reps</button>
+          <button type="button" aria-pressed={timed} onClick={() => { setTimed(true); setTouched(true); }}>Time</button>
+        </div>
+        <button type="button" className="lk-send" disabled={!name.trim()} onClick={() => pick(name, timed ? "time" : "reps")}>Log it instead</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tap an exercise's name: which muscles it is for. The main one lit, the ones
+ * that help tinted. An exercise we can't place says so rather than guessing.
+ */
+function MuscleSheet({ name, onClose }) {
+  useEscape(onClose);
+  const groups = musclesForExercise(name, MUSCLE_MAP) || [];
+  const main = groups[0] || null;
+  const helpers = groups.slice(1).filter((g) => g !== main);
+  const levels = main ? { ...Object.fromEntries(helpers.map((g) => [g, 1])), [main]: 3 } : {};
+  const said = main ? `Main muscle ${GROUP_LABEL[main]}${helpers.length ? `. Also works ${helpers.map((g) => GROUP_LABEL[g]).join(", ")}` : ""}` : "";
+  return (
+    <div className="lk-overlay" role="dialog" aria-modal="true" aria-label={`${name}: muscles`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="lk-sheet">
+        <button type="button" className="lk-sheet-x" aria-label="Close" onClick={onClose}><Icon.Close size={18} /></button>
+        <h2 className="lk-sheet-h">{name}</h2>
+        {main ? <>
+          <div className="lk-heat-figs">
+            <BodyMap view="front" levels={levels} width={112} stroke="#101010" label={`Front of body. ${said}`} />
+            <BodyMap view="back" levels={levels} width={112} stroke="#101010" label={`Back of body. ${said}`} />
+          </div>
+          <div className="lk-muscles">
+            <div className="lk-muscle main"><span className="lk-heat-dot" aria-hidden="true" /><span><small>Main muscle</small>{GROUP_LABEL[main]}</span></div>
+            {helpers.length > 0 && <div className="lk-muscle"><span className="lk-heat-dot" aria-hidden="true" /><span><small>Also works</small>{helpers.map((g) => GROUP_LABEL[g]).join(", ")}</span></div>}
+          </div>
+        </> : <p className="lk-sheet-p">We don't have the muscles for this one yet.</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── Today's workout ────────────────────────────────────────────────────────
-function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks,
+function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubmit, onSent, onMeasure, controlledTicks,
   joined = false, me = null, onConnect = null, onSignOut = null, onPickDay = null, extras = [], onExtras = null, linkOff = false, onLinkOff }) {
   const [adding, setAdding] = React.useState(false);
-  const planCount = today.exercises.length - extras.length; // the coach's, before theirs
+  const planCount = planned.exercises.length - extras.length; // the coach's, before theirs
   // A day they have already sent opens as a receipt, not as the workout again.
   // "edit" reopens what they sent; "again" starts a separate second entry.
   const [mode, setMode] = React.useState(null);
   // A draft only applies to the same day's plan (the coach may have changed it since).
   const draft = React.useMemo(() => {
     const x = store?.draft(date);
-    if (!x || x.day !== today.key || x.type !== today.type) return null;
+    if (!x || x.day !== planned.key || x.type !== planned.type) return null;
     // Weights typed before a kg/lb switch are converted, not reread in the new unit.
     if (!x.units || x.units === d.unit_system) return x;
     const conv = (v) => (v === "" || v == null ? v : String(convertWeight(v, x.units, d.unit_system) ?? ""));
     return { ...x, log: Object.fromEntries(Object.entries(x.log || {}).map(([i, sets]) => [i, Object.fromEntries(Object.entries(sets || {}).map(([k, v]) => [k, { ...v, w: conv(v?.w) }]))])) };
-  }, [store, date, today.key, today.type, d.unit_system]);
+  }, [store, date, planned.key, planned.type, d.unit_system]);
+  // exerciseIndex → { name, mode }: done as something else today. The plan is
+  // never touched; the coach reads "instead of" beside it.
+  const [swaps, setSwaps] = React.useState(() => draft?.swaps || {});
+  // exerciseIndex → "easy" | "medium" | "hard": how hard the band was.
+  const [band, setBand] = React.useState(() => draft?.band || {});
+  // exerciseIndex → true: a bodyweight exercise they did with weight after all.
+  const [addWeight, setAddWeight] = React.useState({});
+  const [swapping, setSwapping] = React.useState(null); // exercise index with the sheet open
+  const [info, setInfo] = React.useState(null);         // exercise name with its muscles open
+  // The day as they are doing it: a plank written as reps gets its timer, and
+  // swaps and band levels are applied. Everything below reads this one.
+  const coachEx = React.useCallback((i) => asLogged(planned.exercises[i]), [planned.exercises]);
+  const today = React.useMemo(() => ({
+    ...planned,
+    exercises: planned.exercises.map((e, i) => {
+      const x = i < planCount ? (swaps[i] ? swapFor(coachEx(i), swaps[i]) : coachEx(i)) : e;
+      return band[i] ? { ...x, band: band[i] } : x;
+    }),
+  }), [planned, planCount, swaps, band, coachEx]);
   const [ticks, setTicks] = React.useState(() => draft?.ticks || {});      // exerciseIndex → sets done
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
@@ -648,8 +771,8 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   // Save every tick as it happens.
   React.useEffect(() => {
     if (!store || controlledTicks || upcoming) return;
-    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, log, skipped, note, feel });
-  }, [store, date, today.key, today.type, d.unit_system, ticks, log, skipped, note, feel, controlledTicks, upcoming]);
+    store.saveDraft(date, { day: today.key, type: today.type, units: d.unit_system, ticks, log, skipped, swaps, band, note, feel });
+  }, [store, date, today.key, today.type, d.unit_system, ticks, log, skipped, swaps, band, note, feel, controlledTicks, upcoming]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const first = d.first_name;
@@ -686,7 +809,27 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   const removeExtra = (idx) => {
     onExtras?.(extras.filter((_, k) => k !== idx));
     const keepPlan = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => Number(k) < planCount));
-    setTicks(keepPlan); setLog(keepPlan); setSkipped(keepPlan); setReopened(keepPlan);
+    setTicks(keepPlan); setLog(keepPlan); setSkipped(keepPlan); setReopened(keepPlan); setBand(keepPlan); setAddWeight(keepPlan);
+  };
+  // Done as something else. The boxes held the other exercise's numbers, so
+  // they start again on this one's last time (or empty, showing the plan).
+  const reseed = (i, ex) => {
+    const seeded = seedFromLast([ex], store, d.unit_system)[0];
+    setLog((l) => { const o = { ...l }; if (seeded) o[i] = seeded; else delete o[i]; return o; });
+    if (timer?.i === i) { setTimer(null); keepAwake(false); }
+  };
+  const swapExercise = (i, to) => {
+    setSwaps((s) => ({ ...s, [i]: to }));
+    reseed(i, swapFor(coachEx(i), to));
+    setSkipped((s) => ({ ...s, [i]: false }));
+    setAddWeight((o) => ({ ...o, [i]: false }));
+    setBand((b) => { const o = { ...b }; delete o[i]; return o; });
+    setSwapping(null);
+  };
+  const undoSwap = (i) => {
+    setSwaps((s) => { const o = { ...s }; delete o[i]; return o; });
+    reseed(i, coachEx(i));
+    setBand((b) => { const o = { ...b }; delete o[i]; return o; });
   };
   // Typing only edits the number. Ticking is a separate tap, so reaching for a value never ticks a set.
   const setSetValue = (i, si, field, raw) => {
@@ -785,12 +928,14 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
     // What the coach actually received comes first — it is the same on every
     // phone. What this phone remembers is the fallback, for a client whose
     // link isn't connected to an account.
-    const fromServer = sentPayload ? editStateFromPayload(sentPayload, today.exercises.slice(0, planCount), d.unit_system) : null;
+    const fromServer = sentPayload ? editStateFromPayload(sentPayload, planned.exercises.slice(0, planCount), d.unit_system) : null;
     const saved = fromServer || sentBefore?.saved || null;
     if (saved) {
       setTicks(saved.ticks || {});
       setLog(saved.log || {});
       setSkipped(saved.skipped || {});
+      setSwaps(saved.swaps || {});
+      setBand(saved.band || {});
       setNote(saved.note || "");
       setFeel(saved.feel || null);
       if (onExtras) onExtras(saved.extras || []);
@@ -801,7 +946,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
   };
   // Something else they did that day: a clean sheet, sent as its own workout.
   const startAgain = () => {
-    setTicks({}); setLog({}); setSkipped({}); setNote(""); setFeel(null); setReopened({});
+    setTicks({}); setLog({}); setSkipped({}); setSwaps({}); setBand({}); setAddWeight({}); setNote(""); setFeel(null); setReopened({});
     setMode("again");
     window.scrollTo(0, 0);
   };
@@ -852,7 +997,7 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
         sets: payload.exercises.reduce((a, e) => a + e.sets_done, 0),
         planned: payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0),
         exercises: payload.exercises.filter((e) => e.sets_done > 0).length,
-        saved: { ticks, log, note, feel, skipped, extras },
+        saved: { ticks, log, note, feel, skipped, swaps, band, extras },
       });
       setMode(null); // back to the receipt for this day
       store?.addDone(date);
@@ -969,9 +1114,13 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                 // A time saved in an older draft ("1", "45") is shown in the 00:00 form.
                 return { si, isDone, r: x.r || "", w: x.w || "", s: x.s ? (String(x.s).includes(":") ? x.s : tidyDuration(x.s)) : "", changed: isDone && (rChanged || wChanged || sChanged) };
               });
+              // Bodyweight and band exercises have no weight to type, unless the
+              // coach set one, they typed one before, or they add one now.
+              const load = loadKind(e.name);
+              const showW = load === "weight" || Boolean(addWeight[i]) || rows.some((x) => x.w) || rows.some((x) => planW(x.si) != null);
               const summary = rows.filter((x) => x.isDone).map((x) => ({ text: timed
                 ? (formatDuration(parseDuration(x.s) ?? planS(x.si)) || "done")
-                : `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}`, changed: x.changed }));
+                : showW ? `${x.r || firstNum(planR(x.si)) || "?"}×${x.w || (planW(x.si) ?? "?")}` : `${x.r || firstNum(planR(x.si)) || "?"}`, changed: x.changed }));
               const chip = ss[i] ? <span className="lk-ss" title={`${groupName(ss[i].size)} ${ss[i].letter}`}>{ss[i].letter}{ss[i].pos}</span> : null;
               const ssHead = ss[i]?.pos === 1 ? <div className="lk-ssbar" key={`ss${i}`}><b>{groupName(ss[i].size)} {ss[i].letter}</b><span>Do {ss[i].size === 2 ? "both" : `all ${ss[i].size}`} back to back, then rest.</span></div> : null;
               const ssCls = ss[i] ? `ss ${ss[i].pos === 1 ? "ss-first" : ""} ${ss[i].pos === ss[i].size ? "ss-last" : ""}` : "";
@@ -983,8 +1132,8 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                     <span className={`lk-badge ${done ? "on" : ""}`}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</span>
                     <span className="lk-fold-body">
                       <span className="lk-fold-name">{chip}{e.name}</span>
-                      <span className="lk-fold-sum">{done
-                        ? <>{full} {full === 1 ? "set" : "sets"} · {summary.map((x, k) => <React.Fragment key={k}>{k > 0 && ", "}<span className={x.changed ? "changed" : ""}>{x.text}</span></React.Fragment>)}{timed ? "" : ` ${unit}`}</>
+                      <span className="lk-fold-sum">{e.swappedFrom && <>Instead of {e.swappedFrom} · </>}{done
+                        ? <>{full} {full === 1 ? "set" : "sets"} · {summary.map((x, k) => <React.Fragment key={k}>{k > 0 && ", "}<span className={x.changed ? "changed" : ""}>{x.text}</span></React.Fragment>)}{timed ? "" : showW ? ` ${unit}` : " reps"}{e.band ? ` · ${e.band} band` : ""}</>
                         : "Skipped · tap to undo"}</span>
                     </span>
                     <Icon.Down size={18} />
@@ -999,11 +1148,14 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                       ? <span className="lk-badge">{String(i + 1).padStart(2, "0")}</span>
                       : <button type="button" className={`lk-badge ${done ? "on" : isCurrent || n > 0 ? "current" : ""}`} aria-pressed={done} aria-label={`${done ? "Undo all sets" : "Mark all sets done"}: ${e.name}`} onClick={() => toggleExercise(i)}>{done ? <Icon.Check size={20} /> : String(i + 1).padStart(2, "0")}</button>}
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-                      <div className="lk-ex-name">{chip}{e.name}{i >= planCount && <span className="lk-yours">Yours</span>}</div>
+                      <div className="lk-ex-name">{chip}<button type="button" className="lk-ex-namebtn" onClick={() => setInfo(e.name)} aria-label={`${e.name}: see the muscles it works`}>{e.name}<Icon.Info size={15} /></button>{i >= planCount && <span className="lk-yours">Yours</span>}</div>
+                      {e.swappedFrom && <div className="lk-ex-instead">Instead of {e.swappedFrom}{!upcoming && <> · <button type="button" className="lk-inline" onClick={() => undoSwap(i)}>Undo</button></>}</div>}
                       <div className="lk-ex-meta">{keepBits(planMeta(e, full, unit))}</div>
                       {last && <div className="lk-ex-meta">Last time{draft?.log ? "" : " (already in the boxes)"}: {lastLine(last, d.unit_system)}</div>}
                       {e.note && <div className="lk-ex-note">{e.note}</div>}
-                      {e.alternatives?.length > 0 && <div className="lk-ex-meta">Can't do it? Try: {e.alternatives.join(", ")}</div>}
+                      {e.alternatives?.length > 0 && (upcoming
+                        ? <div className="lk-ex-meta">Can't do it? Try: {e.alternatives.join(", ")}</div>
+                        : <div className="lk-ex-meta">Can't do it? Try: {e.alternatives.map((a, k) => <React.Fragment key={a}>{k > 0 && ", "}<button type="button" className="lk-inline" onClick={() => swapExercise(i, { name: a, mode: defaultMode(a) })}>{a}</button></React.Fragment>)}</div>)}
                     </div>
                     {done && !upcoming
                       ? <button type="button" className="lk-foldbtn" aria-label="Collapse" onClick={() => setReopened((o) => ({ ...o, [i]: false }))}><span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><Icon.Down size={18} /></span></button>
@@ -1044,16 +1196,29 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
                           <input className="lk-sin" inputMode="numeric" placeholder={kind === "amrap" ? "max" : planR(x.si) || "—"} value={x.r} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "r", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} reps${planR(x.si) ? `, plan ${planR(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">reps</span>
                         </label>
-                        <label className="lk-srow-cell">
+                        {showW && <label className="lk-srow-cell">
                           <input className="lk-sin" inputMode="decimal" placeholder={planW(x.si) != null ? String(planW(x.si)) : "—"} value={x.w} disabled={upcoming} onChange={(ev) => setSetValue(i, x.si, "w", ev.target.value)} onFocus={(ev) => ev.target.select()} aria-label={`Set ${x.si + 1} weight in ${unit}${planW(x.si) != null ? `, plan ${planW(x.si)}` : ""}`} />
                           <span className="lk-srow-unit">{unit}</span>
-                        </label>
+                        </label>}
                         </>}
                       </div>
                     );
                   })}
 
-                  {!upcoming && <div className="lk-ex-actions" style={{ justifyContent: "flex-end" }}>
+                  {/* Bodyweight, but they wore a vest or held a plate: the weight box comes back. */}
+                  {!showW && !timed && !upcoming && <button type="button" className="lk-addw" onClick={() => setAddWeight((o) => ({ ...o, [i]: true }))}><Icon.Plus size={14} />Add weight</button>}
+
+                  {load === "band" && !upcoming && (
+                    <div className="lk-band">
+                      <span className="lk-band-h">Band</span>
+                      <div className="lk-band-opts" role="radiogroup" aria-label={`How hard was the band for ${e.name}?`}>
+                        {BAND_LEVELS.map((b) => <button key={b.id} type="button" role="radio" aria-checked={band[i] === b.id} className={b.id} onClick={() => setBand((o) => { const x = { ...o }; if (x[i] === b.id) delete x[i]; else x[i] = b.id; return x; })}>{b.label}</button>)}
+                      </div>
+                    </div>
+                  )}
+
+                  {!upcoming && <div className="lk-ex-actions">
+                    {i < planCount ? <button type="button" className="lk-linkbtn" onClick={() => setSwapping(i)}>Did something else?</button> : <span />}
                     {i >= planCount && onExtras
                       ? <button type="button" className="lk-linkbtn danger" onClick={() => removeExtra(i - planCount)}>Remove</button>
                       : done
@@ -1114,6 +1279,8 @@ function WorkoutTab({ d, today, date = isoToday(), store = null, onSubmit, onSen
           {!anything && <div className="lk-small" style={{ textAlign: "center", marginTop: 8 }}>Tick at least one exercise to send.</div>}
         </div></div>
       )}
+      {swapping != null && <DidInstead ex={coachEx(swapping)} onPick={(to) => swapExercise(swapping, to)} onClose={() => setSwapping(null)} />}
+      {info && <MuscleSheet name={info} onClose={() => setInfo(null)} />}
     </>
   );
 }

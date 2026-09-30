@@ -14,15 +14,15 @@ const key = (name) => String(name || "").trim().toLowerCase();
 
 /**
  * A sent workout → what the editor needs: which sets are ticked, what is in
- * each box, which exercises were skipped, the note, how it felt, and anything
- * the client added themselves.
+ * each box, which exercises were skipped or done as something else, how hard
+ * a band was, the note, how it felt, and anything the client added themselves.
  *
  * Exercises are matched to the plan by name. One the coach has since removed
  * is left out — the plan is the plan now — and anything the client added
  * comes back as theirs.
  */
 export function editStateFromPayload(payload, planExercises = [], units = "metric") {
-  const out = { ticks: {}, log: {}, skipped: {}, note: "", feel: null, extras: [] };
+  const out = { ticks: {}, log: {}, skipped: {}, swaps: {}, band: {}, note: "", feel: null, extras: [] };
   if (!payload || typeof payload !== "object") return out;
 
   out.note = typeof payload.note === "string" ? payload.note : "";
@@ -43,6 +43,7 @@ export function editStateFromPayload(payload, planExercises = [], units = "metri
 
   const put = (i, ex) => {
     const done = Math.max(0, Number(ex.sets_done) || 0);
+    if (["easy", "medium", "hard"].includes(ex.band)) out.band[i] = ex.band;
     out.ticks[i] = done;
     if ((Number(ex.sets_planned) || 0) > 0 && done === 0) out.skipped[i] = true;
     const rows = Array.isArray(ex.sets) ? ex.sets : [];
@@ -67,8 +68,14 @@ export function editStateFromPayload(payload, planExercises = [], units = "metri
   const planCount = (planExercises || []).length;
   (payload.exercises || []).forEach((ex) => {
     if (!ex || !ex.name) return;
-    const i = ex.added_by_client ? null : take(ex.name);
-    if (i != null) { put(i, ex); return; }
+    // Done as something else: it lines up with the plan exercise it replaced.
+    const swapped = typeof ex.swapped_from === "string" && ex.swapped_from.trim() ? ex.swapped_from : null;
+    const i = ex.added_by_client ? null : take(swapped || ex.name);
+    if (i != null) {
+      if (swapped) out.swaps[i] = { name: String(ex.name).slice(0, 60), mode: ex.mode === "time" ? "time" : "reps" };
+      put(i, ex);
+      return;
+    }
     if (!ex.added_by_client) return; // the coach has since taken it off the plan
     // Theirs: it comes back after the coach's exercises, in the order they sent.
     const timed = ex.mode === "time";
