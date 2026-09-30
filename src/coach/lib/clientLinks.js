@@ -319,6 +319,8 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       // Done as something else. What the plan asked for is kept alongside, so
       // the workout still reads as the day it was meant to be.
       if (e.swappedFrom) out.swapped_from = e.swappedFrom;
+      // A band exercise: how hard the band was, since there is no weight to type.
+      if (["easy", "medium", "hard"].includes(e.band)) out.band = e.band;
       if (typed.some((x) => x.r != null || x.w != null || x.s != null)) {
         out.sets = typed.map((x, s) => {
           const one = { n: s + 1, done: s < done };

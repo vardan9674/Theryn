@@ -21,7 +21,12 @@
     "Back Extension": "Hyperextensions_Back_Extensions",
     "Side Plank": "Side_Bridge",
     "Kettlebell Swing": "One-Arm_Kettlebell_Swings",
-    "Hip Abduction": "Thigh_Abductor"
+    "Hip Abduction": "Thigh_Abductor",
+    "Leg Raise": "Flat_Bench_Lying_Leg_Raise",
+    "Lying Leg Raise": "Flat_Bench_Lying_Leg_Raise",
+    "Bicycle Crunch": "Air_Bike",
+    "Heel Touch": "Alternate_Heel_Touchers",
+    "V-Up": "Jackknife_Sit-Up"
   },
   "aliases": {
     "Arnold Press": "Arnold_Dumbbell_Press",

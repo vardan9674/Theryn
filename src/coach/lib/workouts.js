@@ -113,6 +113,8 @@ export function workoutDetail(entry) {
         // Done as something else. The plan's exercise, so the day still reads
         // against what was asked for.
         swappedFrom: typeof e.swapped_from === "string" && e.swapped_from.trim() ? e.swapped_from.trim() : null,
+        // A band exercise: how hard the band was ("easy", "medium", "hard").
+        band: ["easy", "medium", "hard"].includes(e.band) ? e.band : null,
         weight: e.weight_used != null ? e.weight_used : e.weight_target != null ? e.weight_target : null,
         weightChanged: e.weight_used != null && e.weight_target != null && Number(e.weight_used) !== Number(e.weight_target),
         // Set by set, when the client typed reps or weights: done sets only,

@@ -373,11 +373,11 @@ function ProgressTab({ data, row, actions }) {
                 <div className="cx-card-pad" style={{ paddingTop: 0 }}>
                   {w.exercises.map((e, i) => (
                     <div key={i} className="cx-exrow" style={{ alignItems: "flex-start", padding: "6px 0", opacity: e.skipped ? 0.55 : 1 }}>
-                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
+                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.band && <span className="cx-small cx-muted"> · {e.band} band</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
                       <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                              {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
+                              {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed && e.sets.some((x) => x.w) ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
                               <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Fix numbers to correct it." : s.changed ? "Different from the plan" : undefined}>{s.k === "warmup" ? "W " : s.k === "drop" ? "D " : ""}{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
                             </span>
                           : <>

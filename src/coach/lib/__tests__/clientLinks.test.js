@@ -117,3 +117,22 @@ describe("new measurements convert between cm and in", () => {
     expect(out.body_fat).toBe(19);  // a percentage stays as it is
   });
 });
+
+describe("workoutPayload: done instead, and band exercises", () => {
+  const today = { key: "Mon", type: "Core", exercises: [
+    { name: "Leg Raise", swappedFrom: "Banded Leg Raise", sets: 3, reps: "15", weight: null },
+    { name: "Banded Glute Bridge", sets: 3, reps: "12", weight: null, band: "medium" },
+    { name: "Crunches", sets: 2, reps: "20", weight: null, band: "extreme" },
+  ] };
+  const p = workoutPayload(today, { 0: 3, 1: 3, 2: 2 }, { 0: { 0: { r: "12" } } }, "", "2026-09-29", "metric");
+  it("sends what the plan asked for beside what they did", () => {
+    expect(p.exercises[0]).toMatchObject({ name: "Leg Raise", swapped_from: "Banded Leg Raise", sets_done: 3 });
+    expect(p.exercises[0].sets[0]).toEqual({ n: 1, done: true, reps: 12 });
+    expect(p.exercises[0].sets[0].weight).toBeUndefined();
+  });
+  it("sends how hard the band was, and only the three words", () => {
+    expect(p.exercises[1].band).toBe("medium");
+    expect(p.exercises[2].band).toBeUndefined();
+    expect(p.exercises[1].swapped_from).toBeUndefined();
+  });
+});
