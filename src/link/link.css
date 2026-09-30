@@ -331,3 +331,48 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-heat-m.l3 .lk-heat-dot { background: var(--cx-a); }
 .lk-heat-m.l3 { color: var(--cx-tx); font-weight: 600; }
 .lk-heat-note { font-size: 12px; color: var(--cx-mu); line-height: 1.45; }
+
+/* A weekly report the coach shared (LinkReport.jsx). One idea per card; the
+   coach's words first. The same component is the coach's "Preview". */
+.lk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.lk-rep { padding: 18px 16px 32px; gap: 14px; }
+.lk-rep.in-sheet { height: auto; overflow: visible; padding: 4px 0 8px; background: none; }
+.lk-rep-top { display: flex; align-items: center; gap: 10px; }
+.lk-rep-mark { color: var(--cx-a); display: inline-flex; }
+.lk-rep-from { font-size: 14px; color: var(--cx-tx2); }
+.lk-rep-head { display: flex; flex-direction: column; gap: 10px; padding: 6px 0 2px; }
+.lk-rep-eyebrow { font: 700 11px/1.2 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cx-mu); }
+.lk-rep-eyebrow.accent { color: var(--cx-a); }
+.lk-rep-title { margin: 0; font-family: 'Big Shoulders Display', 'Arial Narrow', 'Helvetica Neue', sans-serif; font-weight: 900; font-size: 50px; line-height: 0.92; text-transform: uppercase; text-wrap: balance; }
+.lk-rep-note { gap: 12px; }
+.lk-rep-note p { margin: 0; font-size: 17px; line-height: 1.5; white-space: pre-line; }
+.lk-rep-by { font-size: 14px; color: var(--cx-tx2); }
+.lk-rep-by::before { content: "— "; }
+.lk-rep-sec { gap: 12px; }
+.lk-rep-big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.lk-rep-big b { font-family: 'Big Shoulders Display', 'Arial Narrow', sans-serif; font-weight: 900; font-size: 44px; line-height: 1; }
+.lk-rep-big span { font-size: 16px; color: var(--cx-tx2); }
+.lk-rep-days { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(40px, 1fr)); gap: 8px; }
+.lk-rep-days li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--cx-tx2); }
+.lk-rep-days .bar { width: 100%; height: 10px; border-radius: 5px; background: #262626; }
+.lk-rep-days .done .bar { background: var(--cx-a); }
+.lk-rep-days .missed { color: var(--cx-mu); }
+.lk-rep-say { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; }
+.lk-rep-sub { font-size: 15px; line-height: 1.45; color: var(--cx-tx2); margin: 0; }
+.lk-rep-bar { height: 10px; border-radius: 5px; background: #1E1E1E; overflow: hidden; }
+.lk-rep-bar span { display: block; height: 100%; border-radius: 5px; background: #F5B84A; }
+.lk-rep-num { font-family: 'Big Shoulders Display', 'Arial Narrow', sans-serif; font-weight: 900; font-size: 46px; line-height: 1; }
+.lk-rep-focus { font-size: 24px; }
+.lk-rep-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lk-rep-pair > div { display: flex; flex-direction: column; gap: 4px; background: #0B0B0B; border: 1px solid var(--cx-bd); border-radius: 12px; padding: 12px; }
+.lk-rep-pair span { font-size: 12px; color: var(--cx-mu); }
+.lk-rep-pair b { font-size: 22px; }
+.lk-rep-pair small { font-size: 12px; color: var(--cx-tx2); }
+.lk-rep-foot { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
+.lk-rep-private { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--cx-mu); }
+/* The card on the link that opens it. */
+.lk-rep-entry { width: 100%; text-align: left; font-family: inherit; color: var(--cx-tx); cursor: pointer; gap: 6px; border-color: #3A4A00; background: #0E1300; }
+.lk-rep-entry:active { transform: scale(0.99); }
+.lk-rep-entry-h { font-size: 18px; line-height: 1.3; }
+.lk-rep-entry-by { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--cx-a); }
+.lk-rep-entry-wrap { padding: 12px 16px 0; }

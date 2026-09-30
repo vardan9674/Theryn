@@ -360,6 +360,28 @@ export function createMockCoachData() {
     async clearNotifications(iso = new Date().toISOString()) { st.notifClearedAt = iso; st.notifSeenAt = iso; st.notifDismissed = []; return iso; },
     async dismissNotification(id) { st.notifDismissed = [...(st.notifDismissed || []), id]; return st.notifDismissed; },
     async setClientUnits(clientId, units) { await wait(150); const m = st.manual.find((r) => r.id === manualIdOf(clientId)); if (!m) throw new Error("Clients on the app use their own setting in the app."); m.unit_system = units === "metric" ? "metric" : "imperial"; notify(); return m.unit_system; },
+    async setClientHeight(clientId, cm) {
+      await wait(150);
+      const m = st.manual.find((r) => r.id === manualIdOf(clientId));
+      if (!m) throw new Error("Clients on the app set their own height in the app.");
+      const v = cm == null || cm === "" ? null : Math.round(Number(cm) * 10) / 10;
+      if (v != null && !(v >= 50 && v <= 260)) throw new Error("Height should be between 50 and 260 cm.");
+      m.height_cm = v; notify(); return v;
+    },
+    // Weekly reports: like the real one, a row exists only once it's shared,
+    // and sharing the same week again replaces it.
+    async listReports(clientId) { await wait(120); return (st.reports || []).filter((r) => r.clientId === clientId).sort((a, b) => (a.period_start < b.period_start ? 1 : -1)).map(({ clientId: _c, ...r }) => ({ ...r })); },
+    async shareReport(clientId, periodStart, snapshot) {
+      await wait(250);
+      st.reports = st.reports || [];
+      const now = new Date().toISOString();
+      const had = st.reports.find((r) => r.clientId === clientId && r.period_start === periodStart);
+      if (had) { Object.assign(had, { snapshot, shared_at: now, stopped_at: null, seen_at: null }); return { id: had.id }; }
+      const id = "rep-" + randomId();
+      st.reports.push({ id, clientId, period_start: periodStart, shared_at: now, stopped_at: null, seen_at: null, snapshot });
+      return { id };
+    },
+    async stopReport(reportId) { await wait(150); const r = (st.reports || []).find((x) => x.id === reportId && !x.stopped_at); if (!r) return false; r.stopped_at = new Date().toISOString(); return true; },
     async updateDisplayName() { await wait(100); },
     // Preview only: reload on the chosen currency so the whole dashboard follows.
     async updateCurrency(code) { await wait(100); const u = new URL(location.href); u.searchParams.set("currency", code); location.replace(u); },
