@@ -10,6 +10,9 @@ import { SLUG_TO_GROUP, GROUP_LABEL } from "../lib/exerciseLibrary.js";
 // `levels` is the other way to colour it: groupId → 1, 2 or 3, brightest at 3. It
 // takes the place of main/helpers and is what the workout heat map uses, where the
 // question is how hard a muscle worked rather than whether it is the target.
+//
+// `fills` is the most direct: groupId → a colour, for a map that says something
+// other than "how much", like the weekly report's plan-versus-done view.
 
 const A = "#C8FF00";
 const HELPER = "#5E7310";
@@ -21,7 +24,7 @@ const SKIN = "#2A2A2A";
 // shade per muscle. Three steps say "most", "a fair bit", "some" and no more.
 const LEVEL_FILL = { 3: A, 2: "#93BC00", 1: "#49590F" };
 
-export default function BodyMap({ view = "front", main = [], helpers = [], levels = null, onToggle, width = 120, stroke = "#101010", label }) {
+export default function BodyMap({ view = "front", main = [], helpers = [], levels = null, fills = null, onToggle, width = 120, stroke = "#101010", label }) {
   const parts = view === "back" ? BODY_BACK : BODY_FRONT;
   const height = Math.round(width * 2);
   return (
@@ -36,6 +39,7 @@ export default function BodyMap({ view = "front", main = [], helpers = [], level
       {parts.map((part) => {
         const group = SLUG_TO_GROUP[part.slug];
         const fill = !group ? SKIN
+          : fills ? (fills[group] || MUSCLE)
           : levels ? (LEVEL_FILL[levels[group]] || MUSCLE)
           : main.includes(group) ? A
           : helpers.includes(group) ? HELPER

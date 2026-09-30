@@ -8,7 +8,20 @@
     "Ab Wheel": "Barbell_Ab_Rollout",
     "Farmer Carry": "Farmers_Walk",
     "Farmers Carry": "Farmers_Walk",
-    "Split Squat": "Split_Squat_with_Dumbbells"
+    "Split Squat": "Split_Squat_with_Dumbbells",
+    "Back Squat": "Barbell_Squat",
+    "Dumbbell Bench": "Dumbbell_Bench_Press",
+    "Tricep Dips": "Dips_-_Triceps_Version",
+    "Triceps Dips": "Dips_-_Triceps_Version",
+    "Treadmill Run": "Running_Treadmill",
+    "Jump Rope": "Rope_Jumping",
+    "Close Grip Bench": "Close-Grip_Barbell_Bench_Press",
+    "Reverse Lunge": "Dumbbell_Rear_Lunge",
+    "Pendlay Row": "Bent_Over_Barbell_Row",
+    "Back Extension": "Hyperextensions_Back_Extensions",
+    "Side Plank": "Side_Bridge",
+    "Kettlebell Swing": "One-Arm_Kettlebell_Swings",
+    "Hip Abduction": "Thigh_Abductor"
   },
   "aliases": {
     "Arnold Press": "Arnold_Dumbbell_Press",
