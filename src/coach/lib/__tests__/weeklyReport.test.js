@@ -290,3 +290,33 @@ describe("small pieces", () => {
     expect(reportMessage("Maya", "https://theryn.fit/f/abc?r=1")).toBe("Hi Maya, your week is ready. Have a look before your next session: https://theryn.fit/f/abc?r=1");
   });
 });
+
+describe("the draft the coach starts from", () => {
+  it("writes a note and a focus in a coach's words", () => {
+    const r = report();
+    expect(r.draftNote).toBe("Great upper-body week, Maya. A new best on Barbell Bench Press! Next week let's get every leg day in. Tell me if the Leg Press is giving you trouble.");
+    expect(r.draftFocus).toBe("Every leg day");
+  });
+});
+
+describe("showing up is not the same as finishing", () => {
+  it("says every workout started but was cut short, instead of calling it missed", () => {
+    const plan = { Mon: PLAN.Mon, Tue: PLAN.Tue, Wed: { type: "Rest", exercises: [] }, Thu: { type: "Rest", exercises: [] }, Fri: { type: "Rest", exercises: [] }, Sat: { type: "Rest", exercises: [] }, Sun: { type: "Rest", exercises: [] } };
+    const history = [
+      { id: "h1", date: "2026-09-21", exercises: [{ name: "Barbell Bench Press", sets: [{ w: "100", r: "8" }, { w: "100", r: "8" }] }, { name: "Overhead Press", sets: [{ w: "50", r: "8" }] }] },
+      { id: "h2", date: "2026-09-22", exercises: [{ name: "Deadlift", sets: [{ w: "150", r: "5" }] }, { name: "Pull-Up", sets: [{ w: "0", r: "6" }] }] },
+    ];
+    const r = report({ routine: plan, history, submissions: [], weights: [], measurements: [], profile: {} });
+    expect(r.workouts).toMatchObject({ planned: 2, done: 2 });
+    expect(r.headline).toBe("Every workout started, but only 5 of 29 sets done.");
+    expect(r.athleteHeadline).toBe("You showed up every time.");
+    const p = r.patterns.find((x) => x.kind === "cut_short");
+    expect(p.title).toBe("Workouts cut short");
+    expect(p.ask).toContain("only ticking some");
+    expect(r.draftNote).toContain("You showed up every time, Maya");
+    expect(r.draftFocus).toBe("Full sessions");
+  });
+  it("doesn't call a full week short", () => {
+    expect(report().patterns.map((p) => p.kind)).not.toContain("cut_short");
+  });
+});

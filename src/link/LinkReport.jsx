@@ -38,7 +38,7 @@ export function ReportEntry({ report, onOpen }) {
     <button type="button" className="lk-card lk-rep-entry" onClick={onOpen}>
       <span className="lk-rep-eyebrow">{report.seen ? "Your week" : "New · your week"}{label ? ` · ${label}` : ""}</span>
       <b className="lk-rep-entry-h">{s.headline || "Your weekly report"}</b>
-      <span className="lk-rep-entry-by">From Coach {s.coach || "your coach"}<Icon.Chevron size={16} /></span>
+      <span className="lk-rep-entry-by">From {s.coach ? `Coach ${s.coach}` : "your coach"}<Icon.Chevron size={16} /></span>
     </button>
   );
 }
@@ -55,7 +55,7 @@ export function ReportView({ snapshot, onBack, backLabel = "Back to today's work
     <div className={`lk-page cx-app lk-rep${inSheet ? " in-sheet" : ""}`}>
       <div className="lk-rep-top">
         <span className="lk-rep-mark" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 48 48"><path d="M12 12 36 36M36 12 12 36" stroke="currentColor" strokeWidth="9" strokeLinecap="round" /></svg></span>
-        <span className="lk-rep-from">From Coach {s.coach || "your coach"}</span>
+        <span className="lk-rep-from">From {s.coach ? `Coach ${s.coach}` : "your coach"}</span>
       </div>
       <div className="lk-rep-head">
         <span className="lk-rep-eyebrow accent">Your week{label ? ` · ${label}` : ""}</span>
@@ -65,7 +65,7 @@ export function ReportView({ snapshot, onBack, backLabel = "Back to today's work
       {s.note && (
         <section className="lk-card lk-rep-note" aria-label="Note from your coach">
           <p>{s.note}</p>
-          <span className="lk-rep-by">Coach {s.coach || ""}</span>
+          <span className="lk-rep-by">{s.coach ? `Coach ${s.coach}` : "Your coach"}</span>
         </section>
       )}
 

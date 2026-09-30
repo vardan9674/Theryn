@@ -14,11 +14,13 @@ import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage } from "../lib/clientLinks
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 import { clientNow, theirTimeNote } from "../lib/clientClock.js";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
+import ReportsTab, { HeightField } from "./ReportsTab.jsx";
 import { supersetInfo } from "../lib/exerciseKinds.js";
 
 const TABS = [
   { id: "plan", label: "Plan" },
   { id: "progress", label: "Workouts" },
+  { id: "reports", label: "Reports" },
   { id: "body", label: "Body" },
   { id: "payments", label: "Payments" },
 ];
@@ -85,8 +87,10 @@ export default function ClientDetail({ row, actions, defaultCurrency, fees, paym
         <PlanTab data={data} row={row} actions={actions} />
       ) : tab === "progress" ? (
         <ProgressTab data={data} row={row} actions={actions} />
+      ) : tab === "reports" ? (
+        <ReportsTab data={data} row={row} actions={actions} />
       ) : tab === "body" ? (
-        <BodyTab data={data} />
+        <BodyTab data={data} row={row} actions={actions} />
       ) : (
         <PaymentsTab row={row} fees={fees} payments={payments} defaultCurrency={defaultCurrency} actions={actions} payment={payment} />
       )}
@@ -410,7 +414,7 @@ function ProgressTab({ data, row, actions }) {
 }
 
 // ── Body ──────────────────────────────────────────────────────────────────
-function BodyTab({ data }) {
+function BodyTab({ data, row, actions }) {
   const { weights, measurements, profile } = data;
   const unit = profile?.unit_system === "metric" ? "kg" : "lb";
   const mUnit = profile?.unit_system === "metric" ? "cm" : "in";
@@ -433,6 +437,7 @@ function BodyTab({ data }) {
         <div className="cx-card cx-stat"><span className="k">BMI</span><span className="v" style={{ color: cat?.color }}>{bmi ?? "—"}</span></div>
       </div>
       {cat ? <div className="cx-small cx-muted">BMI {bmi} is in the "{cat.label}" range.</div>
+        : current && row?.link?.manual ? <HeightField clientId={row.link.athlete_id} first={row.name.split(" ")[0]} units={data?.profile?.unit_system} onSaved={() => actions?.reloadClient?.(row.link.athlete_id)} />
         : current ? <div className="cx-small cx-muted">BMI needs the client's height, which they set in their app.</div> : null}
       {weights && weights.length > 0 && (
         <div className="cx-card">

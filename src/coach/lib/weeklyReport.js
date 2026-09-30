@@ -269,11 +269,19 @@ function balancePattern(mainPlanned, mainDone) {
 
 // ── Words ─────────────────────────────────────────────────────────────────
 const SIDE = { push: "pushing", pull: "pulling" };
+// What to aim at next week when a region fell short, as a coach would say it.
+const FOCUS = { "Upper body": "every upper-body day", Legs: "every leg day", Core: "the core work" };
+const focusFor = (label) => FOCUS[label] || `the ${String(label).toLowerCase()} work`;
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE_MUSCLES = { push: "chest, shoulders, triceps", pull: "back, biceps" };
 
-function headlines(regions, workouts, quiet) {
+function headlines(regions, workouts, quiet, cutShort) {
   if (quiet) {
     return { coach: `Quiet week. ${workouts.done} of ${workouts.planned || workouts.done} workouts.`, athlete: "A quiet week." };
+  }
+  // Turning up and finishing are different things; don't let one hide the other.
+  if (cutShort && workouts.done >= workouts.planned) {
+    return { coach: `Every workout started, but only ${cutShort.done} of ${cutShort.planned} sets done.`, athlete: "You showed up every time." };
   }
   const planned = Object.entries(regions).filter(([, r]) => r.planned >= 4);
   if (!planned.length) {
@@ -295,15 +303,18 @@ function headlines(regions, workouts, quiet) {
   };
 }
 
-function draftNote(firstName, { regions, workouts, bests, skipped, weakest }) {
+function draftNote(firstName, { regions, workouts, bests, skipped, weakest, cutShort }) {
   const name = firstName ? `, ${firstName}` : "";
+  if (cutShort && workouts.done >= workouts.planned) {
+    return `You showed up every time${name} — that's the hard part. Next week let's get through the full sessions. If time is tight, tell me and I'll trim them.`;
+  }
   const strong = Object.entries(regions).filter(([, r]) => r.planned >= 4 && r.verdict === "on plan").sort((a, b) => b[1].planned - a[1].planned)[0];
   const parts = [];
   if (workouts.planned && workouts.done >= workouts.planned) parts.push(`Brilliant week${name}, every workout done.`);
   else if (strong) parts.push(`Great ${REGIONS[strong[0]].word} week${name}.`);
   else parts.push(`Thanks for the work this week${name}.`);
   if (bests[0]) parts.push(`A new best on ${bests[0].name}!`);
-  if (weakest && weakest.verdict !== "on plan") parts.push(`Next week let's get the ${weakest.label.toLowerCase()} work in.`);
+  if (weakest && weakest.verdict !== "on plan") parts.push(`Next week let's get ${focusFor(weakest.label)} in.`);
   if (skipped) parts.push(`Tell me if the ${skipped.name} is giving you trouble.`);
   return parts.join(" ");
 }
@@ -384,6 +395,18 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
       ask: `Is there something about the ${SIDE[light]} exercises they avoid?`,
     });
   }
+  // Workouts they started but left most of: different from missing the day.
+  const doneDaysRows = days.filter((d) => d.done).flatMap((d) => d.rows);
+  const startedPlanned = doneDaysRows.reduce((a, r) => a + r.planned, 0);
+  const startedDone = doneDaysRows.reduce((a, r) => a + Math.min(r.done, r.planned || r.done), 0);
+  const cutShort = !quiet && startedPlanned >= 8 && startedDone / startedPlanned < 0.5 ? { done: startedDone, planned: startedPlanned } : null;
+  if (cutShort) {
+    patterns.push({
+      kind: "cut_short", tone: "warn", title: "Workouts cut short",
+      seen: `Across the ${doneDays} workouts ${firstName || "they"} started, ${cutShort.done} of ${cutShort.planned} planned sets were ticked.`,
+      ask: "Short on time, or doing the sets but only ticking some?",
+    });
+  }
   const missedDay = missedDayPattern(weeks, data?.routine);
   if (missedDay) {
     patterns.push({
@@ -408,7 +431,7 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
     suggestions.push({ kind: "move", title: `Move ${DAY_LONG[missedDay.key]}'s ${(missedDay.type || "workout").toLowerCase()} to ${DAY_LONG[missedDay.freeDay]}`, why: `${DAY_LONG[missedDay.freeDay]} is free in the plan.`, from: missedDay.key, to: missedDay.freeDay });
   }
 
-  const heads = headlines(regions, workouts, quiet);
+  const heads = headlines(regions, workouts, quiet, cutShort);
   return {
     period: { start: weekStart, end, label: weekLabel(weekStart) },
     quiet,
@@ -420,8 +443,8 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
     gaps, regions, weakest, strongest,
     bests, body, patterns, suggestions,
     doneList: quiet ? rows.filter((r) => r.done > 0).map((r) => ({ name: r.name, sets: r.done })) : [],
-    draftNote: quiet ? `Quiet week${firstName ? `, ${firstName}` : ""}. Everything OK? Want me to make next week lighter?` : draftNote(firstName, { regions, workouts, bests, skipped, weakest }),
-    draftFocus: !quiet && weakest && weakest.verdict !== "on plan" ? `${weakest.label} work` : "Keep it going",
+    draftNote: quiet ? `Quiet week${firstName ? `, ${firstName}` : ""}. Everything OK? Want me to make next week lighter?` : draftNote(firstName, { regions, workouts, bests, skipped, weakest, cutShort }),
+    draftFocus: cutShort && workouts.done >= workouts.planned ? "Full sessions" : !quiet && weakest && weakest.verdict !== "on plan" ? capital(focusFor(weakest.label)) : "Keep it going",
   };
 }
 
