@@ -38,7 +38,7 @@ export function manualToClient(row) {
 
 /** What loadClientData returns for a name-only client. */
 export function manualClientData(row) {
-  return { routine: row.plan || null, history: [], weights: [], measurements: [], profile: { height_cm: null, unit_system: "imperial" }, manual: true };
+  return { routine: row.plan || null, history: [], weights: [], measurements: [], profile: { height_cm: Number(row.height_cm) > 0 ? Number(row.height_cm) : null, unit_system: "imperial" }, manual: true };
 }
 
 /** Fee stored as JSON → the ClientFee shape used by payment helpers. */

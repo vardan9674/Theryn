@@ -27,8 +27,13 @@ const MANUAL_COLS_V1 = "id, coach_id, first_name, last_name, plan, fee, payments
 const MANUAL_COLS_V2 = MANUAL_COLS_V1 + ", email, archived_at";
 // unit_system: the coach's kg/lb choice for this one client (20260920120000).
 const MANUAL_COLS_V3 = MANUAL_COLS_V2 + ", unit_system";
+// height_cm: typed by the coach so BMI works for clients without the app (20260930040801).
+const MANUAL_COLS_V4 = MANUAL_COLS_V3 + ", height_cm";
+const HEIGHT_SETUP_MSG = "Saving a height needs a quick database update: run supabase/migrations/20260930040801_coach_reports.sql in the Supabase SQL editor.";
 const UNITS_SETUP_MSG = "Setting kg or lb per client needs a quick database update: run supabase/migrations/20260920120000_client_units.sql in the Supabase SQL editor.";
 const HISTORY_SETUP_MSG = "This needs a one-time database update: run supabase/migrations/20260918200000_keep_client_history.sql in the Supabase SQL editor.";
+const REPORTS_SETUP_MSG = "Sharing reports needs a quick database update: run supabase/migrations/20260930040801_coach_reports.sql in the Supabase SQL editor.";
+const isMissingReports = (error) => error?.code === "42P01" || error?.code === "PGRST205" || error?.code === "PGRST202" || (/coach_reports|report_share|report_stop/.test(String(error?.message || "")) && /not exist|not find|schema cache/i.test(String(error?.message || "")));
 const isMissingColumn = (error) => error?.code === "42703" || error?.code === "PGRST204" || /column .* does not exist|could not find .* column/i.test(String(error?.message || ""));
 const SETUP_MSG = "Name-only clients need a one-time database update. Run supabase/migrations/20260909120000_coach_manual_clients.sql in the Supabase SQL editor.";
 
@@ -51,7 +56,8 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   let manualAvailable = true;
   let historyV2 = true; // email + archived_at columns present
   let perClientUnits = true; // unit_system column present
-  const cols = () => (perClientUnits && historyV2 ? MANUAL_COLS_V3 : historyV2 ? MANUAL_COLS_V2 : MANUAL_COLS_V1);
+  let clientHeight = true; // height_cm column present
+  const cols = () => (perClientUnits && historyV2 ? (clientHeight ? MANUAL_COLS_V4 : MANUAL_COLS_V3) : historyV2 ? MANUAL_COLS_V2 : MANUAL_COLS_V1);
   // The units this client's numbers are shown and saved in: the coach's choice
   // for them, or the coach's own setting until they pick one.
   const unitsOf = (row) => normUnits(row?.unit_system || unitSystem);
@@ -64,6 +70,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
     const { data, error } = await q.order("created_at", { ascending: true });
     if (error) {
       if (isMissingTable(error)) { manualAvailable = false; return []; }
+      if (clientHeight && isMissingColumn(error)) { clientHeight = false; return listManualRows(); }
       if (perClientUnits && isMissingColumn(error)) { perClientUnits = false; return listManualRows(); }
       if (historyV2 && isMissingColumn(error)) { historyV2 = false; return listManualRows(); }
       throw new Error(error.message);
@@ -72,6 +79,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   }
   async function getManualRow(manualId) {
     const { data, error } = await supabase.from("coach_manual_clients").select(cols()).eq("id", manualId).eq("coach_id", coachId).maybeSingle();
+    if (error && clientHeight && isMissingColumn(error)) { clientHeight = false; return getManualRow(manualId); }
     if (error && perClientUnits && isMissingColumn(error)) { perClientUnits = false; return getManualRow(manualId); }
     if (error && historyV2 && isMissingColumn(error)) { historyV2 = false; return getManualRow(manualId); }
     if (error) throw new Error(isMissingTable(error) ? SETUP_MSG : error.message);
@@ -81,6 +89,8 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
   async function patchManualRow(manualId, patch) {
     const { data, error } = await supabase.from("coach_manual_clients").update(patch).eq("id", manualId).eq("coach_id", coachId).select(cols()).single();
     if (error && isMissingColumn(error)) {
+      if ("height_cm" in patch) throw new Error(HEIGHT_SETUP_MSG);
+      if (clientHeight) { clientHeight = false; return patchManualRow(manualId, patch); }
       if ("unit_system" in patch) throw new Error(UNITS_SETUP_MSG);
       if (perClientUnits) { perClientUnits = false; return patchManualRow(manualId, patch); }
       if (historyV2 && !("email" in patch) && !("archived_at" in patch)) { historyV2 = false; return patchManualRow(manualId, patch); }
@@ -196,6 +206,47 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
       const row = await patchManualRow(mid, { unit_system: normUnits(units) });
       return normUnits(row.unit_system || units);
     },
+    // A client without the app has no profile of their own, so the coach types
+    // their height in (in cm) — which is what lets BMI show for them.
+    async setClientHeight(clientId, cm) {
+      const mid = manualIdOf(clientId);
+      if (!mid) throw new Error("Clients on the app set their own height in the app.");
+      const v = cm == null || cm === "" ? null : Math.round(Number(cm) * 10) / 10;
+      if (v != null && !(v >= 50 && v <= 260)) throw new Error("Height should be between 50 and 260 cm.");
+      const row = await patchManualRow(mid, { height_cm: v });
+      return row.height_cm != null ? Number(row.height_cm) : null;
+    },
+
+    // ── Weekly reports (20260930040801) ────────────────────────────────────
+    // Drafts are never saved: they're worked out on screen each time. A row
+    // only exists once the coach shares, and holds just what the client sees.
+    async listReports(clientId) {
+      const t = linkTarget(clientId);
+      let q = supabase.from("coach_reports").select("id, period_start, shared_at, stopped_at, seen_at, snapshot").eq("coach_id", coachId);
+      q = t.manual_client_id ? q.eq("manual_client_id", t.manual_client_id) : q.eq("athlete_id", t.athlete_id);
+      const { data, error } = await q.order("period_start", { ascending: false }).limit(26);
+      if (error) {
+        if (isMissingReports(error)) return [];
+        throw new Error(error.message);
+      }
+      return data || [];
+    },
+    async shareReport(clientId, periodStart, snapshot) {
+      const t = linkTarget(clientId);
+      const { data, error } = await supabase.rpc("report_share", { p_athlete_id: t.athlete_id, p_manual_client_id: t.manual_client_id, p_period_start: periodStart, p_snapshot: snapshot });
+      if (error) {
+        if (isMissingReports(error)) throw new Error(REPORTS_SETUP_MSG);
+        if (/not your client/i.test(error.message)) throw new Error("You can only share reports with your own clients.");
+        throw new Error(error.message);
+      }
+      return data; // { id }
+    },
+    async stopReport(reportId) {
+      const { data, error } = await supabase.rpc("report_stop", { p_report: reportId });
+      if (error) throw new Error(isMissingReports(error) ? REPORTS_SETUP_MSG : error.message);
+      return Boolean(data);
+    },
+
     get historyKept() { return historyV2; },
     async createManualClient({ firstName, lastName }) {
       const name = cleanName(firstName, lastName);

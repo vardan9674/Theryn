@@ -15,6 +15,28 @@ export async function submitLink(token, kind, payload) {
   return data;
 }
 
+/**
+ * Reports this link's coach shared with its client, newest first. Stopped ones
+ * never come back. An older database without reports answers as if there were
+ * none, so the page just carries on without them.
+ */
+export async function fetchReports(token) {
+  const { data, error } = await supabase.rpc("link_reports", { p_token: token });
+  if (error) {
+    if (error.code === "PGRST202" || /link_reports/.test(error.message || "")) return { ok: true, reports: [] };
+    throw new Error(error.message);
+  }
+  return data;
+}
+
+/** Lets the coach know it was opened. Best effort: never worth failing the page over. */
+export async function markReportSeen(token, reportId) {
+  try {
+    const { data } = await supabase.rpc("link_report_seen", { p_token: token, p_report: reportId });
+    return Boolean(data);
+  } catch { return false; }
+}
+
 /** Whether this link is connected, whether it's connected to whoever is asking, and their history. */
 export async function fetchMe(token) {
   const { data, error } = await supabase.rpc("link_me", { p_token: token });
@@ -63,7 +85,28 @@ export function createPreviewApi() {
   };
   const submissions = [];
   let connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] };
+  // One shared report for last week, in the exact shape reportSnapshot() makes.
+  // `?noreport` in the preview's address shows a link with none.
+  const lastMonday = (() => { const x = new Date(); x.setDate(x.getDate() - ((x.getDay() + 6) % 7) - 7); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; })();
+  const reports = [{
+    id: "preview-report", period_start: lastMonday, shared_at: new Date().toISOString(), seen: false,
+    snapshot: {
+      v: 1, period: { start: lastMonday }, coach: "Sam", first: "Alex", headline: "Strong upper-body week.",
+      workouts: { done: 4, planned: 5, days: [{ k: "Mon", p: true, d: true }, { k: "Tue", p: true, d: true }, { k: "Wed", p: true, d: true }, { k: "Fri", p: true, d: true }, { k: "Sat", p: true, d: false }] },
+      muscles: { levels: { chest: 3, shoulders: 3, upperback: 3, triceps: 2, biceps: 2, calves: 1, lowerback: 1, quads: 1, forearms: 1, glutes: 1, hamstrings: 1, traps: 1 }, top: ["chest", "shoulders"], worked: ["chest", "shoulders", "upperback", "triceps", "biceps"] },
+      gap: { weak: { label: "Legs", done: 5, planned: 26 }, strong: { label: "Upper body", done: 44, planned: 45 } },
+      best: { name: "Barbell bench press", weight: 47.5, reps: 6, prev: 45, unit: "kg" },
+      note: "Great upper-body week, Alex. A new best on bench! Next week let's get the legs work in. Tell me if the leg press is giving you trouble.",
+      focus: "Legs work",
+    },
+  }];
   return {
+    async fetchReports() {
+      await new Promise((r) => setTimeout(r, 150));
+      const none = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("noreport");
+      return { ok: true, reports: none ? [] : reports.map((r) => ({ ...r })) };
+    },
+    async markReportSeen(_t, id) { const r = reports.find((x) => x.id === id && !x.seen); if (r) r.seen = true; return Boolean(r); },
     async fetchLink() { await new Promise((r) => setTimeout(r, 300)); const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
       const done_dates = [1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14].map((n) => { const x = new Date(); x.setDate(x.getDate() - n); return iso(x); }).filter((d) => { const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00").getDay()]; return plan[k].type !== "Rest"; });
       return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips"], plan, done_dates }; },

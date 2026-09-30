@@ -9,7 +9,8 @@ import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom } from "../coach/lib/clientLinks.js";
-import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut } from "./linkApi.js";
+import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut, fetchReports as realReports, markReportSeen as realReportSeen } from "./linkApi.js";
+import { ReportEntry, ReportView } from "./LinkReport.jsx";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
@@ -109,6 +110,8 @@ export default function LinkPage({ token, api }) {
   const requestConnect = api?.requestConnect || realRequest;
   const signIn = api?.signInWithGoogle || realSignIn;
   const signOut = api?.signOutLink || realSignOut;
+  const fetchReports = api?.fetchReports || realReports;
+  const markReportSeen = api?.markReportSeen || realReportSeen;
   const [state, setState] = React.useState({ loading: true, data: null, error: null });
   const [tab, setTab] = React.useState(() => (new URLSearchParams(window.location.search).get("tab") === "measurements" ? "measurements" : "workout"));
   const [sent, setSent] = React.useState(null); // { kind, summary }
@@ -184,6 +187,37 @@ export default function LinkPage({ token, api }) {
     return () => { delete document.body.dataset.app; };
   }, []);
 
+  // Weekly reports the coach chose to share. None exist until they share one,
+  // and a link from the coach's WhatsApp message opens it straight away (?r=).
+  const [reports, setReports] = React.useState([]);
+  const [openReport, setOpenReport] = React.useState(null);
+  const [askedReport] = React.useState(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("r")));
+  React.useEffect(() => {
+    if (!state.data?.ok) return;
+    let cancelled = false;
+    fetchReports(token).then((res) => {
+      if (cancelled || !res?.ok) return;
+      const list = Array.isArray(res.reports) ? res.reports : [];
+      setReports(list);
+      if (askedReport && list.some((r) => r.id === askedReport)) setOpenReport(askedReport);
+    }).catch(() => { /* the page works without them */ });
+    return () => { cancelled = true; };
+  }, [token, state.data?.ok]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!openReport) return;
+    const r = reports.find((x) => x.id === openReport);
+    if (r && !r.seen) {
+      markReportSeen(token, openReport);
+      setReports((list) => list.map((x) => (x.id === openReport ? { ...x, seen: true } : x)));
+    }
+  }, [openReport]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeReport = () => {
+    setOpenReport(null);
+    // Out of the address, so a reload lands on today's workout.
+    try { const url = new URL(window.location.href); url.searchParams.delete("r"); window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash); } catch { /* old browser */ }
+    window.scrollTo(0, 0);
+  };
+
   // Continues the tumble the Suspense fallback started — no second replay.
   if (state.loading) return <div className="lk-page"><TherynLoader /></div>;
   if (state.error || !state.data?.ok) return <Unavailable reason={state.error} onRetry={() => { setState({ loading: true, data: null, error: null }); setLoadTry((n) => n + 1); }} />;
@@ -204,6 +238,11 @@ export default function LinkPage({ token, api }) {
   const today = extras.length
     ? { ...planDay, isRest: false, type: planDay.isRest ? "Extra" : planDay.type, exercises: [...planDay.exercises, ...extras.map((x) => ({ ...x, addedByClient: true }))] }
     : planDay;
+
+  const shownReport = openReport ? reports.find((r) => r.id === openReport) : null;
+  if (shownReport) return <ReportView snapshot={shownReport.snapshot} onBack={closeReport} />;
+  // The newest report stays on the link for two weeks after it's shared.
+  const latestReport = reports[0] && Date.now() - Date.parse(reports[0].shared_at) < 14 * 86400000 ? reports[0] : null;
 
   if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} joined={joined} onBack={() => { setSent(null); setTab("workout"); setDayIso(null); window.scrollTo(0, 0); }} />;
 
@@ -268,6 +307,7 @@ export default function LinkPage({ token, api }) {
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "workout"} onClick={() => setTab("workout")}>{joined ? "Workouts" : "Today's workout"}</button>
         <button type="button" role="tab" className="lk-tab" aria-selected={tab === "measurements"} onClick={() => setTab("measurements")}>Measurements</button>
       </div>
+      {latestReport && <div className="lk-rep-entry-wrap"><ReportEntry report={latestReport} onOpen={() => { setOpenReport(latestReport.id); window.scrollTo(0, 0); }} /></div>}
       {tab === "workout"
         ? <WorkoutTab key={`${clientUnits}-${date}`} d={d} today={today} date={date} store={store}
             joined={joined} me={me}
