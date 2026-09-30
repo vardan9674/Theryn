@@ -27,7 +27,11 @@ function writeAll(clientId, all, s) {
 export function readDraft(clientId, date, s) {
   const d = readAll(clientId, s)[date];
   if (!d || typeof d !== "object") return null;
-  return { ticks: d.ticks || {}, log: d.log || {}, note: typeof d.note === "string" ? d.note : "" };
+  return {
+    ticks: d.ticks || {}, log: d.log || {}, note: typeof d.note === "string" ? d.note : "",
+    // Skipped, swapped and done-for-more-sets: changes to the day, not the plan.
+    skipped: d.skipped || {}, swaps: d.swaps || {}, sets: d.sets || {},
+  };
 }
 
 /**
@@ -38,7 +42,10 @@ export function saveDraft(clientId, date, draft, allDone = {}, s) {
   if (!date) return;
   const all = readAll(clientId, s);
   if (isEmpty(draft, allDone)) delete all[date];
-  else all[date] = { ticks: draft.ticks || {}, log: draft.log || {}, note: (draft.note || "").slice(0, 300) };
+  else all[date] = {
+    ticks: draft.ticks || {}, log: draft.log || {}, note: (draft.note || "").slice(0, 300),
+    skipped: draft.skipped || {}, swaps: draft.swaps || {}, sets: draft.sets || {},
+  };
   writeAll(clientId, all, s);
 }
 
@@ -57,6 +64,11 @@ export function clearDraft(clientId, date, s) {
 export function isEmpty(draft, allDone = {}) {
   if (!draft) return true;
   if ((draft.note || "").trim()) return false;
+  // A skip, a swap or a changed set count is worth keeping on its own, even
+  // with nothing typed and everything still ticked.
+  if (Object.values(draft.skipped || {}).some(Boolean)) return false;
+  if (Object.values(draft.swaps || {}).some((n) => String(n ?? "").trim())) return false;
+  if (Object.values(draft.sets || {}).some((n) => Number(n) > 0)) return false;
   const typed = Object.values(draft.log || {}).some((sets) => Object.values(sets || {}).some((v) => v && Object.values(v).some((x) => String(x ?? "").trim() !== "")));
   if (typed) return false;
   const ticks = draft.ticks || {};

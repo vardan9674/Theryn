@@ -5,6 +5,8 @@ import { todayFromPlan, workoutPayload, dayKeyOf, cleanDecimal, workoutNumbersPr
 import { planSets } from "../lib/planSets.js";
 import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.js";
 import { readDraft, saveDraft, clearDraft } from "../lib/logDraft.js";
+import { shapeExercises, plannedSets, anyChanges, MAX_SETS } from "../lib/logChanges.js";
+import SwapExerciseSheet from "./SwapExerciseSheet.jsx";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -19,11 +21,18 @@ function recentDays(routine, now = new Date()) {
   });
 }
 
+/** Everything ticked, as the sheet opens: whatever the plan asks, minus the skips. */
+function defaultTicks(planExercises, changes) {
+  return Object.fromEntries(shapeExercises(planExercises, changes).map((e, i) => [i, changes?.skipped?.[i] ? 0 : plannedSets(e)]));
+}
+
 /**
  * The coach ticks off a workout for a client who didn't (name-only clients).
- * One tap for "did it as planned"; or tick sets and change numbers. Saved like
- * a link submission, marked logged_by "coach", so it counts for their streak
- * and shows as "logged by you".
+ * One tap for "did it as planned"; or tick sets and change numbers. The session
+ * rarely matches the plan exactly, so an exercise can also be skipped, swapped
+ * for something else, or done for more or fewer sets — for that day only, never
+ * touching the plan. Saved like a link submission, marked logged_by "coach", so
+ * it counts for their streak and shows as "logged by you".
  */
 export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now }) {
   const toast = useToast();
@@ -35,53 +44,81 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   const [date, setDate] = React.useState(pickDefault);
   const [ticks, setTicks] = React.useState({}); // exercise index → sets done
   const [log, setLog] = React.useState({});     // exercise index → set index → { r, w }
+  const [skipped, setSkipped] = React.useState({}); // index → they didn't do it
+  const [swaps, setSwaps] = React.useState({});     // index → what they did instead
+  const [sets, setSets] = React.useState({});       // index → sets they actually did
   const [openEx, setOpenEx] = React.useState(null);
+  const [swapAt, setSwapAt] = React.useState(null);
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
   const plan = React.useMemo(() => todayFromPlan(routine, noon(date)), [routine, date]);
-  const allDone = () => Object.fromEntries(plan.exercises.map((e, i) => [i, e.sets || 1]));
+  // The day as the coach is logging it. The plan itself is never written to.
+  const exercises = React.useMemo(() => shapeExercises(plan.exercises, { swaps, sets }), [plan.exercises, swaps, sets]);
+  const changed = anyChanges(plan.exercises, { skipped, swaps, sets });
   // Reopening the sheet, or coming back to a day: whatever they had typed for
   // that day is still there. Only a day they never touched opens as planned.
   React.useEffect(() => { if (open) setDate(pickDefault()); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!open) return;
     const draft = readDraft(clientId, date);
-    setTicks(draft?.ticks || allDone());
+    const d = { skipped: draft?.skipped || {}, swaps: draft?.swaps || {}, sets: draft?.sets || {} };
+    setSkipped(d.skipped); setSwaps(d.swaps); setSets(d.sets);
+    setTicks(draft?.ticks || defaultTicks(plan.exercises, d));
     setLog(draft?.log || {});
     setNote(draft?.note || "");
     setOpenEx(null);
   }, [open, date, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Every tick and every number, kept until it is sent.
+  // Every tick, every number and every change, kept until it is sent.
   React.useEffect(() => {
     if (!open || plan.isRest) return;
-    saveDraft(clientId, date, { ticks, log, note }, allDone());
-  }, [open, clientId, date, ticks, log, note]); // eslint-disable-line react-hooks/exhaustive-deps
+    saveDraft(clientId, date, { ticks, log, note, skipped, swaps, sets }, defaultTicks(plan.exercises, { skipped, swaps, sets }));
+  }, [open, clientId, date, ticks, log, note, skipped, swaps, sets]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setsTotal = plan.exercises.reduce((a, e) => a + (e.sets || 1), 0);
-  const setsDone = plan.exercises.reduce((a, e, i) => a + Math.min(ticks[i] || 0, e.sets || 1), 0);
+  const setsTotal = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : plannedSets(e)), 0);
+  const setsDone = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : Math.min(ticks[i] || 0, plannedSets(e))), 0);
   const already = doneDates.has(date);
   const dayInfo = days.find((x) => x.iso === date);
 
-  const toggleExercise = (i) => { const full = plan.exercises[i].sets || 1; setTicks((t) => ({ ...t, [i]: (t[i] || 0) >= full ? 0 : full })); };
+  const toggleExercise = (i) => { const full = plannedSets(exercises[i]); setTicks((t) => ({ ...t, [i]: (t[i] || 0) >= full ? 0 : full })); };
   // Tapping set k marks sets 1..k done; tapping the last done set again unticks it.
   const tapSet = (i, k) => setTicks((t) => ({ ...t, [i]: (t[i] || 0) === k + 1 ? k : k + 1 }));
   const setVal = (i, si, f, raw) => {
     const v = f === "r" ? raw.replace(/[^0-9]/g, "").slice(0, 3) : f === "s" ? maskDuration(raw) : cleanDecimal(raw);
     setLog((l) => ({ ...l, [i]: { ...(l[i] || {}), [si]: { ...(l[i]?.[si] || {}), [f]: v } } }));
   };
+  const skip = (i) => { setSkipped((s) => ({ ...s, [i]: true })); setTicks((t) => ({ ...t, [i]: 0 })); setOpenEx(null); };
+  const unskip = (i) => { setSkipped((s) => ({ ...s, [i]: false })); setTicks((t) => ({ ...t, [i]: plannedSets(exercises[i]) })); };
+  const swap = (i, name) => {
+    setSwaps((s) => ({ ...s, [i]: name }));
+    setSkipped((s) => (s[i] ? { ...s, [i]: false } : s)); // they did do something
+    // Reps and times carry over; a weight typed for the old exercise doesn't.
+    setLog((l) => (l[i] ? { ...l, [i]: Object.fromEntries(Object.entries(l[i]).map(([k, v]) => [k, { ...v, w: "" }])) } : l));
+  };
+  const changeSets = (i, n) => {
+    const full = plannedSets(exercises[i]);
+    const want = Math.min(MAX_SETS, Math.max(1, n));
+    setSets((s) => ({ ...s, [i]: want }));
+    // All of them were ticked, so the added set is ticked too; otherwise keep
+    // what they ticked, never more than the sets there now.
+    setTicks((t) => ({ ...t, [i]: (t[i] || 0) >= full ? want : Math.min(t[i] || 0, want) }));
+  };
 
   async function save(asPlanned) {
     if (plan.isRest) return;
-    const t = asPlanned ? allDone() : ticks;
+    const t = asPlanned ? defaultTicks(plan.exercises, { skipped, swaps, sets }) : ticks;
     if (!Object.values(t).some((n) => n > 0)) { toast("Tick at least one set, or use Done as planned.", "error"); return; }
     // A number that can't be read would be sent as blank, which means "as planned". #133
     const units = unit === "kg" ? "metric" : "imperial";
-    const bad = asPlanned ? null : workoutNumbersProblem(plan.exercises, log, units);
+    const bad = asPlanned ? null : workoutNumbersProblem(exercises, log, units);
     if (bad) { toast(bad, "error"); return; }
     setBusy(true);
     try {
-      const payload = { ...workoutPayload(plan, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach" };
+      // An older plan holds bare exercise names with no set count. The sheet
+      // showed a count and the coach ticked it off, so that is what was asked
+      // for — without this the workout reads "10 of 0 sets" afterwards.
+      const sent = exercises.map((e) => ({ ...e, sets: plannedSets(e) }));
+      const payload = { ...workoutPayload({ ...plan, exercises: sent }, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach" };
       await onSave(payload);
       clearDraft(clientId, date); // the coach has sent it; nothing left to keep
       toast(`Saved ${dayInfo?.label === "Today" ? "today's" : `${DAY_LONG[plan.key]}'s`} workout for ${firstName}. It counts for their streak.`);
@@ -110,27 +147,40 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
         ) : (
           <>
             {already && <div className="lw-warn">{firstName} already has a workout on this day. Saving adds another one.</div>}
-            <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>
-              <Icon.Check size={18} /><span><b>Done as planned</b><small>All {setsTotal} sets of {DAY_LONG[plan.key]}'s <span style={{ color }}>{plan.type.toLowerCase()}</span> workout</small></span>
-            </button>
-            <div className="lw-or"><span>or tick what they did</span></div>
+            {!changed && (
+              <>
+                <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>
+                  <Icon.Check size={18} /><span><b>Done as planned</b><small>All {setsTotal} sets of {DAY_LONG[plan.key]}'s <span style={{ color }}>{plan.type.toLowerCase()}</span> workout</small></span>
+                </button>
+                <div className="lw-or"><span>or tick what they did</span></div>
+              </>
+            )}
 
             <div className="lw-list">
-              {plan.exercises.map((e, i) => {
-                const full = e.sets || 1; const n = Math.min(ticks[i] || 0, full);
+              {exercises.map((e, i) => {
+                const full = plannedSets(e); const n = Math.min(ticks[i] || 0, full);
+                const off = Boolean(skipped[i]);
                 const rows = planSets(e, full);
                 const isOpen = openEx === i;
+                const asked = plannedSets(plan.exercises[i]);
                 return (
-                  <div key={i} className={`lw-ex ${n === full ? "done" : n > 0 ? "part" : ""}`}>
+                  <div key={i} className={`lw-ex ${off ? "skipped" : n === full ? "done" : n > 0 ? "part" : ""}`}>
                     <div className="lw-exhd">
-                      <button type="button" className="lw-tick" aria-pressed={n === full} aria-label={`${n === full ? "Untick" : "Tick"} all sets of ${e.name}`} onClick={() => toggleExercise(i)}>{n === full ? <Icon.Check size={16} /> : n > 0 ? n : ""}</button>
+                      {off
+                        ? <button type="button" className="lw-tick" aria-label={`${e.name} was skipped. Undo`} onClick={() => unskip(i)}><Icon.Close size={14} /></button>
+                        : <button type="button" className="lw-tick" aria-pressed={n === full} aria-label={`${n === full ? "Untick" : "Tick"} all sets of ${e.name}`} onClick={() => toggleExercise(i)}>{n === full ? <Icon.Check size={16} /> : n > 0 ? n : ""}</button>}
                       <button type="button" className="lw-exname" onClick={() => setOpenEx(isOpen ? null : i)} aria-expanded={isOpen}>
-                        <b>{e.name}</b><small>{n} of {full} sets · {isOpen ? "hide sets" : "change sets"}</small>
+                        <b>{e.name}</b>
+                        <small>
+                          {off ? "Skipped" : `${n} of ${full} sets`}
+                          {e.swappedFrom ? ` · instead of ${e.swappedFrom}` : full !== asked ? ` · ${asked} planned` : ""}
+                          {` · ${isOpen ? "hide" : "change"}`}
+                        </small>
                       </button>
                     </div>
                     {isOpen && (
                       <div className="lw-sets">
-                        {rows.map((s, si) => (
+                        {!off && rows.map((s, si) => (
                           <div key={si} className="lw-set">
                             <button type="button" className={`lw-setno ${si < n ? "on" : ""}`} aria-pressed={si < n} aria-label={`Set ${si + 1} ${si < n ? "done" : "not done"}`} onClick={() => tapSet(i, si)}>{si < n ? <Icon.Check size={12} /> : s.kind === "warmup" ? "W" : s.kind === "drop" ? "D" : s.kind === "amrap" ? "A" : si + 1}</button>
                             {e.mode === "time"
@@ -139,7 +189,15 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
                             <label><input inputMode="decimal" value={log[i]?.[si]?.w ?? ""} placeholder={s.weight != null ? String(s.weight) : "–"} onChange={(ev) => setVal(i, si, "w", ev.target.value)} aria-label={`Set ${si + 1} weight in ${unit}`} /><span>{unit}</span></label>
                           </div>
                         ))}
-                        <small className="lw-hint">Blank means as planned.</small>
+                        {!off && <small className="lw-hint">Blank means as planned.</small>}
+                        <div className="lw-exacts">
+                          <button type="button" className="lw-act" onClick={() => setSwapAt(i)}><Icon.Copy size={13} />{e.swappedFrom ? "Swap again" : "They did something else"}</button>
+                          {!off && full < MAX_SETS && <button type="button" className="lw-act" onClick={() => changeSets(i, full + 1)}><Icon.Plus size={13} />Add a set</button>}
+                          {!off && full > 1 && <button type="button" className="lw-act" onClick={() => changeSets(i, full - 1)}>One set fewer</button>}
+                          {off
+                            ? <button type="button" className="lw-act on" onClick={() => unskip(i)}>They did it after all</button>
+                            : <button type="button" className="lw-act danger" onClick={() => skip(i)}>They skipped this</button>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -152,6 +210,8 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
           </>
         )}
       </div>
+      <SwapExerciseSheet open={swapAt != null} exercise={swapAt != null ? exercises[swapAt] : null} firstName={firstName}
+        onPick={(name) => swap(swapAt, name)} onClose={() => setSwapAt(null)} />
     </Sheet>
   );
 }

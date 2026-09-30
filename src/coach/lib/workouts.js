@@ -110,6 +110,9 @@ export function workoutDetail(entry) {
         superset: e.superset || null,
         // The client added this one themselves; it isn't in the coach's plan.
         addedByClient: e.added_by_client === true,
+        // Done as something else. The plan's exercise, so the day still reads
+        // against what was asked for.
+        swappedFrom: typeof e.swapped_from === "string" && e.swapped_from.trim() ? e.swapped_from.trim() : null,
         weight: e.weight_used != null ? e.weight_used : e.weight_target != null ? e.weight_target : null,
         weightChanged: e.weight_used != null && e.weight_target != null && Number(e.weight_used) !== Number(e.weight_target),
         // Set by set, when the client typed reps or weights: done sets only,

@@ -316,6 +316,9 @@ export function workoutPayload(today, ticks, log, note, date, units, feel) {
       // Something the client added on top of the plan (a run, a swim). The
       // coach's plan is untouched; their dashboard tags it as theirs.
       if (e.addedByClient) out.added_by_client = true;
+      // Done as something else. What the plan asked for is kept alongside, so
+      // the workout still reads as the day it was meant to be.
+      if (e.swappedFrom) out.swapped_from = e.swappedFrom;
       if (typed.some((x) => x.r != null || x.w != null || x.s != null)) {
         out.sets = typed.map((x, s) => {
           const one = { n: s + 1, done: s < done };
