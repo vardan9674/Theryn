@@ -455,3 +455,47 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-vol-x { font-size: 11px; color: var(--cx-mu); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lk-vol-col.now .lk-vol-x { color: var(--cx-tx); font-weight: 700; }
 .lk-wins-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #101010; background: var(--cx-a); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+
+/* The streak flame on the receipt. Four heats (h1–h4, see streakHeat): each
+   one bigger, faster, hotter in colour, with more sparks and a stronger glow
+   on the ring. The class follows the number as it counts up, so the flame
+   catches in front of them. */
+.lk-flame { position: relative; display: block; width: 28px; height: 28px; margin-bottom: -2px; transition: width 0.4s cubic-bezier(.2, 1.4, .4, 1), height 0.4s cubic-bezier(.2, 1.4, .4, 1); }
+.lk-flame svg { position: relative; z-index: 1; width: 100%; height: 100%; overflow: visible; }
+.lk-flame path { transform-box: fill-box; transform-origin: 50% 100%; transition: fill 0.4s; }
+.lk-flame .outer { fill: var(--cx-a); animation: lk-burn 1.6s ease-in-out infinite; }
+.lk-flame .mid, .lk-flame .core { opacity: 0; }
+.lk-flame .mid { transform: scale(0.68); fill: #F2FFB0; animation: lk-burn-in 1.1s ease-in-out infinite; }
+.lk-flame .core { transform: scale(0.38); fill: #FFFFFF; animation: lk-burn-in 0.8s ease-in-out infinite; }
+.lk-flame.h2 { width: 32px; height: 32px; }
+.lk-flame.h2 .outer { animation-duration: 1.2s; filter: drop-shadow(0 0 4px rgba(200, 255, 0, 0.6)); }
+.lk-flame.h2 .mid { opacity: 1; }
+.lk-flame.h3 { width: 35px; height: 35px; }
+.lk-flame.h3 .outer { fill: #F5B84A; animation-duration: 0.9s; filter: drop-shadow(0 0 7px rgba(245, 184, 74, 0.75)); }
+.lk-flame.h3 .mid { opacity: 1; fill: var(--cx-a); }
+.lk-flame.h3 .core { opacity: 1; fill: #F2FFB0; }
+.lk-flame.h4 { width: 38px; height: 38px; }
+.lk-flame.h4 .outer { fill: #FF6B3D; animation-duration: 0.6s; filter: drop-shadow(0 0 10px rgba(255, 107, 61, 0.9)) drop-shadow(0 0 22px rgba(245, 184, 74, 0.5)); }
+.lk-flame.h4 .mid { opacity: 1; fill: #F5B84A; animation-duration: 0.7s; }
+.lk-flame.h4 .core { opacity: 1; fill: var(--cx-a); animation-duration: 0.5s; }
+@keyframes lk-burn { 0%, 100% { transform: scale(1, 1) skewX(0deg); } 25% { transform: scale(0.94, 1.06) skewX(-3deg); } 50% { transform: scale(1.04, 0.96) skewX(2deg); } 75% { transform: scale(0.97, 1.08) skewX(-1deg); } }
+@keyframes lk-burn-in { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6%; } }
+.lk-ember { position: absolute; left: 50%; bottom: 40%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #F5B84A; box-shadow: 0 0 6px #FF6B3D; opacity: 0;
+  animation: lk-ember var(--t, 1.4s) ease-out var(--d, 0s) infinite; }
+.lk-flame.h2 .lk-ember { background: var(--cx-a); box-shadow: 0 0 6px var(--cx-a); }
+@keyframes lk-ember { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--x) * 0.6), -64px) scale(0.3); } }
+/* The ring warms with it */
+.lk-ring::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+.lk-ring.h2::before { opacity: 1; box-shadow: 0 0 22px rgba(200, 255, 0, 0.18); }
+.lk-ring.h3::before { opacity: 1; box-shadow: 0 0 34px rgba(245, 184, 74, 0.3), inset 0 0 26px rgba(245, 184, 74, 0.12); animation: lk-halo 1.6s ease-in-out infinite; }
+.lk-ring.h4::before { opacity: 1; box-shadow: 0 0 48px rgba(255, 107, 61, 0.45), inset 0 0 34px rgba(255, 107, 61, 0.18); animation: lk-halo 0.9s ease-in-out infinite; }
+.lk-ring.h4 .lk-ring-fill { filter: drop-shadow(0 0 6px rgba(255, 107, 61, 0.7)); }
+@keyframes lk-halo { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+.lk-heat-word { display: inline-block; margin-top: 4px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; animation: lk-badge-in 0.5s cubic-bezier(.2, 1.4, .4, 1) 0.9s both; }
+.lk-heat-word.h2 { background: #1E2A00; color: var(--cx-a); }
+.lk-heat-word.h3 { background: rgba(245, 184, 74, 0.16); color: #F5B84A; }
+.lk-heat-word.h4 { background: linear-gradient(90deg, #F5B84A, #FF6B3D); color: #101010; }
+@media (prefers-reduced-motion: reduce) {
+  .lk-flame path, .lk-ember, .lk-ring::before, .lk-heat-word { animation: none; }
+  .lk-ember { display: none; }
+}

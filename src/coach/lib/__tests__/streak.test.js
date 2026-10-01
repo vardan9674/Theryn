@@ -78,3 +78,11 @@ describe("consistency since they joined", () => {
     expect(consistencyStats(["2026-09-15"], plan, "2026-09-14", at("2026-09-15")).pct).toBe(100);
   });
 });
+
+describe("how hot the streak burns", () => {
+  it("steps up at 4, 7 and 14 in a row", async () => {
+    const { streakHeat } = await import("../streak.js");
+    expect([2, 3, 4, 6, 7, 13, 14, 40].map((n) => streakHeat(n).level)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+    expect(streakHeat(7).word).toBe("On fire");
+  });
+});
