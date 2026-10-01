@@ -8,7 +8,8 @@
 import { BODY_FRONT, BODY_BACK } from "../../lib/bodyMap/bodyPaths.js";
 import { SLUG_TO_GROUP } from "../../lib/exerciseLibrary.js";
 import { muscleWords } from "../../lib/muscleHeat.js";
-import { weekLabel } from "./weeklyReport.js";
+import { weekLabel, volumeLine } from "./weeklyReport.js";
+import { winWords } from "../../lib/workoutWins.js";
 
 const W = 1080, H = 1350, PAD = 72;
 const C = { bg: "#080808", tx: "#F0F0F0", tx2: "#B0B0B0", mu: "#8A8A8A", a: "#C8FF00", skin: "#2A2A2A", muscle: "#3D3D3D", stroke: "#101010" };
@@ -96,15 +97,17 @@ export async function renderReportImage(snap) {
   y += 106;
   for (const line of wrap(ctx, String(s.headline || "Your week.").toUpperCase(), maxW).slice(0, 3)) { ctx.fillText(line, PAD, y); y += 98; }
 
-  // Workouts
-  const w = s.workouts || {};
+  // Workouts, when the coach kept them in
+  const w = s.workouts;
   y += 12;
-  ctx.font = `900 64px ${DISPLAY}`;
-  const count = w.planned ? `${w.done || 0} OF ${w.planned}` : String(w.done || 0);
-  ctx.fillText(count, PAD, y);
-  const cw = ctx.measureText(count).width;
-  ctx.fillStyle = C.tx2; ctx.font = `500 32px ${BODY}`;
-  ctx.fillText("workouts done", PAD + cw + 18, y - 4);
+  if (w) {
+    ctx.font = `900 64px ${DISPLAY}`;
+    const count = w.planned ? `${w.done || 0} OF ${w.planned}` : String(w.done || 0);
+    ctx.fillText(count, PAD, y);
+    const cw = ctx.measureText(count).width;
+    ctx.fillStyle = C.tx2; ctx.font = `500 32px ${BODY}`;
+    ctx.fillText("workouts done", PAD + cw + 18, y - 4);
+  }
 
   // Body, front and back
   const bodyTop = y + 40, bodyH = Math.min(470, H - bodyTop - 230);
@@ -123,6 +126,26 @@ export async function renderReportImage(snap) {
     y = bodyTop + 20;
   }
 
+  // Wins: the top two fit; the rest are a count.
+  if (s.wins?.items?.length) {
+    const total = s.wins.items.length + (s.wins.more || 0);
+    for (const x of s.wins.items.slice(0, 2)) {
+      if (y > H - 190) break;
+      ctx.fillStyle = C.a; ctx.font = `700 34px ${BODY}`;
+      ctx.fillText(wrap(ctx, `↑ ${x.name}: ${winWords(x, s.wins.unit).line}`, maxW)[0], PAD, y);
+      y += 50;
+    }
+    if (total > 2 && y < H - 190) {
+      ctx.fillStyle = C.tx2; ctx.font = `500 30px ${BODY}`;
+      ctx.fillText(`Better than last week on ${total} exercises.`, PAD, y);
+      y += 50;
+    }
+  }
+  if (s.volume?.total > 0 && y < H - 170) {
+    ctx.fillStyle = C.tx2; ctx.font = `500 32px ${BODY}`;
+    ctx.fillText(wrap(ctx, `Weight lifted: ${Math.round(s.volume.total).toLocaleString("en-US")} ${s.volume.unit}. ${volumeLine(s.volume)}`, maxW)[0], PAD, y);
+    y += 52;
+  }
   if (s.best) {
     ctx.fillStyle = C.a; ctx.font = `700 34px ${BODY}`;
     const n = (x) => (Number.isInteger(x) ? String(x) : String(Math.round(x * 10) / 10));

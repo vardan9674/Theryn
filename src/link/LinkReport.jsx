@@ -2,8 +2,9 @@ import React from "react";
 import BodyMap from "../components/BodyMap.jsx";
 import { GROUP_LABEL } from "../lib/exerciseLibrary.js";
 import { muscleWords } from "../lib/muscleHeat.js";
-import { weekLabel } from "../coach/lib/weeklyReport.js";
+import { weekLabel, volumeLine } from "../coach/lib/weeklyReport.js";
 import { Icon } from "../coach/ui/primitives.jsx";
+import { winWords } from "../lib/workoutWins.js";
 
 // A report the coach shared, as the client sees it on their link.
 //
@@ -28,6 +29,30 @@ function useReportFonts() {
     l.rel = "stylesheet"; l.href = FONTS_HREF;
     document.head.appendChild(l);
   }, []);
+}
+
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortWeek = (iso) => { const [, m, d] = String(iso).split("-").map(Number); return `${d} ${MON[(m || 1) - 1]}`; };
+const bigNum = (n) => Math.round(n).toLocaleString("en-US");
+
+/**
+ * Weight lifted, week by week: one bar a week, this week bright. The coach's
+ * review draws the same bars, so what they see is what the client gets.
+ * weeks: [{ s: Monday, t: total }], oldest first.
+ */
+export function VolumeBars({ weeks, unit }) {
+  const max = Math.max(1, ...weeks.map((w) => w.t));
+  const lastI = weeks.length - 1;
+  return (
+    <div className="lk-vol" role="img" aria-label={`Weight lifted each week: ${weeks.map((w) => `${shortWeek(w.s)} ${bigNum(w.t)} ${unit}`).join(", ")}`}>
+      {weeks.map((w, i) => (
+        <div key={w.s} className={`lk-vol-col${i === lastI ? " now" : ""}`}>
+          <span className="lk-vol-bar"><i style={{ height: `${w.t > 0 ? Math.max(4, Math.round((w.t / max) * 100)) : 0}%` }} /></span>
+          <span className="lk-vol-x">{i === lastI ? "This wk" : shortWeek(w.s)}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** The card on the link that opens a shared report. */
@@ -69,7 +94,7 @@ export function ReportView({ snapshot, onBack, backLabel = "Back to today's work
         </section>
       )}
 
-      <section className="lk-card lk-rep-sec" aria-label="Workouts">
+      {s.workouts && <section className="lk-card lk-rep-sec" aria-label="Workouts">
         <div className="lk-rep-big"><b>{w.planned ? `${w.done || 0} of ${w.planned}` : w.done || 0}</b><span>workout{(w.planned || w.done) === 1 ? "" : "s"} done</span></div>
         {Array.isArray(w.days) && w.days.length > 0 && (
           <ul className="lk-rep-days">
@@ -78,7 +103,29 @@ export function ReportView({ snapshot, onBack, backLabel = "Back to today's work
             ))}
           </ul>
         )}
-      </section>
+      </section>}
+
+      {s.wins?.items?.length > 0 && (
+        <section className="lk-card lk-rep-sec lk-rep-wins" aria-label="Better than last week">
+          <span className="lk-rep-eyebrow accent">Better than last week</span>
+          <p className="lk-rep-say">{s.wins.items.length + (s.wins.more || 0) === 1 ? "You beat last week." : `You beat last week on ${s.wins.items.length + (s.wins.more || 0)} exercises.`}</p>
+          <ul>
+            {s.wins.items.map((x) => { const t = winWords(x, s.wins.unit); return (
+              <li key={x.name}><span className="lk-wins-tag">{x.ever ? "Best ever" : t.tag}</span><b>{x.name}</b><span>{t.line}</span></li>
+            ); })}
+          </ul>
+          {s.wins.more > 0 && <span className="lk-rep-sub">And {s.wins.more} more.</span>}
+        </section>
+      )}
+
+      {s.volume?.total > 0 && Array.isArray(s.volume.weeks) && (
+        <section className="lk-card lk-rep-sec" aria-label="Weight lifted">
+          <span className="lk-rep-eyebrow">Weight lifted</span>
+          <b className="lk-rep-num">{bigNum(s.volume.total)} {s.volume.unit}</b>
+          <span className="lk-rep-sub">In total this week{volumeLine(s.volume) ? `. ${volumeLine(s.volume)}` : "."}</span>
+          <VolumeBars weeks={s.volume.weeks} unit={s.volume.unit} />
+        </section>
+      )}
 
       {m && worked.length > 0 && (
         <section className="lk-card lk-rep-sec" aria-label="What you trained">

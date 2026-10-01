@@ -15,6 +15,8 @@ import { ReportEntry, ReportView } from "./LinkReport.jsx";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
+import { winsForSend } from "./sendWins.js";
+import { winWords, winsHeadline } from "../lib/workoutWins.js";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
@@ -1021,6 +1023,9 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
         exercises: payload.exercises.filter((e) => e.sets_done > 0).length,
         saved: { ticks, log, note, feel, skipped, swaps, band, extras },
       });
+      // Better than last time, worked out before this phone's memory of "last time" moves on.
+      let wins = [];
+      try { wins = winsForSend(payload, date, d.unit_system, me?.history, store); } catch { /* a receipt without wins is still a receipt */ }
       setMode(null); // back to the receipt for this day
       store?.addDone(date);
       store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
@@ -1031,7 +1036,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
       // Exercise by exercise, only what they actually ticked: the receipt draws the
       // muscle picture from this, and a skipped exercise must leave its muscles cold.
       const worked = payload.exercises.filter((e) => e.sets_done > 0).map((e) => ({ name: e.name, sets: e.sets_done }));
-      onSent({ date, streakBefore: before, worked, ...(setsPlanned > 0
+      onSent({ date, streakBefore: before, worked, wins, unit: d.unit_system === "metric" ? "kg" : "lb", ...(setsPlanned > 0
         ? { day: DAY_LONG[today.key], type: today.type, done: setsDone, planned: setsPlanned, what: "sets" }
         : { day: DAY_LONG[today.key], type: today.type, done: payload.exercises.filter((e) => e.sets_done > 0).length, planned: payload.exercises.length, what: "exercises" }) });
     } catch (e) {
@@ -1486,6 +1491,24 @@ function nextTraining(plan, from = new Date()) {
   return null;
 }
 
+/** What they did better than last time. Nothing at all when there's nothing: no "0 wins". */
+function Wins({ wins, unit }) {
+  if (!wins?.length) return null;
+  const shown = wins.slice(0, 4);
+  return (
+    <section className="lk-card lk-wins" aria-label="Better than last time">
+      <span className="lk-wins-h"><Icon.Flame size={14} />Better than last time</span>
+      <p className="lk-wins-p">{winsHeadline(wins.length)}</p>
+      <ul>
+        {shown.map((w) => { const x = winWords(w, unit); return (
+          <li key={w.name}><span className="lk-wins-tag">{x.tag}</span><b>{w.name}</b><span>{x.line}</span></li>
+        ); })}
+      </ul>
+      {wins.length > shown.length && <small>And {wins.length - shown.length} more.</small>}
+    </section>
+  );
+}
+
 function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }) {
   const s = sent.summary;
   const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan) : null;
@@ -1518,6 +1541,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
             <div><span>This month</span><b>{st.thisMonth}</b></div>
           </div>
         )}
+        {sent.kind === "workout" && <Wins wins={s.wins} unit={s.unit} />}
         {sent.kind === "workout" && <MuscleHeat exercises={s.worked} />}
         <div className="lk-card lk-keep"><Icon.Link size={20} /><span style={{ fontSize: 15, color: "var(--cx-tx2)", lineHeight: 1.45 }}>{next
           ? `Keep this link. ${next.label} is ${next.type}; tick it to make ${st.current + 1}.`

@@ -3,10 +3,11 @@ import { Button, Icon, Sheet, Pill, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import BodyMap from "../../components/BodyMap.jsx";
 import { GROUP_LABEL } from "../../lib/exerciseLibrary.js";
-import { buildWeeklyReport, defaultReportWeek, weekLabel, addDays, reportSnapshot, reportMessage, applySuggestion, DEFAULT_SECTIONS } from "../lib/weeklyReport.js";
+import { buildWeeklyReport, defaultReportWeek, weekLabel, addDays, reportSnapshot, reportMessage, applySuggestion, volumeLine, DEFAULT_SECTIONS } from "../lib/weeklyReport.js";
 import { clientNow } from "../lib/clientClock.js";
 import { linkUrl, whatsappUrl } from "../lib/clientLinks.js";
-import { ReportView } from "../../link/LinkReport.jsx";
+import { ReportView, VolumeBars } from "../../link/LinkReport.jsx";
+import { winWords } from "../../lib/workoutWins.js";
 import { saveReportImage } from "../lib/reportImage.js";
 
 // The client's week, for the coach — and, only if the coach chooses, for the
@@ -19,12 +20,15 @@ const GAP_WORD = { on: "Done as planned", half: "Half done", missed: "Missed" };
 const LEVEL_FILL = { 3: "#C8FF00", 2: "#93BC00", 1: "#49590F" };
 const REGION_COLOR = { "on plan": "#C8FF00", "mostly done": "#F5B84A", "mostly missed": "#FF6B3D" };
 const SECTION_LABELS = [
+  ["workouts", "Workouts done"],
+  ["wins", "Better than last week"],
+  ["volume", "Weight lifted, week by week"],
   ["muscles", "What they trained most"],
   ["gap", "Where they fell short of the plan"],
-  ["best", "New best"],
   ["note", "Your note and next week's focus"],
   ["body", "Body weight and waist"],
 ];
+const bigNum = (n) => Math.round(n).toLocaleString("en-US");
 const shortDate = (iso) => new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
 function Dot({ color }) {
@@ -103,7 +107,9 @@ export default function ReportsTab({ data, row, actions }) {
             <dl className="rp-stats">
               <div><dt>Workouts</dt><dd>{report.workouts.planned ? `${report.workouts.done} of ${report.workouts.planned}` : report.workouts.done}</dd></div>
               <div><dt>Sets</dt><dd>{report.sets.planned ? `${report.sets.done} of ${report.sets.planned}` : report.sets.done}</dd></div>
-              {report.bests[0]
+              {report.wins.length > 0
+                ? <div><dt>Better than last week</dt><dd className="good">{report.wins.length === 1 ? report.wins[0].name : `${report.wins.length} exercises`}</dd></div>
+                : report.bests[0]
                 ? <div><dt>New best</dt><dd className="good">{report.bests[0].name}</dd></div>
                 : report.feel.hard > 0 ? <div><dt>Felt hard</dt><dd className="warn">{report.feel.hard} session{report.feel.hard === 1 ? "" : "s"}</dd></div> : null}
             </dl>
@@ -150,7 +156,8 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
   const prev = shared?.snapshot;
   // Starting from what was shared keeps a coach's own edits when they reopen it.
   const [sections, setSections] = React.useState(() => prev
-    ? { muscles: Boolean(prev.muscles), gap: Boolean(prev.gap), best: Boolean(prev.best), body: Boolean(prev.body), note: Boolean(prev.note || prev.focus) }
+    // A report shared before workouts could be left out always had them.
+    ? { workouts: prev.v < 2 || Boolean(prev.workouts), wins: Boolean(prev.wins || prev.best), volume: Boolean(prev.volume), muscles: Boolean(prev.muscles), gap: Boolean(prev.gap), body: Boolean(prev.body), note: Boolean(prev.note || prev.focus) }
     : DEFAULT_SECTIONS);
   const [note, setNote] = React.useState(prev?.note ?? report.draftNote);
   const [focus, setFocus] = React.useState(prev?.focus ?? report.draftFocus);
@@ -160,9 +167,11 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
   const coachName = String(api.coachName || "").replace(/^\s*coach\s+/i, "").trim().split(/\s+/)[0] || "";
   const snapshot = React.useMemo(() => reportSnapshot(report, { sections, note, focus, coachName, firstName: first }), [report, sections, note, focus, coachName, first]);
   const has = {
+    workouts: true,
+    wins: report.wins.length > 0,
+    volume: report.volume.total > 0,
     muscles: !report.quiet && report.muscles.worked.length > 0,
     gap: Boolean(report.weakest && report.weakest.verdict !== "on plan"),
-    best: report.bests.length > 0,
     note: true,
     body: report.body.weight != null || report.body.waist != null,
   };
@@ -197,6 +206,29 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
               <div><b>{report.sets.planned ? `${report.sets.done} of ${report.sets.planned}` : report.sets.done}</b><span>sets</span></div>
               <div><b className={report.feel.hard ? "warn" : ""}>{report.feel.hard}</b><span>felt hard</span></div>
             </div>
+          </section>
+
+          <section className="rp-block">
+            <span className="rp-eyebrow">Better than last week</span>
+            {report.wins.length === 0
+              ? <p className="cx-muted">{report.workouts.done === 0 ? "No workouts this week to compare." : "Nothing beat last time this week. Same weights and reps count as holding steady."}</p>
+              : <ul className="rp-wins">
+                  {report.wins.map((w) => { const t = winWords(w, report.body.weightUnit); return (
+                    <li key={w.name}><span className="lk-wins-tag">{w.ever ? "Best ever" : t.tag}</span><b>{w.name}</b><span>{t.line}</span></li>
+                  ); })}
+                </ul>}
+            {report.wins.length > 5 && <p className="cx-small cx-muted">{first} sees the top 5 and "{report.wins.length - 5} more".</p>}
+          </section>
+
+          <section className="rp-block">
+            <span className="rp-eyebrow">Weight lifted</span>
+            {report.volume.total > 0 ? (
+              <>
+                <div className="rp-row"><b className="rp-vol-num">{bigNum(report.volume.total)} {report.body.weightUnit}</b><span className="cx-small" style={{ color: report.volume.trend === "up" ? "var(--cx-a)" : report.volume.trend === "down" ? "#F5B84A" : undefined }}>{volumeLine(report.volume) || "No lifting the week before to compare."}</span></div>
+                <VolumeBars weeks={report.volume.weeks.map((w) => ({ s: w.start, t: w.total }))} unit={report.body.weightUnit} />
+                <p className="cx-small cx-muted">Weight × reps for every set they ticked, all workouts added up. Bodyweight sets add nothing.</p>
+              </>
+            ) : <p className="cx-muted">No weighted sets this week, so there's nothing to add up.</p>}
           </section>
 
           <section className="rp-block">
@@ -296,7 +328,7 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
                 <span>{label}{!has[k] && <small>Nothing to show this week</small>}{k === "body" && has[k] && <small>Off by default. Turn it on if {first} asked to see it.</small>}</span>
               </label>
             ))}
-            <p className="cx-small cx-muted">What Theryn noticed and the suggestions stay with you. They never go to {first}.</p>
+            <p className="cx-small cx-muted">Untick anything you'd rather not send. What Theryn noticed and the suggestions stay with you. They never go to {first}.</p>
           </section>
 
           {sections.note && (

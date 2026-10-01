@@ -97,6 +97,20 @@ export function createPreviewApi() {
       exercises: plan.Tue.exercises.map((e, i) => ({ name: e.name, sets_planned: e.sets, sets_done: i < 3 ? e.sets : 0 })),
     } });
   }
+  // `?wins` in the preview's address: today is the Push day, and last week's
+  // Push was lighter, so sending today's plan as it stands beats it.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("wins")) {
+    const now = new Date();
+    const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][now.getDay()];
+    const then = new Date(now); then.setDate(now.getDate() - 7);
+    const date = `${then.getFullYear()}-${String(then.getMonth() + 1).padStart(2, "0")}-${String(then.getDate()).padStart(2, "0")}`;
+    plan[k] = plan.Mon;
+    const last = { "Barbell bench press": [[12, 40], [10, 40], [8, 42.5]], "Lateral raise": [[10, 5], [10, 5], [10, 5]], "Seated shoulder press": [[10, 10], [10, 10]] };
+    submissions.push({ id: "preview-last-week", at: then.toISOString(), kind: "workout", payload: {
+      date, local_date: date, day: k, type: plan.Mon.type, weight_unit: "metric", note: "",
+      exercises: Object.entries(last).map(([name, rows]) => ({ name, sets_planned: 3, sets_done: rows.length, sets: rows.map(([reps, weight], i) => ({ n: i + 1, done: true, reps, weight })) })),
+    } });
+  }
   let connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] };
   // One shared report for last week, in the exact shape reportSnapshot() makes.
   // `?noreport` in the preview's address shows a link with none.
@@ -104,11 +118,12 @@ export function createPreviewApi() {
   const reports = [{
     id: "preview-report", period_start: lastMonday, shared_at: new Date().toISOString(), seen: false,
     snapshot: {
-      v: 1, period: { start: lastMonday }, coach: "Sam", first: "Alex", headline: "Strong upper-body week.",
+      v: 2, period: { start: lastMonday }, coach: "Sam", first: "Alex", headline: "Strong upper-body week.",
       workouts: { done: 4, planned: 5, days: [{ k: "Mon", p: true, d: true }, { k: "Tue", p: true, d: true }, { k: "Wed", p: true, d: true }, { k: "Fri", p: true, d: true }, { k: "Sat", p: true, d: false }] },
       muscles: { levels: { chest: 3, shoulders: 3, upperback: 3, triceps: 2, biceps: 2, calves: 1, lowerback: 1, quads: 1, forearms: 1, glutes: 1, hamstrings: 1, traps: 1 }, top: ["chest", "shoulders"], worked: ["chest", "shoulders", "upperback", "triceps", "biceps"] },
       gap: { weak: { label: "Legs", done: 5, planned: 26 }, strong: { label: "Upper body", done: 44, planned: 45 } },
-      best: { name: "Barbell bench press", weight: 47.5, reps: 6, prev: 45, unit: "kg" },
+      wins: { unit: "kg", more: 0, items: [{ name: "Barbell bench press", kind: "heavier", now: 47.5, before: 45, reps: 6, ever: true }, { name: "Pull-Up", kind: "reps", now: 10, before: 8, weight: 0 }, { name: "Plank", kind: "longer", now: 60, before: 45 }] },
+      volume: { unit: "kg", total: 9840, pct: 8, trend: "up", weeks: [7, 6, 5, 4, 3, 2].map((n, i) => { const x = new Date(lastMonday + "T12:00:00"); x.setDate(x.getDate() - 7 * (n - 2)); return { s: `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`, t: [7200, 8100, 0, 8650, 9110, 9840][i] }; }) },
       note: "Great upper-body week, Alex. A new best on bench! Next week let's get the legs work in. Tell me if the leg press is giving you trouble.",
       focus: "Legs work",
     },

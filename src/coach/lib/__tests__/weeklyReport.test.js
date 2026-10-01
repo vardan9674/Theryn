@@ -259,17 +259,28 @@ describe("what the client gets when the coach shares it", () => {
     const withBody = reportSnapshot(report(mayaData({ weights: [{ date: "2026-09-22", weight: 138 }] })), { sections: { body: true } });
     expect(withBody.body).toMatchObject({ weight: 138, unit: "lb" });
   });
-  it("carries the kind headline, the muscles, the weak spot, the best and the note", () => {
-    expect(snap).toMatchObject({ v: 1, coach: "Vardan", first: "Maya", headline: "Strong upper-body week.", note: "Great week, Maya!", focus: "Both leg days" });
+  it("carries the kind headline, the muscles, the weak spot, the wins and the note", () => {
+    expect(snap).toMatchObject({ v: 2, coach: "Vardan", first: "Maya", headline: "Strong upper-body week.", note: "Great week, Maya!", focus: "Both leg days" });
     expect(snap.muscles.top).toEqual(["chest", "shoulders"]);
     expect(snap.gap).toEqual({ weak: { label: "Legs", done: 5, planned: 26 }, strong: { label: "Upper body", done: 44, planned: 45 } });
-    expect(snap.best).toEqual({ name: "Barbell Bench Press", weight: 140, reps: 6, prev: 135, unit: "lb" });
+    // Bench went from 135 to 140: better than last week, and the best ever.
+    expect(snap.wins).toEqual({ unit: "lb", items: [{ name: "Barbell Bench Press", kind: "heavier", now: 140, before: 135, reps: 6, ever: true }], more: 0 });
+    expect(snap.best).toBeUndefined(); // the wins say it now
   });
-  it("drops a section the coach switched off", () => {
-    const s = reportSnapshot(r, { sections: { muscles: false, best: false, note: false }, note: "x" });
-    expect(s.muscles).toBeUndefined();
-    expect(s.best).toBeUndefined();
-    expect(s.note).toBeUndefined();
+  it("carries the weight lifted, week by week, this week last", () => {
+    expect(snap.volume.unit).toBe("lb");
+    expect(snap.volume.weeks).toHaveLength(6);
+    expect(snap.volume.weeks[5]).toEqual({ s: WEEK, t: snap.volume.total });
+    expect(snap.volume.total).toBeGreaterThan(snap.volume.weeks[4].t);
+    expect(snap.volume.trend).toBe("up");
+  });
+  it("drops any section the coach switched off, the workouts too", () => {
+    const s = reportSnapshot(r, { sections: { workouts: false, wins: false, volume: false, muscles: false, gap: false, note: false }, note: "x" });
+    for (const k of ["workouts", "wins", "volume", "muscles", "gap", "note", "body"]) expect(s[k]).toBeUndefined();
+    expect(s.headline).toBe("Strong upper-body week.");
+  });
+  it("has every section on by default except body", () => {
+    expect(DEFAULT_SECTIONS).toEqual({ workouts: true, wins: true, volume: true, muscles: true, gap: true, body: false, note: true });
   });
   it("stays small enough for the database's cap", () => {
     expect(JSON.stringify(snap).length).toBeLessThan(4000);
