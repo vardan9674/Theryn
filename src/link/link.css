@@ -480,10 +480,6 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-flame.h4 .core { opacity: 1; fill: var(--cx-a); animation-duration: 0.5s; }
 @keyframes lk-burn { 0%, 100% { transform: scale(1, 1) skewX(0deg); } 25% { transform: scale(0.94, 1.06) skewX(-3deg); } 50% { transform: scale(1.04, 0.96) skewX(2deg); } 75% { transform: scale(0.97, 1.08) skewX(-1deg); } }
 @keyframes lk-burn-in { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6%; } }
-.lk-ember { position: absolute; left: 50%; bottom: 40%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #F5B84A; box-shadow: 0 0 6px #FF6B3D; opacity: 0;
-  animation: lk-ember var(--t, 1.4s) ease-out var(--d, 0s) infinite; }
-.lk-flame.h2 .lk-ember { background: var(--cx-a); box-shadow: 0 0 6px var(--cx-a); }
-@keyframes lk-ember { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--x) * 0.6), -64px) scale(0.3); } }
 /* The ring warms with it */
 .lk-ring::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
 .lk-ring.h2::before { opacity: 1; box-shadow: 0 0 22px rgba(200, 255, 0, 0.18); }
@@ -496,6 +492,26 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-heat-word.h3 { background: rgba(245, 184, 74, 0.16); color: #F5B84A; }
 .lk-heat-word.h4 { background: linear-gradient(90deg, #F5B84A, #FF6B3D); color: #101010; }
 @media (prefers-reduced-motion: reduce) {
-  .lk-flame path, .lk-ember, .lk-ring::before, .lk-heat-word { animation: none; }
-  .lk-ember { display: none; }
+  .lk-flame path, .lk-ring::before, .lk-heat-word, .lk-shock, .lk-ring-in b.punch { animation: none; }
+  .lk-fire, .lk-shock { display: none; }
 }
+
+/* Live fire (StreakFire): a canvas bigger than the ring, so flames can climb
+   off its top. The ring's centre sits at (140, 196) inside it. */
+.lk-fire { position: absolute; left: -56px; top: -112px; width: 280px; height: 320px; pointer-events: none; z-index: 0; }
+.lk-ring > svg { position: relative; z-index: 1; }
+/* Room above the ring for the flames once it's properly alight */
+.lk-ring.h3, .lk-ring.h4 { margin-top: 56px; transition: margin-top 0.4s ease; }
+.lk-ring-in { z-index: 2; }
+.lk-ring.h3 .lk-ring-in b, .lk-ring.h4 .lk-ring-in b, .lk-ring.h3 .lk-ring-in span, .lk-ring.h4 .lk-ring-in span { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
+/* A new heat: a shockwave off the ring, and the number lands with a punch */
+.lk-shock { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--cx-a); pointer-events: none; z-index: 1; animation: lk-shock 0.8s cubic-bezier(.1, .7, .3, 1) both; }
+.lk-ring.h3 .lk-shock { border-color: #F5B84A; }
+.lk-ring.h4 .lk-shock { border-color: #FF6B3D; box-shadow: 0 0 24px #FF6B3D; }
+@keyframes lk-shock { from { transform: scale(0.9); opacity: 1; } to { transform: scale(1.9); opacity: 0; } }
+.lk-ring-in b.punch { animation: lk-punch 0.55s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes lk-punch { 0% { transform: scale(1.45); color: #FFFFFF; text-shadow: 0 0 24px rgba(255, 220, 120, 0.9); } 100% { transform: scale(1); } }
+/* The flame in the middle breathes with the fire */
+.lk-ring.h3 .lk-flame, .lk-ring.h4 .lk-flame { animation: lk-breathe 1.2s ease-in-out infinite; }
+.lk-ring.h4 .lk-flame { animation-duration: 0.7s; }
+@keyframes lk-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
