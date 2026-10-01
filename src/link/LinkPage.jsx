@@ -17,6 +17,7 @@ import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { winsForSend } from "./sendWins.js";
 import { winWords, winsHeadline, winNumbers } from "../lib/workoutWins.js";
+import StreakFire from "./StreakFire.jsx";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
 import { streakStats, streakWith, streakLabel, streakHeat } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
@@ -1535,27 +1536,30 @@ function WinBadge({ win, unit, delay = 0 }) {
   );
 }
 
-// Sparks rising off the flame: none for a new streak, a shower when it's blazing.
-const EMBERS = { 1: 0, 2: 3, 3: 6, 4: 10 };
-
 /**
  * The streak's flame. It burns hotter as the number counts up, so a client
- * who just reached 7 watches it catch: bigger, more layers, sparks.
+ * who just reached 7 watches it catch: bigger, more layers. The live fire
+ * around it is StreakFire.
  */
-function StreakFlame({ n }) {
+const StreakFlame = React.forwardRef(function StreakFlame({ n }, ref) {
   const heat = streakHeat(n).level;
   return (
-    <span className={`lk-flame h${heat}`} aria-hidden="true">
+    <span ref={ref} className={`lk-flame h${heat}`} aria-hidden="true">
       <svg viewBox="0 0 24 24">
         <path className="outer" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
         <path className="mid" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
         <path className="core" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
       </svg>
-      {Array.from({ length: EMBERS[heat] }, (_, i) => (
-        <i key={i} className="lk-ember" style={{ "--x": `${((i * 37) % 100) - 50}px`, "--d": `${(i * 0.23) % 1.4}s`, "--t": `${1.2 + ((i * 13) % 7) / 10}s` }} />
-      ))}
     </span>
   );
+});
+
+/** Bumps each time the heat goes up, so the ring can play its shockwave once per step. */
+function useLevelUps(level) {
+  const [n, setN] = React.useState(0);
+  const prev = React.useRef(level);
+  React.useEffect(() => { if (level > prev.current) setN((x) => x + 1); prev.current = level; }, [level]);
+  return n;
 }
 
 function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }) {
@@ -1567,14 +1571,19 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
   const R = 76, C = 2 * Math.PI * R;
   const fill = showStreak ? Math.min(1, st.current / Math.max(st.best, st.current, 1)) : 0;
   const next = showStreak ? nextTraining(plan) : null;
+  const heatNow = streakHeat(shown).level;
+  const boom = useLevelUps(heatNow);
+  const flameRef = React.useRef(null);
   return (
     <div className="lk-page cx-app">
       <div className="lk-center">
         {showStreak ? (
           <>
-            <div className={`lk-ring h${streakHeat(shown).level}`} role="img" aria-label={`${st.current} workouts in a row${streakHeat(st.current).word ? `, ${streakHeat(st.current).word.toLowerCase()}` : ""}`}>
-              <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><defs><linearGradient id="lk-ring-hot" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#C8FF00" /><stop offset="0.6" stopColor="#F5B84A" /><stop offset="1" stopColor="#FF6B3D" /></linearGradient></defs><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke={streakHeat(shown).level >= 4 ? "url(#lk-ring-hot)" : "var(--cx-a)"} strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
-              <div className="lk-ring-in"><StreakFlame n={shown} /><b>{shown}</b><span>{st.current === 1 ? "workout" : "workouts"}<br />in a row</span></div>
+            <div className={`lk-ring h${heatNow}`} role="img" aria-label={`${st.current} workouts in a row${streakHeat(st.current).word ? `, ${streakHeat(st.current).word.toLowerCase()}` : ""}`}>
+              <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><defs><linearGradient id="lk-ring-hot" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#C8FF00" /><stop offset="0.6" stopColor="#F5B84A" /><stop offset="1" stopColor="#FF6B3D" /></linearGradient></defs><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke={heatNow >= 4 ? "url(#lk-ring-hot)" : "var(--cx-a)"} strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
+              <StreakFire heat={heatNow} flameRef={flameRef} />
+              {boom > 0 && <span key={boom} className="lk-shock" aria-hidden="true" />}
+              <div className="lk-ring-in"><StreakFlame ref={flameRef} n={shown} /><b key={boom} className={boom ? "punch" : ""}>{shown}</b><span>{st.current === 1 ? "workout" : "workouts"}<br />in a row</span></div>
             </div>
             {streakHeat(st.current).word && <span className={`lk-heat-word h${streakHeat(st.current).level}`}>{streakHeat(st.current).word}</span>}
             <div className="lk-small">{newBest ? "That's your best streak yet." : `${st.best - st.current} more day${st.best - st.current === 1 ? "" : "s"} to match your best of ${st.best}.`}</div>
