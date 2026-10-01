@@ -907,3 +907,19 @@
 .rp-done h3 { margin: 0; font-size: 22px; }
 .rp-done p { margin: 0; }
 .rp-done-tick { width: 56px; height: 56px; border-radius: 50%; background: var(--cx-a); color: #080808; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Report review: wins and weight lifted (bars and tags are the link's own) */
+.rp-wins { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rp-wins li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 8px 0; border-top: 1px solid var(--cx-bd); align-items: baseline; }
+.rp-wins li:first-child { border-top: 0; }
+.rp-wins li b { min-width: 0; overflow-wrap: anywhere; }
+.rp-wins li > span:last-child { grid-column: 2; font-size: 14px; color: var(--cx-tx2); font-variant-numeric: tabular-nums; }
+.rp-review .lk-wins-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #101010; background: var(--cx-a); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+.rp-vol-num { font-size: 22px; font-variant-numeric: tabular-nums; }
+.rp-review .lk-vol { display: flex; align-items: flex-end; gap: 6px; height: 110px; }
+.rp-review .lk-vol-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; gap: 6px; }
+.rp-review .lk-vol-bar { flex: 1; display: flex; align-items: flex-end; }
+.rp-review .lk-vol-bar i { display: block; width: 100%; border-radius: 6px 6px 2px 2px; background: #3A3A3A; }
+.rp-review .lk-vol-col.now .lk-vol-bar i { background: var(--cx-a); }
+.rp-review .lk-vol-x { font-size: 11px; color: var(--cx-mu); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-review .lk-vol-col.now .lk-vol-x { color: var(--cx-tx); font-weight: 700; }

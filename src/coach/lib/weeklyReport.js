@@ -18,6 +18,7 @@ import { DAYS, DAY_LONG, isoDate, startOfWeek, normalizeExercise } from "./forma
 import { heatFromWorkout, musclesForExercise, normalizeExerciseName, muscleWords } from "../../lib/muscleHeat.js";
 import { MUSCLE_MAP } from "../../lib/muscleMap.generated.js";
 import { computeBMI, bmiCategory } from "../../lib/coachInsights.js";
+import { weekWins, winKey } from "../../lib/workoutWins.js";
 
 const REGIONS = {
   upper: { label: "Upper body", word: "upper-body", groups: ["chest", "shoulders", "triceps", "biceps", "forearms", "upperback", "traps", "lowerback", "neck"] },
@@ -170,7 +171,29 @@ function newBests(history, start, end) {
     // A first time isn't a best: there is nothing to beat.
     if (prev && (b.w > prev.w || (b.w === prev.w && b.r > prev.r))) out.push({ name: b.name, weight: b.w, reps: b.r, prevWeight: prev.w, prevReps: prev.r });
   }
-  return out.sort((a, b) => b.weight - a.weight).slice(0, 2);
+  return out.sort((a, b) => b.weight - a.weight);
+}
+
+// ── Weight lifted: the week's total against the weeks before ───────────────
+// The same number the coach's "Volume by workout type" chart adds up: weight
+// × reps for every done set. Bodyweight sets add nothing, so a client who
+// only does bodyweight work gets no chart rather than a row of zeros.
+const VOLUME_WEEKS = 6;
+const volumeOf = (h) => (Number(h?.totalVolume) > 0 ? Number(h.totalVolume)
+  : (h?.exercises || []).reduce((a, e) => a + (e.sets || []).reduce((t, x) => t + (Number(x?.w) || 0) * (Number(x?.r) || 0), 0), 0));
+function volumeWeeks(history, weekStart) {
+  const weeks = Array.from({ length: VOLUME_WEEKS }, (_, i) => ({ start: addDays(weekStart, -7 * (VOLUME_WEEKS - 1 - i)), total: 0 }));
+  const first = weeks[0].start, last = addDays(weekStart, 6);
+  for (const h of history || []) {
+    if (!h?.date || h.date < first || h.date > last) continue;
+    const i = weeks.findIndex((w) => h.date >= w.start && h.date <= addDays(w.start, 6));
+    if (i >= 0) weeks[i].total += volumeOf(h);
+  }
+  for (const w of weeks) w.total = Math.round(w.total);
+  const now = weeks[weeks.length - 1].total, prev = weeks[weeks.length - 2].total;
+  // Within 3% either way is the same week, not a rise or a fall.
+  const pct = now > 0 && prev > 0 ? Math.round(((now - prev) / prev) * 100) : null;
+  return { weeks, total: now, prev, pct, trend: pct == null ? null : pct >= 3 ? "up" : pct <= -3 ? "down" : "same" };
 }
 
 // ── Body ─────────────────────────────────────────────────────────────────────
@@ -303,7 +326,7 @@ function headlines(regions, workouts, quiet, cutShort) {
   };
 }
 
-function draftNote(firstName, { regions, workouts, bests, skipped, weakest, cutShort }) {
+function draftNote(firstName, { regions, workouts, bests, wins = [], skipped, weakest, cutShort }) {
   const name = firstName ? `, ${firstName}` : "";
   if (cutShort && workouts.done >= workouts.planned) {
     return `You showed up every time${name} — that's the hard part. Next week let's get through the full sessions. If time is tight, tell me and I'll trim them.`;
@@ -314,6 +337,7 @@ function draftNote(firstName, { regions, workouts, bests, skipped, weakest, cutS
   else if (strong) parts.push(`Great ${REGIONS[strong[0]].word} week${name}.`);
   else parts.push(`Thanks for the work this week${name}.`);
   if (bests[0]) parts.push(`A new best on ${bests[0].name}!`);
+  else if (wins.length) parts.push(`You beat last week on ${wins.length === 1 ? wins[0].name : `${wins.length} exercises`}.`);
   if (weakest && weakest.verdict !== "on plan") parts.push(`Next week let's get ${focusFor(weakest.label)} in.`);
   if (skipped) parts.push(`Tell me if the ${skipped.name} is giving you trouble.`);
   return parts.join(" ");
@@ -357,8 +381,14 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
 
   const feelAll = days.flatMap((d) => d.feel);
   const hardCount = feelAll.filter((f) => f === "hard").length;
-  const bests = newBests(data?.history, weekStart, end);
+  const allBests = newBests(data?.history, weekStart, end);
+  const bests = allBests.slice(0, 2);
   const body = bodyFacts(data, weekStart, end);
+  // Better than last time, exercise by exercise. One that is also the best
+  // they've ever done says so.
+  const everKeys = new Set(allBests.map((b) => winKey(b.name)));
+  const wins = weekWins(data?.history, weekStart, end).map((w) => ({ ...w, ever: everKeys.has(winKey(w.name)) }));
+  const volume = volumeWeeks(data?.history, weekStart);
 
   // ── What Theryn noticed (coach only) ──
   const patterns = [];
@@ -441,9 +471,9 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
     feel: { hard: hardCount, rated: feelAll.length },
     muscles: { levels: doneHeat.levels, top: quiet ? [] : doneHeat.top, worked: doneHeat.worked, unknown: doneHeat.unknown, sentence: quiet ? "" : (doneHeat.top.length ? `Most sets went to ${muscleWords(doneHeat.top)}.` : "") },
     gaps, regions, weakest, strongest,
-    bests, body, patterns, suggestions,
+    bests, wins, volume, body, patterns, suggestions,
     doneList: quiet ? rows.filter((r) => r.done > 0).map((r) => ({ name: r.name, sets: r.done })) : [],
-    draftNote: quiet ? `Quiet week${firstName ? `, ${firstName}` : ""}. Everything OK? Want me to make next week lighter?` : draftNote(firstName, { regions, workouts, bests, skipped, weakest, cutShort }),
+    draftNote: quiet ? `Quiet week${firstName ? `, ${firstName}` : ""}. Everything OK? Want me to make next week lighter?` : draftNote(firstName, { regions, workouts, bests, wins, skipped, weakest, cutShort }),
     draftFocus: cutShort && workouts.done >= workouts.planned ? "Full sessions" : !quiet && weakest && weakest.verdict !== "on plan" ? capital(focusFor(weakest.label)) : "Keep it going",
   };
 }
@@ -472,7 +502,10 @@ export function applySuggestion(routine, s) {
 }
 
 // ── What the client gets ────────────────────────────────────────────────────
-export const DEFAULT_SECTIONS = { muscles: true, gap: true, best: true, body: false, note: true };
+// Every section is the coach's to keep or drop. Body is off until they turn
+// it on: weight is the one a client may not want sent to them.
+export const DEFAULT_SECTIONS = { workouts: true, wins: true, volume: true, muscles: true, gap: true, body: false, note: true };
+export const MAX_WINS = 5;
 const clip = (s, n) => String(s || "").trim().slice(0, n);
 
 /**
@@ -483,13 +516,32 @@ const clip = (s, n) => String(s || "").trim().slice(0, n);
 export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "", focus = "", coachName = "", firstName = "" } = {}) {
   const s = { ...DEFAULT_SECTIONS, ...sections };
   const out = {
-    v: 1,
+    v: 2,
     period: { start: report.period.start, end: report.period.end },
     coach: clip(coachName, 40),
     first: clip(firstName, 40),
     headline: report.athleteHeadline,
-    workouts: { done: report.workouts.done, planned: report.workouts.planned, days: report.workouts.days.filter((d) => d.planned || d.done).map((d) => ({ k: d.key, p: d.planned, d: d.done })) },
   };
+  if (s.workouts) {
+    out.workouts = { done: report.workouts.done, planned: report.workouts.planned, days: report.workouts.days.filter((d) => d.planned || d.done).map((d) => ({ k: d.key, p: d.planned, d: d.done })) };
+  }
+  if (s.wins && report.wins?.length) {
+    out.wins = {
+      unit: report.body.weightUnit,
+      items: report.wins.slice(0, MAX_WINS).map((w) => {
+        const o = { name: clip(w.name, 60), kind: w.kind, now: w.now, before: w.before };
+        if (w.reps != null) o.reps = w.reps;
+        if (w.weight != null) o.weight = w.weight;
+        if (w.ever) o.ever = true;
+        return o;
+      }),
+      more: Math.max(0, report.wins.length - MAX_WINS),
+    };
+  }
+  if (s.volume && report.volume?.total > 0) {
+    const v = report.volume;
+    out.volume = { unit: report.body.weightUnit, total: v.total, pct: v.pct, trend: v.trend, weeks: v.weeks.map((w) => ({ s: w.start, t: w.total })) };
+  }
   if (s.muscles && !report.quiet && report.muscles.worked.length) {
     out.muscles = { levels: report.muscles.levels, top: report.muscles.top, worked: report.muscles.worked };
   }
@@ -498,10 +550,6 @@ export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "",
     if (report.strongest && report.strongest !== report.weakest && report.strongest.verdict === "on plan") {
       out.gap.strong = { label: report.strongest.label, done: report.strongest.done, planned: report.strongest.planned };
     }
-  }
-  if (s.best && report.bests[0]) {
-    const b = report.bests[0];
-    out.best = { name: clip(b.name, 60), weight: b.weight, reps: b.reps, prev: b.prevWeight, unit: report.body.weightUnit };
   }
   if (s.body && (report.body.weight != null || report.body.waist != null)) {
     out.body = { weight: report.body.weight, weightDelta: report.body.weightDelta, unit: report.body.weightUnit, waist: report.body.waist, waistDelta: report.body.waistDelta, lengthUnit: report.body.lengthUnit };
@@ -512,6 +560,12 @@ export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "",
     if (f) out.focus = f;
   }
   return out;
+}
+
+/** "Up 8% on last week", in words a client reads at a glance. */
+export function volumeLine(v) {
+  if (!v || v.pct == null) return "";
+  return v.trend === "up" ? `Up ${v.pct}% on last week.` : v.trend === "down" ? `Down ${Math.abs(v.pct)}% on last week.` : "About the same as last week.";
 }
 
 /** The message a coach sends. Plain: the link preview shows no numbers. */
