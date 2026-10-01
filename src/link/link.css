@@ -471,9 +471,9 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-flame.h2 .outer { animation-duration: 1.2s; filter: drop-shadow(0 0 4px rgba(200, 255, 0, 0.6)); }
 .lk-flame.h2 .mid { opacity: 1; }
 .lk-flame.h3 { width: 35px; height: 35px; }
-.lk-flame.h3 .outer { fill: #F5B84A; animation-duration: 0.9s; filter: drop-shadow(0 0 7px rgba(245, 184, 74, 0.75)); }
-.lk-flame.h3 .mid { opacity: 1; fill: var(--cx-a); }
-.lk-flame.h3 .core { opacity: 1; fill: #F2FFB0; }
+.lk-flame.h3 .outer { fill: var(--cx-a); animation-duration: 0.9s; filter: drop-shadow(0 0 7px rgba(200, 255, 0, 0.7)); }
+.lk-flame.h3 .mid { opacity: 1; fill: #E6FF7A; }
+.lk-flame.h3 .core { opacity: 1; fill: #FFFFFF; }
 .lk-flame.h4 { width: 38px; height: 38px; }
 .lk-flame.h4 .outer { fill: #FF6B3D; animation-duration: 0.6s; filter: drop-shadow(0 0 10px rgba(255, 107, 61, 0.9)) drop-shadow(0 0 22px rgba(245, 184, 74, 0.5)); }
 .lk-flame.h4 .mid { opacity: 1; fill: #F5B84A; animation-duration: 0.7s; }
@@ -483,13 +483,13 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 /* The ring warms with it */
 .lk-ring::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
 .lk-ring.h2::before { opacity: 1; box-shadow: 0 0 22px rgba(200, 255, 0, 0.18); }
-.lk-ring.h3::before { opacity: 1; box-shadow: 0 0 34px rgba(245, 184, 74, 0.3), inset 0 0 26px rgba(245, 184, 74, 0.12); animation: lk-halo 1.6s ease-in-out infinite; }
+.lk-ring.h3::before { opacity: 1; box-shadow: 0 0 34px rgba(200, 255, 0, 0.28), inset 0 0 26px rgba(200, 255, 0, 0.1); animation: lk-halo 1.6s ease-in-out infinite; }
 .lk-ring.h4::before { opacity: 1; box-shadow: 0 0 48px rgba(255, 107, 61, 0.45), inset 0 0 34px rgba(255, 107, 61, 0.18); animation: lk-halo 0.9s ease-in-out infinite; }
 .lk-ring.h4 .lk-ring-fill { filter: drop-shadow(0 0 6px rgba(255, 107, 61, 0.7)); }
 @keyframes lk-halo { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
 .lk-heat-word { display: inline-block; margin-top: 4px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; animation: lk-badge-in 0.5s cubic-bezier(.2, 1.4, .4, 1) 0.9s both; }
 .lk-heat-word.h2 { background: #1E2A00; color: var(--cx-a); }
-.lk-heat-word.h3 { background: rgba(245, 184, 74, 0.16); color: #F5B84A; }
+.lk-heat-word.h3 { background: rgba(200, 255, 0, 0.16); color: var(--cx-a); }
 .lk-heat-word.h4 { background: linear-gradient(90deg, #F5B84A, #FF6B3D); color: #101010; }
 @media (prefers-reduced-motion: reduce) {
   .lk-flame path, .lk-ring::before, .lk-heat-word, .lk-shock, .lk-ring-in b.punch { animation: none; }
@@ -506,7 +506,7 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-ring.h3 .lk-ring-in b, .lk-ring.h4 .lk-ring-in b, .lk-ring.h3 .lk-ring-in span, .lk-ring.h4 .lk-ring-in span { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
 /* A new heat: a shockwave off the ring, and the number lands with a punch */
 .lk-shock { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--cx-a); pointer-events: none; z-index: 1; animation: lk-shock 0.8s cubic-bezier(.1, .7, .3, 1) both; }
-.lk-ring.h3 .lk-shock { border-color: #F5B84A; }
+.lk-ring.h3 .lk-shock { border-color: var(--cx-a); }
 .lk-ring.h4 .lk-shock { border-color: #FF6B3D; box-shadow: 0 0 24px #FF6B3D; }
 @keyframes lk-shock { from { transform: scale(0.9); opacity: 1; } to { transform: scale(1.9); opacity: 0; } }
 .lk-ring-in b.punch { animation: lk-punch 0.55s cubic-bezier(.2, 1.6, .4, 1) both; }

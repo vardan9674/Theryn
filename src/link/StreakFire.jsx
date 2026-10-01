@@ -9,8 +9,9 @@ import React from "react";
 // What makes it read as fire rather than blobs:
 //  - each flame is a soft teardrop, brightest near its base, drawn taller
 //    than wide and tapering as it rises;
-//  - its colour slides smoothly from a hot core colour to a dark tip (a strip
-//    of pre-tinted sprites, so no colour jumps and no per-frame tinting);
+//  - it burns in the ring's own colour, sliding smoothly from a pale hot base
+//    to a dark tip (pre-tinted sprites, so no colour jumps and no per-frame
+//    tinting); on the lime-to-orange ring each flame matches its spot;
 //  - every flame sways on one shared, slowly changing breeze, so they lean
 //    together like one fire instead of jittering on their own;
 //  - a low glow bed sits along the burning part of the ring;
@@ -25,24 +26,40 @@ const STEPS = 24; // sprites along each heat's colour ramp
 
 // Per heat, in units per second: flames a second, how far round the ring
 // from the top they start (radians either side), size, rise speed, life in
-// seconds, sparks a second, and the colour ramp from base to tip.
+// seconds, sparks a second, and whether the ring is the hot gradient.
 const HEATS = {
-  1: { rate: 22, arc: 0, size: 7, rise: 46, life: 0.55, sparks: 0, ramp: ["#F4FFB8", "#C8FF00", "#5C7A00", "#1A2200"] },
-  2: { rate: 130, arc: 0.8, size: 8, rise: 58, life: 0.62, sparks: 3, ramp: ["#F4FFB8", "#C8FF00", "#6E8F00", "#1A2200"] },
-  3: { rate: 260, arc: 1.35, size: 9.5, rise: 72, life: 0.7, sparks: 10, ramp: ["#FFF0C2", "#FFC65C", "#F08A2C", "#5A1E06"] },
+  1: { rate: 22, arc: 0, size: 7, rise: 46, life: 0.55, sparks: 0, hot: false },
+  2: { rate: 130, arc: 0.8, size: 8, rise: 58, life: 0.62, sparks: 3, hot: false },
+  3: { rate: 260, arc: 1.35, size: 9.5, rise: 72, life: 0.7, sparks: 10, hot: false },
   // Not quite all the way round: flames off the bottom would climb through the words.
-  4: { rate: 420, arc: 2.1, size: 11, rise: 88, life: 0.78, sparks: 26, ramp: ["#FFF2CC", "#FFB04A", "#FF5A2E", "#4A0E06"] },
+  4: { rate: 420, arc: 2.1, size: 11, rise: 88, life: 0.78, sparks: 26, hot: true },
 };
 
+// The fire takes the ring's colour. Until Blazing the ring is lime, so the
+// fire is. At Blazing the ring runs lime → amber → orange (the lk-ring-hot
+// gradient, which the ring's -90° turn lays from bottom-left to top-right),
+// so each flame takes the colour of the part of the ring it rises from.
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const lerp = (a, b, t) => a + (b - a) * t;
+const LIME = "#C8FF00";
+const HOT = [[0, "#C8FF00"], [0.6, "#F5B84A"], [1, "#FF6B3D"]];
+const FAMILIES = 7; // shades sampled along the hot gradient
+const mix = (a, b, t) => a.map((v, k) => Math.round(lerp(v, b[k], t)));
+/** A flame's life in colours: a pale hot base, the ring colour, then darker to the tip. */
+const rampOf = (rgb) => [mix(rgb, [255, 255, 255], 0.6), rgb, mix(rgb, [0, 0, 0], 0.45), mix(rgb, [0, 0, 0], 0.88)];
+function hotAt(g) {
+  for (let i = 1; i < HOT.length; i++) {
+    if (g <= HOT[i][0]) { const [p, a] = HOT[i - 1], [q, b] = HOT[i]; return mix(hex(a), hex(b), (g - p) / (q - p)); }
+  }
+  return hex(HOT[HOT.length - 1][1]);
+}
+
 const smooth = (t) => t * t * (3 - 2 * t);
 
-/** A colour `t` (0–1) of the way along a ramp of hex colours. */
+/** A colour `t` (0–1) of the way along a ramp of [r, g, b] colours. */
 function along(ramp, t) {
-  const x = t * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x)), f = x - i;
-  const a = hex(ramp[i]), b = hex(ramp[i + 1]);
-  return a.map((v, k) => Math.round(lerp(v, b[k], f)));
+  const x = t * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x));
+  return mix(ramp[i], ramp[i + 1], x - i);
 }
 
 /** A soft teardrop of one colour, brightest low down, transparent at the edges. */
@@ -60,14 +77,14 @@ function teardrop([r, g, b]) {
   x.beginPath(); x.arc(0, 0, 24, 0, Math.PI * 2); x.fill();
   return c;
 }
-function dot() {
+function dot(mid = "255,190,110", edge = "255,120,60") {
   const c = document.createElement("canvas");
   c.width = c.height = 16;
   const x = c.getContext("2d");
   const grad = x.createRadialGradient(8, 8, 0, 8, 8, 8);
-  grad.addColorStop(0, "rgba(255,246,216,1)");
-  grad.addColorStop(0.4, "rgba(255,190,110,0.6)");
-  grad.addColorStop(1, "rgba(255,120,60,0)");
+  grad.addColorStop(0, "rgba(255,250,225,1)");
+  grad.addColorStop(0.4, `rgba(${mid},0.6)`);
+  grad.addColorStop(1, `rgba(${edge},0)`);
   x.fillStyle = grad; x.fillRect(0, 0, 16, 16);
   return c;
 }
@@ -87,10 +104,19 @@ export default function StreakFire({ heat = 1, flameRef }) {
     canvas.width = W * dpr; canvas.height = H * dpr;
     ctx.scale(dpr, dpr);
 
-    // Each heat's colour ramp, pre-drawn in STEPS shades.
-    const ramps = {};
-    for (const [k, h] of Object.entries(HEATS)) ramps[k] = Array.from({ length: STEPS }, (_, i) => teardrop(along(h.ramp, i / (STEPS - 1))));
+    // Colour families, each pre-drawn in STEPS shades from base to tip:
+    // "lime", and FAMILIES shades along the hot ring.
+    const shades = (rgb) => { const r = rampOf(rgb); return Array.from({ length: STEPS }, (_, i) => teardrop(along(r, i / (STEPS - 1)))); };
+    const ramps = { lime: shades(hex(LIME)) };
+    for (let i = 0; i < FAMILIES; i++) ramps[i] = shades(hotAt(i / (FAMILIES - 1)));
+    // Which family a point on the ring burns in, for the ring as it is now.
+    const familyAt = (x, y, hot) => {
+      if (!hot) return "lime";
+      const g = Math.max(0, Math.min(1, ((x - CX) - (y - CY)) / (2 * R) + 0.5));
+      return Math.round(g * (FAMILIES - 1));
+    };
     const spark = dot();
+    const limeSpark = dot("226,255,120", "200,255,0");
 
     let parts = [];
     let level = target.current; // eases toward the target heat
@@ -109,7 +135,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
     const cfg = () => {
       const lo = Math.max(1, Math.min(4, Math.floor(level))), hi = Math.min(4, lo + 1), t = smooth(Math.max(0, Math.min(1, level - lo)));
       const A = HEATS[lo], B = HEATS[hi];
-      return { rate: lerp(A.rate, B.rate, t), arc: lerp(A.arc, B.arc, t), size: lerp(A.size, B.size, t), rise: lerp(A.rise, B.rise, t), life: lerp(A.life, B.life, t), sparks: lerp(A.sparks, B.sparks, t), ramp: t > 0.5 ? hi : lo };
+      return { rate: lerp(A.rate, B.rate, t), arc: lerp(A.arc, B.arc, t), size: lerp(A.size, B.size, t), rise: lerp(A.rise, B.rise, t), life: lerp(A.life, B.life, t), sparks: lerp(A.sparks, B.sparks, t), hot: (t > 0.5 ? B : A).hot };
     };
 
     // Flames are thicker at the top of the ring and thin out down its sides.
@@ -125,7 +151,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
         y = CY - Math.cos(ang) * R + (Math.random() - 0.5) * 4;
       }
       parts.push({
-        x, y, age: 0, spark: false, ramp: c.ramp,
+        x, y, age: 0, spark: false, ramp: fromFlame ? (c.hot ? FAMILIES - 1 : "lime") : familyAt(x, y, c.hot),
         life: c.life * (0.6 + Math.random() * 0.7) * (fromFlame ? 0.8 : 1),
         vy: -c.rise * (0.75 + Math.random() * 0.5) * edge,
         vx: (Math.random() - 0.5) * 8,
@@ -135,7 +161,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
     };
     const spawnSpark = (c) => {
       const ang = (Math.random() * 2 - 1) * Math.max(c.arc, 0.6) * 0.8;
-      parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, life: 0.9 + Math.random() * 0.8, vx: (Math.random() - 0.5) * 40, vy: -(70 + Math.random() * 90), size: 1.6 + Math.random() * 1.6, seed: Math.random() * 100 });
+      parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, tint: c.hot ? "hot" : "lime", life: 0.9 + Math.random() * 0.8, vx: (Math.random() - 0.5) * 40, vy: -(70 + Math.random() * 90), size: 1.6 + Math.random() * 1.6, seed: Math.random() * 100 });
     };
 
     const tick = (now) => {
@@ -164,7 +190,8 @@ export default function StreakFire({ heat = 1, flameRef }) {
         const steps = 18;
         for (let i = 0; i <= steps; i++) {
           const ang = (i / steps * 2 - 1) * c.arc;
-          const img = ramps[c.ramp][Math.round(STEPS * 0.35)];
+          const bx = CX + Math.sin(ang) * R, by = CY - Math.cos(ang) * R;
+          const img = ramps[familyAt(bx, by, c.hot)][Math.round(STEPS * 0.3)];
           const s = c.size * 2.2 * (1 - 0.4 * Math.abs(ang) / c.arc);
           ctx.globalAlpha = 0.16 + 0.05 * Math.sin(clock * 6 + i);
           ctx.drawImage(img, CX + Math.sin(ang) * R - s, CY - Math.cos(ang) * R - s * 1.3, s * 2, s * 2.4);
@@ -182,7 +209,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
           p.y += p.vy * dt;
           ctx.globalAlpha = (1 - t) * (0.6 + 0.4 * Math.sin(p.seed + clock * 20));
           const s = p.size * 2;
-          ctx.drawImage(spark, p.x - s, p.y - s, s * 2, s * 2);
+          ctx.drawImage(p.tint === "hot" ? spark : limeSpark, p.x - s, p.y - s, s * 2, s * 2);
         } else {
           // Rise faster as they go, lean with the breeze, and flicker a little.
           const lift = 1 + t * 0.8;
