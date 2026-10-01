@@ -412,34 +412,34 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-band-opts button.medium[aria-checked="true"] { background: #F5C542; }
 .lk-band-opts button.hard[aria-checked="true"] { background: #FF8A5C; }
 
-/* Better than last time: on the receipt straight after sending. One badge
-   per exercise, last time → this time, each popping in a beat after the last. */
+/* Better than last time: on the receipt straight after sending. One frosted
+   panel, a row per exercise: what it was, then what it is now. Lime only on
+   the new number, so the eye lands on the part that went up. */
 .lk-wins { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 10px; }
-.lk-wins-h { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-a); }
-.lk-wins-p { margin: 0; font-size: 20px; font-weight: 800; color: var(--cx-tx); }
+.lk-wins-h { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cx-mu); }
+.lk-wins-p { margin: 0; font-size: 17px; font-weight: 700; color: var(--cx-tx); }
 .lk-wins small { font-size: 13px; color: var(--cx-mu); }
-.lk-badges { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.lk-badge-win { position: relative; overflow: hidden; display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 18px;
-  background: linear-gradient(135deg, rgba(200, 255, 0, 0.16), rgba(200, 255, 0, 0.03) 60%), var(--cx-s1);
-  border: 1px solid rgba(200, 255, 0, 0.4); box-shadow: 0 6px 24px -12px rgba(200, 255, 0, 0.5);
-  animation: lk-badge-in 0.5s cubic-bezier(.2, 1.4, .4, 1) var(--d, 0s) both; }
-.lk-badge-win::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.14) 50%, transparent 65%);
-  transform: translateX(-100%); animation: lk-badge-shine 1.1s ease calc(var(--d, 0s) + 0.35s) both; pointer-events: none; }
-.lk-badge-medal { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--cx-a); color: #101010;
-  box-shadow: 0 0 0 4px rgba(200, 255, 0, 0.18), 0 0 18px rgba(200, 255, 0, 0.45); }
-.lk-badge-medal svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
-.lk-badge-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.lk-badge-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-a); }
-.lk-badge-name { font-size: 16px; color: var(--cx-tx); overflow-wrap: anywhere; }
-.lk-badge-nums { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; margin-top: 2px; }
-.lk-badge-nums s { font-size: 18px; font-weight: 700; color: var(--cx-mu); text-decoration-thickness: 2px; }
-.lk-badge-nums b { font-family: 'Big Shoulders Display', 'Arial Narrow', sans-serif; font-size: 34px; font-weight: 900; line-height: 1; color: var(--cx-a); }
-.lk-badge-nums > span { font-size: 15px; font-weight: 700; color: var(--cx-tx2); }
-.lk-badge-arrow { width: 18px; height: 18px; fill: none; stroke: var(--cx-tx2); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.lk-badge-note { font-size: 13px; color: var(--cx-tx2); }
+.lk-wins-list { list-style: none; margin: 0; padding: 4px 0; border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 32px -18px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(24px) saturate(140%); backdrop-filter: blur(24px) saturate(140%); }
+.lk-win { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 12px 14px; position: relative;
+  animation: lk-win-in 0.32s ease-out var(--d, 0s) both; }
+.lk-win + .lk-win::before { content: ""; position: absolute; top: 0; left: 52px; right: 14px; height: 1px; background: rgba(255, 255, 255, 0.07); }
+.lk-win-ic { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: rgba(200, 255, 0, 0.1); color: var(--cx-a); }
+.lk-win-ic svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.lk-win-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lk-win-txt b { font-size: 15px; font-weight: 600; color: var(--cx-tx); overflow-wrap: anywhere; line-height: 1.3; }
+.lk-win-txt span { font-size: 13px; color: var(--cx-mu); }
+.lk-win-num { display: flex; align-items: center; gap: 4px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lk-win-num .was { font-size: 14px; color: var(--cx-mu); }
+.lk-win-num svg { width: 11px; height: 11px; fill: none; stroke: var(--cx-mu); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.lk-win-num b { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--cx-a); }
+.lk-win-num small { font-size: 12px; color: var(--cx-tx2); padding-top: 3px; }
+@keyframes lk-win-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes lk-badge-in { from { opacity: 0; transform: scale(0.85) translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes lk-badge-shine { to { transform: translateX(100%); } }
-@media (prefers-reduced-motion: reduce) { .lk-badge-win, .lk-badge-win::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .lk-win { animation: none; } }
 
 /* Report: wins share the receipt's rows; weight lifted is a bar a week */
 .lk-rep-wins ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }

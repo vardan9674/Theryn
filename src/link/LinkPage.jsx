@@ -11,7 +11,7 @@ import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom, coachDoneByIndex } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut, fetchReports as realReports, markReportSeen as realReportSeen } from "./linkApi.js";
-import { ReportEntry, ReportView, useReportFonts } from "./LinkReport.jsx";
+import { ReportEntry, ReportView } from "./LinkReport.jsx";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
@@ -1497,9 +1497,9 @@ function Wins({ wins, unit }) {
   const shown = wins.slice(0, 4);
   return (
     <section className="lk-wins" aria-label="Better than last time">
-      <span className="lk-wins-h"><Icon.Flame size={14} />Better than last time</span>
+      <span className="lk-wins-h">Better than last time</span>
       <p className="lk-wins-p">{winsHeadline(wins.length)}</p>
-      <ul className="lk-badges">
+      <ul className="lk-wins-list">
         {shown.map((w, i) => <WinBadge key={w.name} win={w} unit={unit} delay={i} />)}
       </ul>
       {wins.length > shown.length && <small>And {wins.length - shown.length} more.</small>}
@@ -1516,22 +1516,20 @@ const BADGE_ICON = {
 
 /** One exercise's win: last time → this time, big, on a badge that pops in. */
 function WinBadge({ win, unit, delay = 0 }) {
-  useReportFonts(); // the big numbers use the report's display face, loaded only when there's a win
   const x = winNumbers(win, unit);
   const tag = winWords(win, unit).tag;
   return (
-    <li className={`lk-badge-win ${win.kind}`} style={{ "--d": `${0.15 + delay * 0.12}s` }}
+    <li className={`lk-win ${win.kind}`} style={{ "--d": `${0.1 + delay * 0.08}s` }}
       aria-label={`${win.name}: ${tag}. ${x.from} last time, ${x.to} ${x.what} now${x.note ? " " + x.note : ""}.`}>
-      <span className="lk-badge-medal" aria-hidden="true">{BADGE_ICON[win.kind]}</span>
-      <span className="lk-badge-body" aria-hidden="true">
-        <span className="lk-badge-tag">{tag}</span>
-        <b className="lk-badge-name">{win.name}</b>
-        <span className="lk-badge-nums">
-          <s>{x.from}</s>
-          <svg className="lk-badge-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-          <b>{x.to}</b><span>{x.what}</span>
-        </span>
-        {x.note && <span className="lk-badge-note">{x.note}</span>}
+      <span className="lk-win-ic" aria-hidden="true">{BADGE_ICON[win.kind]}</span>
+      <span className="lk-win-txt" aria-hidden="true">
+        <b>{win.name}</b>
+        <span>{tag}{x.note ? ` · ${x.note}` : ""}</span>
+      </span>
+      <span className="lk-win-num" aria-hidden="true">
+        <span className="was">{x.from}</span>
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        <b>{x.to}</b><small>{x.what}</small>
       </span>
     </li>
   );
