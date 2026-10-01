@@ -162,6 +162,27 @@ export function winWords(win, unit = "kg") {
   }
 }
 
+/**
+ * A win as the two numbers a badge shows big: last time → this time, and
+ * what they count. "25 → 30 kg", "8 → 10 reps", "0:45 → 1:00".
+ */
+export function winNumbers(win, unit = "kg") {
+  switch (win?.kind) {
+    case "heavier":
+      return { from: n1(win.before), to: n1(win.now), what: unit, note: win.reps ? `for ${win.reps} rep${win.reps === 1 ? "" : "s"}` : "" };
+    case "reps":
+      return { from: String(win.before), to: String(win.now), what: "reps", note: win.weight > 0 ? `at ${n1(win.weight)} ${unit}` : "" };
+    case "longer": {
+      const mmss = (x) => { const t = Math.round(x); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+      return { from: mmss(win.before), to: mmss(win.now), what: "min", note: "" };
+    }
+    case "more":
+      return { from: String(win.before), to: String(win.now), what: "reps", note: "in all" };
+    default:
+      return { from: "", to: "", what: "", note: "" };
+  }
+}
+
 /** Their headline for a handful of wins. */
 export function winsHeadline(count) {
   if (!count) return "";

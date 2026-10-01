@@ -11,12 +11,12 @@ import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
 import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom, coachDoneByIndex } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut, fetchReports as realReports, markReportSeen as realReportSeen } from "./linkApi.js";
-import { ReportEntry, ReportView } from "./LinkReport.jsx";
+import { ReportEntry, ReportView, useReportFonts } from "./LinkReport.jsx";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { winsForSend } from "./sendWins.js";
-import { winWords, winsHeadline } from "../lib/workoutWins.js";
+import { winWords, winsHeadline, winNumbers } from "../lib/workoutWins.js";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
 import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
@@ -1496,16 +1496,44 @@ function Wins({ wins, unit }) {
   if (!wins?.length) return null;
   const shown = wins.slice(0, 4);
   return (
-    <section className="lk-card lk-wins" aria-label="Better than last time">
+    <section className="lk-wins" aria-label="Better than last time">
       <span className="lk-wins-h"><Icon.Flame size={14} />Better than last time</span>
       <p className="lk-wins-p">{winsHeadline(wins.length)}</p>
-      <ul>
-        {shown.map((w) => { const x = winWords(w, unit); return (
-          <li key={w.name}><span className="lk-wins-tag">{x.tag}</span><b>{w.name}</b><span>{x.line}</span></li>
-        ); })}
+      <ul className="lk-badges">
+        {shown.map((w, i) => <WinBadge key={w.name} win={w} unit={unit} delay={i} />)}
       </ul>
       {wins.length > shown.length && <small>And {wins.length - shown.length} more.</small>}
     </section>
+  );
+}
+
+const BADGE_ICON = {
+  heavier: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>,
+  reps: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>,
+  longer: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></svg>,
+  more: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18l6-6 4 4 6-8" /></svg>,
+};
+
+/** One exercise's win: last time → this time, big, on a badge that pops in. */
+function WinBadge({ win, unit, delay = 0 }) {
+  useReportFonts(); // the big numbers use the report's display face, loaded only when there's a win
+  const x = winNumbers(win, unit);
+  const tag = winWords(win, unit).tag;
+  return (
+    <li className={`lk-badge-win ${win.kind}`} style={{ "--d": `${0.15 + delay * 0.12}s` }}
+      aria-label={`${win.name}: ${tag}. ${x.from} last time, ${x.to} ${x.what} now${x.note ? " " + x.note : ""}.`}>
+      <span className="lk-badge-medal" aria-hidden="true">{BADGE_ICON[win.kind]}</span>
+      <span className="lk-badge-body" aria-hidden="true">
+        <span className="lk-badge-tag">{tag}</span>
+        <b className="lk-badge-name">{win.name}</b>
+        <span className="lk-badge-nums">
+          <s>{x.from}</s>
+          <svg className="lk-badge-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          <b>{x.to}</b><span>{x.what}</span>
+        </span>
+        {x.note && <span className="lk-badge-note">{x.note}</span>}
+      </span>
+    </li>
   );
 }
 

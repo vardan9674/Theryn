@@ -22,7 +22,7 @@ const num = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) 
 // The report uses Theryn's display faces. The link page is otherwise system
 // fonts, so they load only when a report is actually opened.
 const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=JetBrains+Mono:wght@500;700&display=swap";
-function useReportFonts() {
+export function useReportFonts() {
   React.useEffect(() => {
     if (typeof document === "undefined" || document.querySelector('link[href*="Big+Shoulders+Display"]')) return;
     const l = document.createElement("link");

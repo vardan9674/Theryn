@@ -107,3 +107,14 @@ describe("words", () => {
     expect(winsHeadline(3)).toBe("You beat last time on 3 exercises.");
   });
 });
+
+describe("the badge's numbers", () => {
+  it("shows last time and this time, and what they count", async () => {
+    const { winNumbers } = await import("../../../lib/workoutWins.js");
+    expect(winNumbers({ kind: "heavier", now: 30, before: 25, reps: 8 }, "kg")).toEqual({ from: "25", to: "30", what: "kg", note: "for 8 reps" });
+    expect(winNumbers({ kind: "reps", now: 10, before: 8, weight: 40 }, "lb")).toEqual({ from: "8", to: "10", what: "reps", note: "at 40 lb" });
+    expect(winNumbers({ kind: "reps", now: 12, before: 10, weight: 0 })).toMatchObject({ from: "10", to: "12", note: "" });
+    expect(winNumbers({ kind: "longer", now: 60, before: 45 })).toMatchObject({ from: "0:45", to: "1:00", what: "min" });
+    expect(winNumbers({ kind: "more", now: 30, before: 25 })).toEqual({ from: "25", to: "30", what: "reps", note: "in all" });
+  });
+});
