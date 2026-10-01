@@ -2,43 +2,75 @@ import React from "react";
 
 // Live fire around the streak ring on the receipt. The longer the streak, the
 // more of the ring burns: a few embers off the flame for a new streak, the
-// top of the ring alight from 4 in a row, most of it from 7, all of it with
-// sparks flying at 14 (streakHeat). Heat eases between steps, so when the
-// count-up crosses a step the fire visibly catches.
+// top of the ring alight from 4 in a row, most of it from 7, nearly all of it
+// with sparks flying at 14 (streakHeat). Heat eases between steps, so when
+// the count-up crosses a step the fire visibly catches.
 //
-// Canvas, additive blending, pre-drawn glow sprites: one drawImage per
-// particle, a few hundred at most. It stops when the tab is hidden, and never
-// starts for someone who asked for reduced motion (link.css hides it too).
+// What makes it read as fire rather than blobs:
+//  - each flame is a soft teardrop, brightest near its base, drawn taller
+//    than wide and tapering as it rises;
+//  - its colour slides smoothly from a hot core colour to a dark tip (a strip
+//    of pre-tinted sprites, so no colour jumps and no per-frame tinting);
+//  - every flame sways on one shared, slowly changing breeze, so they lean
+//    together like one fire instead of jittering on their own;
+//  - a low glow bed sits along the burning part of the ring;
+//  - movement is per second, not per frame, so a 120 Hz phone isn't twice as fast.
+//
+// Canvas, additive blending, one drawImage per particle, capped. It pauses
+// when the tab is hidden and never starts with reduced motion (link.css hides it).
 
 // Sits behind the ring; the ring's centre is at (CX, CY) inside it (see .lk-fire).
 const W = 280, H = 320, CX = 140, CY = 196, R = 76;
+const STEPS = 24; // sprites along each heat's colour ramp
 
-// Per heat: particles a frame, how far round the ring from the top they start
-// (radians either side), size, rise speed, life in frames, sparks a frame,
-// and the colours a flame passes through as it burns out.
+// Per heat, in units per second: flames a second, how far round the ring
+// from the top they start (radians either side), size, rise speed, life in
+// seconds, sparks a second, and the colour ramp from base to tip.
 const HEATS = {
-  1: { rate: 0.5, arc: 0, size: 6, rise: 0.8, life: 30, sparks: 0, colors: ["#E6FF7A", "#C8FF00", "#4F6600"] },
-  2: { rate: 3, arc: 0.75, size: 7.5, rise: 1.1, life: 36, sparks: 0.06, colors: ["#E6FF7A", "#C8FF00", "#6E8F00"] },
-  3: { rate: 6, arc: 1.3, size: 9, rise: 1.45, life: 42, sparks: 0.22, colors: ["#FFD27A", "#F5B84A", "#E07A2A", "#8A3A10"] },
+  1: { rate: 22, arc: 0, size: 7, rise: 46, life: 0.55, sparks: 0, ramp: ["#F4FFB8", "#C8FF00", "#5C7A00", "#1A2200"] },
+  2: { rate: 130, arc: 0.8, size: 8, rise: 58, life: 0.62, sparks: 3, ramp: ["#F4FFB8", "#C8FF00", "#6E8F00", "#1A2200"] },
+  3: { rate: 260, arc: 1.35, size: 9.5, rise: 72, life: 0.7, sparks: 10, ramp: ["#FFF0C2", "#FFC65C", "#F08A2C", "#5A1E06"] },
   // Not quite all the way round: flames off the bottom would climb through the words.
-  4: { rate: 11, arc: 2.1, size: 10.5, rise: 1.85, life: 48, sparks: 0.6, colors: ["#FFC36B", "#FF9A3D", "#FF6B3D", "#A8261A"] },
+  4: { rate: 420, arc: 2.1, size: 11, rise: 88, life: 0.78, sparks: 26, ramp: ["#FFF2CC", "#FFB04A", "#FF5A2E", "#4A0E06"] },
 };
 
-/** A soft round glow in one colour, drawn once and stamped for every particle. */
-function sprite(color) {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const g = c.getContext("2d");
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, color + "EE");
-  grad.addColorStop(0.45, color + "66");
-  grad.addColorStop(1, color + "00");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  return c;
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (t) => t * t * (3 - 2 * t);
+
+/** A colour `t` (0–1) of the way along a ramp of hex colours. */
+function along(ramp, t) {
+  const x = t * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x)), f = x - i;
+  const a = hex(ramp[i]), b = hex(ramp[i + 1]);
+  return a.map((v, k) => Math.round(lerp(v, b[k], f)));
 }
 
-const lerp = (a, b, t) => a + (b - a) * t;
+/** A soft teardrop of one colour, brightest low down, transparent at the edges. */
+function teardrop([r, g, b]) {
+  const c = document.createElement("canvas");
+  c.width = 48; c.height = 80;
+  const x = c.getContext("2d");
+  x.translate(24, 52);
+  x.scale(1, 1.65);
+  const grad = x.createRadialGradient(0, 0, 0, 0, 0, 24);
+  grad.addColorStop(0, `rgba(${r},${g},${b},0.95)`);
+  grad.addColorStop(0.4, `rgba(${r},${g},${b},0.45)`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  x.fillStyle = grad;
+  x.beginPath(); x.arc(0, 0, 24, 0, Math.PI * 2); x.fill();
+  return c;
+}
+function dot() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 16;
+  const x = c.getContext("2d");
+  const grad = x.createRadialGradient(8, 8, 0, 8, 8, 8);
+  grad.addColorStop(0, "rgba(255,246,216,1)");
+  grad.addColorStop(0.4, "rgba(255,190,110,0.6)");
+  grad.addColorStop(1, "rgba(255,120,60,0)");
+  x.fillStyle = grad; x.fillRect(0, 0, 16, 16);
+  return c;
+}
 
 export default function StreakFire({ heat = 1, flameRef }) {
   const canvasRef = React.useRef(null);
@@ -55,77 +87,116 @@ export default function StreakFire({ heat = 1, flameRef }) {
     canvas.width = W * dpr; canvas.height = H * dpr;
     ctx.scale(dpr, dpr);
 
-    const sprites = {};
-    for (const h of Object.values(HEATS)) for (const col of h.colors) if (!sprites[col]) sprites[col] = sprite(col);
-    sprites.spark = sprite("#FFF6D8");
+    // Each heat's colour ramp, pre-drawn in STEPS shades.
+    const ramps = {};
+    for (const [k, h] of Object.entries(HEATS)) ramps[k] = Array.from({ length: STEPS }, (_, i) => teardrop(along(h.ramp, i / (STEPS - 1))));
+    const spark = dot();
 
     let parts = [];
     let level = target.current; // eases toward the target heat
-    let carry = 0, sparkCarry = 0, frame = 0, raf = 0;
+    let carry = 0, sparkCarry = 0, raf = 0, last = 0, clock = 0, sinceFind = 1;
     let flame = { x: CX, y: CY - 22 };
 
-    // Where the centre flame is, so embers come off it; checked now and then, not every frame.
+    // Where the centre flame is, so embers come off it; checked now and then.
     const findFlame = () => {
       const el = flameRef?.current;
       if (!el) return;
       const a = el.getBoundingClientRect(), b = canvas.getBoundingClientRect();
       if (!b.width) return;
-      flame = { x: (a.left + a.width / 2 - b.left) * (W / b.width), y: (a.top + a.height * 0.35 - b.top) * (H / b.height) };
+      flame = { x: (a.left + a.width / 2 - b.left) * (W / b.width), y: (a.top + a.height * 0.3 - b.top) * (H / b.height) };
     };
 
     const cfg = () => {
-      const lo = Math.max(1, Math.floor(level)), hi = Math.min(4, lo + 1), t = level - lo;
+      const lo = Math.max(1, Math.min(4, Math.floor(level))), hi = Math.min(4, lo + 1), t = smooth(Math.max(0, Math.min(1, level - lo)));
       const A = HEATS[lo], B = HEATS[hi];
-      return { rate: lerp(A.rate, B.rate, t), arc: lerp(A.arc, B.arc, t), size: lerp(A.size, B.size, t), rise: lerp(A.rise, B.rise, t), life: lerp(A.life, B.life, t), sparks: lerp(A.sparks, B.sparks, t), colors: (t > 0.5 ? B : A).colors };
+      return { rate: lerp(A.rate, B.rate, t), arc: lerp(A.arc, B.arc, t), size: lerp(A.size, B.size, t), rise: lerp(A.rise, B.rise, t), life: lerp(A.life, B.life, t), sparks: lerp(A.sparks, B.sparks, t), ramp: t > 0.5 ? hi : lo };
     };
 
+    // Flames are thicker at the top of the ring and thin out down its sides.
     const spawn = (c) => {
-      // Some from the flame in the middle, the rest from the ring itself.
-      const fromFlame = c.arc === 0 || Math.random() < 0.18;
-      let x, y;
-      if (fromFlame) { x = flame.x + (Math.random() - 0.5) * 10; y = flame.y; }
+      const fromFlame = c.arc < 0.05 || Math.random() < 0.08;
+      let x, y, edge = 1;
+      if (fromFlame) { x = flame.x + (Math.random() - 0.5) * 8; y = flame.y; }
       else {
-        const ang = (Math.random() * 2 - 1) * c.arc;
-        x = CX + Math.sin(ang) * R + (Math.random() - 0.5) * 6;
-        y = CY - Math.cos(ang) * R + (Math.random() - 0.5) * 6;
+        const u = Math.random() * 2 - 1;
+        const ang = Math.sign(u) * Math.pow(Math.abs(u), 1.35) * c.arc;
+        edge = 1 - 0.45 * Math.abs(ang) / Math.max(c.arc, 0.01);
+        x = CX + Math.sin(ang) * R + (Math.random() - 0.5) * 4;
+        y = CY - Math.cos(ang) * R + (Math.random() - 0.5) * 4;
       }
-      const life = c.life * (0.7 + Math.random() * 0.6);
-      parts.push({ x, y, vx: (Math.random() - 0.5) * 0.5, vy: -c.rise * (0.7 + Math.random() * 0.6), life, age: 0, size: c.size * (fromFlame ? 0.6 : 0.8 + Math.random() * 0.5), colors: c.colors, spark: false });
+      parts.push({
+        x, y, age: 0, spark: false, ramp: c.ramp,
+        life: c.life * (0.6 + Math.random() * 0.7) * (fromFlame ? 0.8 : 1),
+        vy: -c.rise * (0.75 + Math.random() * 0.5) * edge,
+        vx: (Math.random() - 0.5) * 8,
+        size: c.size * (fromFlame ? 0.6 : 0.75 + Math.random() * 0.5) * (0.7 + 0.3 * edge),
+        seed: Math.random() * 100,
+      });
     };
     const spawnSpark = (c) => {
-      const ang = (Math.random() * 2 - 1) * Math.max(c.arc, 0.6);
-      parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, vx: (Math.random() - 0.5) * 1.6, vy: -(1.6 + Math.random() * 2.2), life: 50 + Math.random() * 40, age: 0, size: 3 + Math.random() * 2.5, spark: true });
+      const ang = (Math.random() * 2 - 1) * Math.max(c.arc, 0.6) * 0.8;
+      parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, life: 0.9 + Math.random() * 0.8, vx: (Math.random() - 0.5) * 40, vy: -(70 + Math.random() * 90), size: 1.6 + Math.random() * 1.6, seed: Math.random() * 100 });
     };
 
-    const tick = () => {
+    const tick = (now) => {
       raf = requestAnimationFrame(tick);
-      if (document.hidden) return;
-      frame += 1;
-      if (frame % 20 === 1) findFlame();
-      level = lerp(level, target.current, 0.04);
+      if (document.hidden) { last = now; return; }
+      const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016);
+      last = now; clock += dt;
+      sinceFind += dt;
+      if (sinceFind > 0.3) { findFlame(); sinceFind = 0; }
+      level = lerp(level, target.current, 1 - Math.exp(-dt * 2.5));
       const c = cfg();
-      carry += c.rate;
+      carry += c.rate * dt;
       while (carry >= 1) { spawn(c); carry -= 1; }
-      sparkCarry += c.sparks;
+      sparkCarry += c.sparks * dt;
       while (sparkCarry >= 1) { spawnSpark(c); sparkCarry -= 1; }
-      if (parts.length > 700) parts = parts.slice(-700);
+      if (parts.length > 900) parts = parts.slice(-900);
+
+      // One breeze for the whole fire: slow, smooth, never the same twice.
+      const breeze = Math.sin(clock * 0.9) * 10 + Math.sin(clock * 2.3 + 1.7) * 5;
 
       ctx.clearRect(0, 0, W, H);
       ctx.globalCompositeOperation = "lighter";
+
+      // The glow bed: a soft band along the burning part of the ring.
+      if (c.arc > 0.05) {
+        const steps = 18;
+        for (let i = 0; i <= steps; i++) {
+          const ang = (i / steps * 2 - 1) * c.arc;
+          const img = ramps[c.ramp][Math.round(STEPS * 0.35)];
+          const s = c.size * 2.2 * (1 - 0.4 * Math.abs(ang) / c.arc);
+          ctx.globalAlpha = 0.16 + 0.05 * Math.sin(clock * 6 + i);
+          ctx.drawImage(img, CX + Math.sin(ang) * R - s, CY - Math.cos(ang) * R - s * 1.3, s * 2, s * 2.4);
+        }
+      }
+
       const next = [];
       for (const p of parts) {
-        p.age += 1;
+        p.age += dt;
         if (p.age >= p.life) continue;
         const t = p.age / p.life;
-        // Flames sway as they rise; sparks drift and fall back a little.
-        p.x += p.vx + (p.spark ? 0 : Math.sin((p.age + p.y) * 0.12) * 0.35);
-        p.y += p.vy;
-        if (p.spark) p.vy += 0.03;
-        const s = p.spark ? p.size : p.size * (1 - t * 0.7);
-        ctx.globalAlpha = p.spark ? (1 - t) : 0.6 * Math.min(1, (1 - t) * 1.4) * (t < 0.1 ? t * 10 : 1);
-        const img = p.spark ? sprites.spark : sprites[p.colors[Math.min(p.colors.length - 1, Math.floor(t * p.colors.length))]];
-        if (p.spark) ctx.drawImage(img, p.x - s, p.y - s, s * 2, s * 2);
-        else ctx.drawImage(img, p.x - s * 1.1, p.y - s * 2, s * 2.2, s * 3.6); // a tongue, taller than it is wide
+        if (p.spark) {
+          p.vy += 60 * dt; // they slow, then fall back a little
+          p.x += (p.vx + breeze * 0.6) * dt;
+          p.y += p.vy * dt;
+          ctx.globalAlpha = (1 - t) * (0.6 + 0.4 * Math.sin(p.seed + clock * 20));
+          const s = p.size * 2;
+          ctx.drawImage(spark, p.x - s, p.y - s, s * 2, s * 2);
+        } else {
+          // Rise faster as they go, lean with the breeze, and flicker a little.
+          const lift = 1 + t * 0.8;
+          p.x += (p.vx + breeze * t + Math.sin(p.seed + clock * 7) * 6 * t) * dt;
+          p.y += p.vy * lift * dt;
+          // Swell quickly, then taper to a point.
+          const grow = t < 0.15 ? smooth(t / 0.15) : 1 - smooth((t - 0.15) / 0.85) * 0.85;
+          const w = p.size * grow, h = p.size * grow * (1.5 + t * 1.2);
+          // Fade out near the top of the canvas so nothing gets cut off.
+          const roof = Math.min(1, Math.max(0, p.y / 40));
+          ctx.globalAlpha = 0.5 * (1 - smooth(t)) * roof;
+          const img = ramps[p.ramp][Math.min(STEPS - 1, Math.floor(t * STEPS))];
+          ctx.drawImage(img, p.x - w, p.y - h * 1.3, w * 2, h * 2);
+        }
         next.push(p);
       }
       parts = next;
