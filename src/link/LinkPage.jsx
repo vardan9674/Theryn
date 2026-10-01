@@ -9,7 +9,7 @@ import { Icon } from "../coach/ui/primitives.jsx";
 import { letterColor } from "../coach/lib/initialColor.js";
 import { TYPE_COLORS } from "../components/templates/tokens.js";
 import { convertPlan, convertWeight } from "../coach/lib/units.js";
-import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom } from "../coach/lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, MEASUREMENT_GROUPS, askedFields, ALL_FIELD_IDS, DAY_ORDER, DAY_LONG, todayFromPlan, validateMeasurements, measurementsPayload, workoutPayload, cleanDecimal, workoutNumbersProblem, planUnits, dayKeyOf, requiredFields, doneSets, joinCodeFrom, coachDoneByIndex } from "../coach/lib/clientLinks.js";
 import { fetchLink as realFetch, submitLink as realSubmit, fetchMe as realMe, connectLink as realConnect, requestConnect as realRequest, signInWithGoogle as realSignIn, signOutLink as realSignOut, fetchReports as realReports, markReportSeen as realReportSeen } from "./linkApi.js";
 import { ReportEntry, ReportView } from "./LinkReport.jsx";
 import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
@@ -751,6 +751,21 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
     }),
   }), [planned, planCount, swaps, band, coachEx]);
   const [ticks, setTicks] = React.useState(() => draft?.ticks || {});      // exerciseIndex → sets done
+  // The coach may have logged part of this day with them (the weights at the
+  // gym). Those exercises show as done with the coach and are never sent
+  // again; what's left (the abs at home) is theirs to tick and send.
+  const dayEntries = React.useMemo(() => (me?.history || []).filter((h) => h?.date === date && h?.kind === "workout"), [me, date]);
+  const byCoach = React.useMemo(() => coachDoneByIndex(dayEntries, planned.exercises.slice(0, planCount)), [dayEntries, planned.exercises, planCount]);
+  const coachCount = Object.keys(byCoach).length;
+  const withCoach = React.useCallback((t) => {
+    let o = t;
+    for (const i of Object.keys(byCoach)) {
+      const full = today.exercises[i]?.sets || 1;
+      if ((o[i] || 0) < full) { if (o === t) o = { ...t }; o[i] = full; }
+    }
+    return o;
+  }, [byCoach, today.exercises]);
+  React.useEffect(() => { if (coachCount) setTicks(withCoach); }, [byCoach]); // eslint-disable-line react-hooks/exhaustive-deps
   // The marketing demo steps ticks in from outside so only the newly ticked
   // box animates; real athletes never pass this.
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
@@ -780,7 +795,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   const total = today.exercises.length;
   const doneCount = today.exercises.filter((e, i) => (e.sets ? (ticks[i] || 0) >= e.sets : (ticks[i] || 0) > 0)).length;
   const currentIdx = today.exercises.findIndex((e, i) => !skipped[i] && !(e.sets ? (ticks[i] || 0) >= e.sets : (ticks[i] || 0) > 0));
-  const anything = Object.values(ticks).some((n) => n > 0);
+  const anything = Object.entries(ticks).some(([i, n]) => n > 0 && byCoach[i] == null); // their own ticks, not the coach's
   const setsTotal = today.exercises.reduce((a, e) => a + (e.sets || 1), 0);
   const setsDone = today.exercises.reduce((a, e, i) => a + Math.min(ticks[i] || 0, e.sets || 1), 0);
   const unit = d.unit_system === "metric" ? "kg" : "lb";
@@ -914,7 +929,8 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   // Already sent this day: the receipt stands until they choose one of the two
   // ways on from it. A connected client's own history says what went, whatever
   // phone they are on; this phone's memory covers everyone else.
-  const sentOnServer = (me?.history || []).find((h) => h?.date === date && h?.kind === "workout") || null;
+  // Their own send comes first (it has the id to edit it); else the coach's.
+  const sentOnServer = dayEntries.find((h) => h?.id) || dayEntries[0] || null;
   const sentPayload = sentOnServer?.payload || null;
   // The server's copy wins — it has the id, and it is what the coach reads.
   // A record from this phone fills in anything it doesn't carry (and is all
@@ -923,7 +939,10 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   const sentInfo = fromServer
     ? { ...(sentBefore || {}), ...fromServer, at: fromServer.at || sentBefore?.at || null, saved: sentBefore?.saved || null }
     : sentBefore;
-  const showSent = Boolean(sentInfo) && !mode && !upcoming;
+  // The coach logged only part of the day and they haven't sent theirs yet:
+  // the workout stays open for the rest instead of reading as done.
+  const restIsTheirs = coachCount > 0 && coachCount < planCount && !dayEntries.some((h) => h?.id) && !sentBefore;
+  const showSent = Boolean(sentInfo) && !mode && !upcoming && !restIsTheirs;
   const startEdit = () => {
     // What the coach actually received comes first — it is the same on every
     // phone. What this phone remembers is the fallback, for a client whose
@@ -931,7 +950,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
     const fromServer = sentPayload ? editStateFromPayload(sentPayload, planned.exercises.slice(0, planCount), d.unit_system) : null;
     const saved = fromServer || sentBefore?.saved || null;
     if (saved) {
-      setTicks(saved.ticks || {});
+      setTicks(withCoach(saved.ticks || {}));
       setLog(saved.log || {});
       setSkipped(saved.skipped || {});
       setSwaps(saved.swaps || {});
@@ -946,7 +965,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   };
   // Something else they did that day: a clean sheet, sent as its own workout.
   const startAgain = () => {
-    setTicks({}); setLog({}); setSkipped({}); setSwaps({}); setBand({}); setAddWeight({}); setNote(""); setFeel(null); setReopened({});
+    setTicks(withCoach({})); setLog({}); setSkipped({}); setSwaps({}); setBand({}); setAddWeight({}); setNote(""); setFeel(null); setReopened({});
     setMode("again");
     window.scrollTo(0, 0);
   };
@@ -972,7 +991,10 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
         // A second workout for a day already sent is only what they did this
         // time. Sending the whole plan again with zeros would read to the
         // coach as a session they failed.
-        ...(mode === "again" ? { exercises: built.exercises.filter((e) => e.sets_done > 0) } : {}),
+        // What the coach already logged for this day isn't theirs to send again.
+        ...(mode === "again" || coachCount
+          ? { exercises: built.exercises.filter((e, i) => byCoach[i] == null && (mode !== "again" || e.sets_done > 0)) }
+          : {}),
         client_key: key,
         // Their timezone, so a coach elsewhere reads this day on the client's clock (#95).
         ...(browserTimeZone() ? { tz: browserTimeZone() } : {}),
@@ -1002,8 +1024,10 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
       setMode(null); // back to the receipt for this day
       store?.addDone(date);
       store?.saveLast(Object.fromEntries(payload.exercises.filter((x) => x.sets_done > 0).map((x) => [String(x.name).toLowerCase(), { date, units: d.unit_system, sets: doneSets(x) }])));
-      const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0);
-      const setsDone = payload.exercises.reduce((a, e) => a + e.sets_done, 0);
+      // The receipt reads the whole day: the coach's part counts too.
+      const coachIdx = Object.keys(byCoach);
+      const setsPlanned = payload.exercises.reduce((a, e) => a + (e.sets_planned || 0), 0) + coachIdx.reduce((a, i) => a + (today.exercises[i]?.sets || 0), 0);
+      const setsDone = payload.exercises.reduce((a, e) => a + e.sets_done, 0) + coachIdx.reduce((a, i) => a + byCoach[i], 0);
       // Exercise by exercise, only what they actually ticked: the receipt draws the
       // muscle picture from this, and a skipped exercise must leave its muscles cold.
       const worked = payload.exercises.filter((e) => e.sets_done > 0).map((e) => ({ name: e.name, sets: e.sets_done }));
@@ -1079,6 +1103,11 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
 
         {!today.isRest && !showSent && (
           <>
+            {coachCount > 0 && coachCount < planCount && !upcoming && (
+              <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>
+                {d.coach_name ? `Coach ${d.coach_name}` : "Your coach"} logged {coachCount} {coachCount === 1 ? "exercise" : "exercises"} with you{isToday ? " today" : ""}. Tick off the other {planCount - coachCount} when you've done {planCount - coachCount === 1 ? "it" : "them"}.
+              </span></div>
+            )}
             <div className="lk-card" style={{ flexDirection: "row", alignItems: "center" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="lk-eyebrow">{isToday ? "Today's plan" : `${DAY_LONG[today.key]}'s plan`}</span>
@@ -1125,6 +1154,19 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
               const ssHead = ss[i]?.pos === 1 ? <div className="lk-ssbar" key={`ss${i}`}><b>{groupName(ss[i].size)} {ss[i].letter}</b><span>Do {ss[i].size === 2 ? "both" : `all ${ss[i].size}`} back to back, then rest.</span></div> : null;
               const ssCls = ss[i] ? `ss ${ss[i].pos === 1 ? "ss-first" : ""} ${ss[i].pos === ss[i].size ? "ss-last" : ""}` : "";
               const folded = !upcoming && (done || skipped[i]) && !reopened[i];
+
+              // Done with the coach: shown as done, nothing to tick, never sent again.
+              if (byCoach[i] != null && i < planCount && !upcoming) {
+                return (<React.Fragment key={i}>{ssHead}
+                  <div className={`lk-fold lk-fold-coach ${ssCls}`} aria-label={`${e.name}, done with your coach`}>
+                    <span className="lk-badge on"><Icon.Check size={20} /></span>
+                    <span className="lk-fold-body">
+                      <span className="lk-fold-name">{chip}{e.name}</span>
+                      <span className="lk-fold-sum">Done with {d.coach_name ? `Coach ${d.coach_name}` : "your coach"}</span>
+                    </span>
+                  </div>
+                </React.Fragment>);
+              }
 
               if (folded) {
                 return (<React.Fragment key={i}>{ssHead}

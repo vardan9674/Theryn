@@ -567,6 +567,11 @@
 .lw-day.rest { opacity: 0.55; }
 .lw-day[aria-pressed="true"] { border-color: var(--cx-a); background: rgba(200, 255, 0, 0.08); opacity: 1; }
 .lw-day i { position: absolute; top: 4px; right: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--cx-a); color: var(--cx-bg); display: inline-flex; align-items: center; justify-content: center; }
+.lw-days-wrap { flex-wrap: wrap; overflow-x: visible; }
+.lw-day:disabled { opacity: 0.4; cursor: default; }
+.cx-part { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0 0; border-top: 1px solid var(--cx-bd); margin-top: 8px; }
+.cx-part-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.cx-by { font-size: 11px; color: var(--cx-mu); margin-left: 6px; }
 .lw-empty, .lw-warn { font-size: 13px; color: var(--cx-tx2); background: var(--cx-s2); border-radius: 10px; padding: 10px 12px; line-height: 1.4; }
 .lw-warn { color: #F5A742; }
 .lw-quick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 14px; border-radius: 14px; border: 0; background: var(--cx-a); color: var(--cx-bg); text-align: left; font: inherit; cursor: pointer; }
