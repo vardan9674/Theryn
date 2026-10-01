@@ -40,6 +40,8 @@ import EquipmentScreen from "./components/exercise/EquipmentScreen.jsx";
 import { findInLibrary, EQUIPMENT_LABEL } from "./lib/exerciseLibrary.js";
 import { workoutWins, lastTimes } from "./lib/workoutWins.js";
 import WinsPanel from "./components/WinsPanel.jsx";
+import StreakRing from "./components/StreakRing.jsx";
+import { nextHeat } from "./coach/lib/streak.js";
 import useEquipment from "./components/exercise/useEquipment.js";
 import { signInErrorFromUrl, friendlySignInError, addressWithoutSignInError } from "./lib/signInError";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
@@ -1699,6 +1701,12 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       totalVolume: totalVol,
       exercises: completedExercises,
       wins,
+      // The streak before and after, so the summary's ring counts up and the
+      // fire catches if this workout crossed a step. Rest days on the plan count.
+      streakBefore: completedExercises.length > 0 ? calculateRoutineStreak(workoutHistory, templates) : 0,
+      streak: completedExercises.length > 0
+        ? calculateRoutineStreak([{ date: todayStr(), exercises: completedExercises }, ...workoutHistory], templates)
+        : 0,
     };
 
     if (completedExercises.length > 0) {
@@ -2390,10 +2398,20 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       {workoutSummary && (
         <div style={{ position:"fixed", top:0, bottom:0, left:0, right:0, width:"100%", background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:215, overflowY:"auto", padding:"16px 0", boxSizing:"border-box" }}>
           <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"24px", padding:"32px 24px", width:"calc(100% - 32px)", maxWidth:"380px", border:`1px solid ${BD}`, boxSizing:"border-box", margin:"auto" }}>
-            {/* Celebration icon */}
-            <div style={{ textAlign:"center", marginBottom:"20px" }}>
-              <div style={{ width:"64px", height:"64px", borderRadius:"50%", background:`${A}18`, border:`2px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto", fontSize:"28px" }}>💪</div>
-            </div>
+            {/* The streak ring and its fire, or the celebration icon before there's a streak */}
+            {workoutSummary.streak >= 2 ? (() => {
+              const next = nextHeat(workoutSummary.streak);
+              return (
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"6px", marginBottom:"20px" }}>
+                  <StreakRing from={workoutSummary.streakBefore} to={workoutSummary.streak} noun={["day", "days"]} />
+                  <div className="lk-heat-caption">{next ? `${next.left} more day${next.left === 1 ? "" : "s"} to ${next.word}.` : "The top level. Keep it going."}</div>
+                </div>
+              );
+            })() : (
+              <div style={{ textAlign:"center", marginBottom:"20px" }}>
+                <div style={{ width:"64px", height:"64px", borderRadius:"50%", background:`${A}18`, border:`2px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto", fontSize:"28px" }}>💪</div>
+              </div>
+            )}
             <div style={{ textAlign:"center", marginBottom:"6px" }}>
               <span style={{ fontSize:"12px", color:TYPE_COLORS[workoutSummary.type]||SB, fontWeight:"600", letterSpacing:"0.08em", textTransform:"uppercase" }}>{workoutSummary.type} Day</span>
             </div>

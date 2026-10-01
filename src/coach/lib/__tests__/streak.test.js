@@ -88,3 +88,12 @@ describe("how hot the streak burns", () => {
     expect(streakHeat(7).word).toBe("On fire");
   });
 });
+
+describe("the next step up", () => {
+  it("says how far to go", async () => {
+    const { nextHeat } = await import("../streak.js");
+    expect(nextHeat(5)).toMatchObject({ level: 3, word: "On fire", left: 2 });
+    expect(nextHeat(20)).toMatchObject({ word: "Legendary", left: 10 });
+    expect(nextHeat(100)).toBeNull();
+  });
+});

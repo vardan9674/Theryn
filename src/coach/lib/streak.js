@@ -115,3 +115,10 @@ export function streakHeat(n) {
   const x = Number(n) || 0;
   return [...STREAK_HEAT].reverse().find((h) => x >= h.from) || STREAK_HEAT[0];
 }
+
+/** The next heat up from a streak and how many more to reach it, or null at the top. */
+export function nextHeat(n) {
+  const x = Number(n) || 0;
+  const next = STREAK_HEAT.find((h) => h.from > x);
+  return next ? { ...next, left: next.from - x } : null;
+}
