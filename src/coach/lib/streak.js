@@ -98,14 +98,17 @@ export function consistencyStats(doneDates, plan, startIso, now = new Date()) {
 
 /**
  * How hot a streak burns, for the flame on the link's receipt: 1 a spark,
- * 4 blazing. The steps sit where a habit gets real — most of a week, a
- * full week, two weeks — so each one is a moment worth seeing change.
+ * 5 legendary. The steps sit where a habit gets real — most of a week, a
+ * full week, two weeks, a month — so each one is a moment worth seeing
+ * change. A month is the last step: past it the fire could only get bigger,
+ * and bigger would cover the screen.
  */
 export const STREAK_HEAT = [
   { level: 1, from: 0, word: "" },
   { level: 2, from: 4, word: "Heating up" },
   { level: 3, from: 7, word: "On fire" },
   { level: 4, from: 14, word: "Blazing" },
+  { level: 5, from: 30, word: "Legendary" },
 ];
 export function streakHeat(n) {
   const x = Number(n) || 0;

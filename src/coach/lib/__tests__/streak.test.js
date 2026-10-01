@@ -80,9 +80,10 @@ describe("consistency since they joined", () => {
 });
 
 describe("how hot the streak burns", () => {
-  it("steps up at 4, 7 and 14 in a row", async () => {
+  it("steps up at 4, 7, 14 and 30 in a row, and stops there", async () => {
     const { streakHeat } = await import("../streak.js");
-    expect([2, 3, 4, 6, 7, 13, 14, 40].map((n) => streakHeat(n).level)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+    expect([2, 3, 4, 6, 7, 13, 14, 29, 30, 100].map((n) => streakHeat(n).level)).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+    expect(streakHeat(30).word).toBe("Legendary");
     expect(streakHeat(7).word).toBe("On fire");
   });
 });
