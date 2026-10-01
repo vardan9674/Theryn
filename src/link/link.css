@@ -412,17 +412,34 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-band-opts button.medium[aria-checked="true"] { background: #F5C542; }
 .lk-band-opts button.hard[aria-checked="true"] { background: #FF8A5C; }
 
-/* Better than last time: on the receipt straight after sending */
-.lk-wins { width: 100%; text-align: left; gap: 8px; border-color: rgba(200, 255, 0, 0.35); }
+/* Better than last time: on the receipt straight after sending. One badge
+   per exercise, last time → this time, each popping in a beat after the last. */
+.lk-wins { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 10px; }
 .lk-wins-h { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-a); }
-.lk-wins-p { margin: 0; font-size: 18px; font-weight: 800; color: var(--cx-tx); }
-.lk-wins ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.lk-wins li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; padding: 10px 0; border-top: 1px solid var(--cx-bd); align-items: baseline; }
-.lk-wins li:first-child { border-top: 0; }
-.lk-wins li b { font-size: 16px; color: var(--cx-tx); min-width: 0; overflow-wrap: anywhere; }
-.lk-wins li > span:last-child { grid-column: 2; font-size: 15px; color: var(--cx-tx2); font-variant-numeric: tabular-nums; }
-.lk-wins-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #101010; background: var(--cx-a); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+.lk-wins-p { margin: 0; font-size: 20px; font-weight: 800; color: var(--cx-tx); }
 .lk-wins small { font-size: 13px; color: var(--cx-mu); }
+.lk-badges { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.lk-badge-win { position: relative; overflow: hidden; display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 18px;
+  background: linear-gradient(135deg, rgba(200, 255, 0, 0.16), rgba(200, 255, 0, 0.03) 60%), var(--cx-s1);
+  border: 1px solid rgba(200, 255, 0, 0.4); box-shadow: 0 6px 24px -12px rgba(200, 255, 0, 0.5);
+  animation: lk-badge-in 0.5s cubic-bezier(.2, 1.4, .4, 1) var(--d, 0s) both; }
+.lk-badge-win::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.14) 50%, transparent 65%);
+  transform: translateX(-100%); animation: lk-badge-shine 1.1s ease calc(var(--d, 0s) + 0.35s) both; pointer-events: none; }
+.lk-badge-medal { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--cx-a); color: #101010;
+  box-shadow: 0 0 0 4px rgba(200, 255, 0, 0.18), 0 0 18px rgba(200, 255, 0, 0.45); }
+.lk-badge-medal svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.lk-badge-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lk-badge-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cx-a); }
+.lk-badge-name { font-size: 16px; color: var(--cx-tx); overflow-wrap: anywhere; }
+.lk-badge-nums { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.lk-badge-nums s { font-size: 18px; font-weight: 700; color: var(--cx-mu); text-decoration-thickness: 2px; }
+.lk-badge-nums b { font-family: 'Big Shoulders Display', 'Arial Narrow', sans-serif; font-size: 34px; font-weight: 900; line-height: 1; color: var(--cx-a); }
+.lk-badge-nums > span { font-size: 15px; font-weight: 700; color: var(--cx-tx2); }
+.lk-badge-arrow { width: 18px; height: 18px; fill: none; stroke: var(--cx-tx2); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.lk-badge-note { font-size: 13px; color: var(--cx-tx2); }
+@keyframes lk-badge-in { from { opacity: 0; transform: scale(0.85) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes lk-badge-shine { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .lk-badge-win, .lk-badge-win::after { animation: none; } }
 
 /* Report: wins share the receipt's rows; weight lifted is a bar a week */
 .lk-rep-wins ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -437,3 +454,4 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-vol-col.now .lk-vol-bar i { background: var(--cx-a); }
 .lk-vol-x { font-size: 11px; color: var(--cx-mu); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lk-vol-col.now .lk-vol-x { color: var(--cx-tx); font-weight: 700; }
+.lk-wins-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #101010; background: var(--cx-a); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
