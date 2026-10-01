@@ -136,7 +136,11 @@ export function createPreviewApi() {
     },
     async markReportSeen(_t, id) { const r = reports.find((x) => x.id === id && !x.seen); if (r) r.seen = true; return Boolean(r); },
     async fetchLink() { await new Promise((r) => setTimeout(r, 300)); const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-      const done_dates = [1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14].map((n) => { const x = new Date(); x.setDate(x.getDate() - n); return iso(x); }).filter((d) => { const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00").getDay()]; return plan[k].type !== "Rest"; });
+      // `?streak=N`: the planned days before today all done, so sending today makes N in a row.
+      const want = typeof window !== "undefined" ? Number(new URLSearchParams(window.location.search).get("streak")) : 0;
+      const days = want > 0 ? Array.from({ length: 120 }, (_, i) => i + 1) : [1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14];
+      const done_dates = days.map((n) => { const x = new Date(); x.setDate(x.getDate() - n); return iso(x); }).filter((d) => { const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00").getDay()]; return plan[k].type !== "Rest"; })
+      if (want > 0) done_dates.splice(want - 1);
       return { ok: true, first_name: "Alex", coach_name: "Sam", unit_system: "metric", requested: ["chest", "waist", "hips"], plan, done_dates }; },
     async submitLink(_t, kind, payload) {
       await new Promise((r) => setTimeout(r, 500));

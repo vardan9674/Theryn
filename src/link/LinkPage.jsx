@@ -18,7 +18,7 @@ import { editStateFromPayload } from "./sentWorkout.js";
 import { winsForSend } from "./sendWins.js";
 import { winWords, winsHeadline, winNumbers } from "../lib/workoutWins.js";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
-import { streakStats, streakWith, streakLabel } from "../coach/lib/streak.js";
+import { streakStats, streakWith, streakLabel, streakHeat } from "../coach/lib/streak.js";
 import { browserTimeZone } from "../coach/lib/clientClock.js";
 import { supersetInfo, parseDuration, formatDuration, durationInput, maskDuration, tidyDuration, clock as timerClock, SET_KINDS, groupName, restLabel, defaultMode, defaultSecs } from "../coach/lib/exerciseKinds.js";
 import { planSets, setsLine } from "../coach/lib/planSets.js";
@@ -1537,6 +1537,29 @@ function WinBadge({ win, unit, delay = 0 }) {
   );
 }
 
+// Sparks rising off the flame: none for a new streak, a shower when it's blazing.
+const EMBERS = { 1: 0, 2: 3, 3: 6, 4: 10 };
+
+/**
+ * The streak's flame. It burns hotter as the number counts up, so a client
+ * who just reached 7 watches it catch: bigger, more layers, sparks.
+ */
+function StreakFlame({ n }) {
+  const heat = streakHeat(n).level;
+  return (
+    <span className={`lk-flame h${heat}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path className="outer" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
+        <path className="mid" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
+        <path className="core" d="M12 2c1.5 4 6 5.5 6 11a6 6 0 0 1-12 0c0-2.2 1.2-3.6 1.2-3.6S8.4 12 9.6 12c0-3 1.2-6.4 2.4-10z" />
+      </svg>
+      {Array.from({ length: EMBERS[heat] }, (_, i) => (
+        <i key={i} className="lk-ember" style={{ "--x": `${((i * 37) % 100) - 50}px`, "--d": `${(i * 0.23) % 1.4}s`, "--t": `${1.2 + ((i * 13) % 7) / 10}s` }} />
+      ))}
+    </span>
+  );
+}
+
 function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }) {
   const s = sent.summary;
   const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan) : null;
@@ -1551,10 +1574,11 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
       <div className="lk-center">
         {showStreak ? (
           <>
-            <div className="lk-ring" role="img" aria-label={`${st.current} workouts in a row`}>
-              <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke="var(--cx-a)" strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
-              <div className="lk-ring-in"><Icon.Flame size={28} /><b>{shown}</b><span>{st.current === 1 ? "workout" : "workouts"}<br />in a row</span></div>
+            <div className={`lk-ring h${streakHeat(shown).level}`} role="img" aria-label={`${st.current} workouts in a row${streakHeat(st.current).word ? `, ${streakHeat(st.current).word.toLowerCase()}` : ""}`}>
+              <svg width="168" height="168" viewBox="0 0 168 168"><circle cx="84" cy="84" r={R} fill="none" stroke="var(--cx-bd)" strokeWidth="8" /><defs><linearGradient id="lk-ring-hot" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#C8FF00" /><stop offset="0.6" stopColor="#F5B84A" /><stop offset="1" stopColor="#FF6B3D" /></linearGradient></defs><circle className="lk-ring-fill" cx="84" cy="84" r={R} fill="none" stroke={streakHeat(shown).level >= 4 ? "url(#lk-ring-hot)" : "var(--cx-a)"} strokeWidth="8" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - fill)} style={{ "--c": C }} /></svg>
+              <div className="lk-ring-in"><StreakFlame n={shown} /><b>{shown}</b><span>{st.current === 1 ? "workout" : "workouts"}<br />in a row</span></div>
             </div>
+            {streakHeat(st.current).word && <span className={`lk-heat-word h${streakHeat(st.current).level}`}>{streakHeat(st.current).word}</span>}
             <div className="lk-small">{newBest ? "That's your best streak yet." : `${st.best - st.current} more day${st.best - st.current === 1 ? "" : "s"} to match your best of ${st.best}.`}</div>
           </>
         ) : <div className="lk-mark"><Icon.Check size={34} /></div>}

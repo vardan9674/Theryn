@@ -95,3 +95,19 @@ export function consistencyStats(doneDates, plan, startIso, now = new Date()) {
   const got = Math.min(planned, hit + extra);
   return { planned, done: got, pct: planned ? Math.round((got / planned) * 100) : null, since: first };
 }
+
+/**
+ * How hot a streak burns, for the flame on the link's receipt: 1 a spark,
+ * 4 blazing. The steps sit where a habit gets real — most of a week, a
+ * full week, two weeks — so each one is a moment worth seeing change.
+ */
+export const STREAK_HEAT = [
+  { level: 1, from: 0, word: "" },
+  { level: 2, from: 4, word: "Heating up" },
+  { level: 3, from: 7, word: "On fire" },
+  { level: 4, from: 14, word: "Blazing" },
+];
+export function streakHeat(n) {
+  const x = Number(n) || 0;
+  return [...STREAK_HEAT].reverse().find((h) => x >= h.from) || STREAK_HEAT[0];
+}
