@@ -35,12 +35,17 @@ const HEATS = {
   4: { rate: 420, arc: 2.1, size: 11, rise: 88, life: 0.78, sparks: 26, ring: "hot" },
   // A month in a row. Not bigger (it would swallow the screen), hotter: white at the base.
   5: { rate: 480, arc: 2.1, size: 11.5, rise: 96, life: 0.8, sparks: 34, ring: "legend" },
+  // A hundred in a row: blue, the hottest fire there is.
+  6: { rate: 520, arc: 2.1, size: 12, rise: 104, life: 0.82, sparks: 42, ring: "blue" },
 };
-const TOP = 5;
+const TOP = 6;
+// The heats that earn a burst of sparks the moment they're reached.
+const BURST_FROM = 5;
 
 // The fire takes the ring's colour. Until Blazing the ring is lime, so the
 // fire is. At Blazing the ring runs lime → amber → orange (lk-ring-hot), and
-// at Legendary amber → gold → white (lk-ring-legend). The ring's -90° turn
+// at Legendary amber → gold → white (lk-ring-legend), and at Unstoppable
+// cyan → blue → violet (lk-ring-blue). The ring's -90° turn
 // lays both from bottom-left to top-right, so each flame takes the colour of
 // the part of the ring it rises from.
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -50,6 +55,7 @@ const LIME = "#C8FF00";
 const GRADIENTS = {
   hot: [[0, "#C8FF00"], [0.6, "#F5B84A"], [1, "#FF6B3D"]],
   legend: [[0, "#F5B84A"], [0.55, "#FFE08A"], [1, "#FFF8E6"]],
+  blue: [[0, "#5BE7FF"], [0.55, "#4D7CFF"], [1, "#B06CFF"]],
 };
 const FAMILIES = 7; // shades sampled along each gradient
 const mix = (a, b, t) => a.map((v, k) => Math.round(lerp(v, b[k], t)));
@@ -57,6 +63,9 @@ const mix = (a, b, t) => a.map((v, k) => Math.round(lerp(v, b[k], t)));
 const rampOf = (rgb) => [mix(rgb, [255, 255, 255], 0.6), rgb, mix(rgb, [0, 0, 0], 0.45), mix(rgb, [0, 0, 0], 0.88)];
 /** White-hot: a white base, the ring's gold, then cooling through orange to an ember. */
 const legendRampOf = (rgb) => [[255, 255, 250], rgb, mix(rgb, [255, 110, 40], 0.6), [70, 18, 4]];
+/** Blue fire: white at the base, the ring's blue, then into deep violet and night. */
+const blueRampOf = (rgb) => [[245, 252, 255], rgb, mix(rgb, [90, 30, 200], 0.55), [10, 6, 40]];
+const RAMP_OF = { legend: legendRampOf, blue: blueRampOf };
 function gradientAt(stops, g) {
   for (let i = 1; i < stops.length; i++) {
     if (g <= stops[i][0]) { const [p, a] = stops[i - 1], [q, b] = stops[i]; return mix(hex(a), hex(b), (g - p) / (q - p)); }
@@ -119,7 +128,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
     const shades = (rgb, toRamp = rampOf) => { const r = toRamp(rgb); return Array.from({ length: STEPS }, (_, i) => teardrop(along(r, i / (STEPS - 1)))); };
     const ramps = { lime: shades(hex(LIME)) };
     for (const [name, stops] of Object.entries(GRADIENTS)) {
-      for (let i = 0; i < FAMILIES; i++) ramps[`${name}:${i}`] = shades(gradientAt(stops, i / (FAMILIES - 1)), name === "legend" ? legendRampOf : rampOf);
+      for (let i = 0; i < FAMILIES; i++) ramps[`${name}:${i}`] = shades(gradientAt(stops, i / (FAMILIES - 1)), RAMP_OF[name] || rampOf);
     }
     // Which family a point on the ring burns in, for the ring as it is now.
     const familyAt = (x, y, ring) => {
@@ -127,11 +136,11 @@ export default function StreakFire({ heat = 1, flameRef }) {
       const g = Math.max(0, Math.min(1, ((x - CX) - (y - CY)) / (2 * R) + 0.5));
       return `${ring}:${Math.round(g * (FAMILIES - 1))}`;
     };
-    const sparks = { lime: dot("226,255,120", "200,255,0"), hot: dot(), legend: dot("255,236,170", "255,200,90") };
+    const sparks = { lime: dot("226,255,120", "200,255,0"), hot: dot(), legend: dot("255,236,170", "255,200,90"), blue: dot("170,225,255", "120,110,255") };
 
     let parts = [];
     let level = target.current; // eases toward the target heat
-    let reached = target.current; // the highest heat seen, for the one-off burst at the top
+    let reached = target.current; // the highest heat seen, for the one-off bursts
     let carry = 0, sparkCarry = 0, raf = 0, last = 0, clock = 0, sinceFind = 1;
     let flame = { x: CX, y: CY - 22 };
 
@@ -176,12 +185,13 @@ export default function StreakFire({ heat = 1, flameRef }) {
       parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, tint: c.ring, life: 0.9 + Math.random() * 0.8, vx: (Math.random() - 0.5) * 40, vy: -(70 + Math.random() * 90), size: 1.6 + Math.random() * 1.6, seed: Math.random() * 100 });
     };
 
-    // Crossing into the top heat (a month in a row): one ring of sparks thrown
-    // outward all the way round. Once, not every time the page draws.
-    const burst = () => {
+    // Crossing into Legendary (30) or Unstoppable (100): one ring of sparks in
+    // that level's colour, thrown outward all the way round. Once, not every
+    // time the page draws.
+    const burst = (tint) => {
       for (let i = 0; i < 90; i++) {
         const ang = (i / 90) * Math.PI * 2 + Math.random() * 0.07, sp = 90 + Math.random() * 120;
-        parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, tint: "legend", life: 0.8 + Math.random() * 0.7, vx: Math.sin(ang) * sp, vy: -Math.cos(ang) * sp - 30, size: 1.8 + Math.random() * 1.8, seed: Math.random() * 100 });
+        parts.push({ x: CX + Math.sin(ang) * R, y: CY - Math.cos(ang) * R, age: 0, spark: true, tint, life: 0.8 + Math.random() * 0.7, vx: Math.sin(ang) * sp, vy: -Math.cos(ang) * sp - 30, size: 1.8 + Math.random() * 1.8, seed: Math.random() * 100 });
       }
     };
 
@@ -192,7 +202,7 @@ export default function StreakFire({ heat = 1, flameRef }) {
       last = now; clock += dt;
       sinceFind += dt;
       if (sinceFind > 0.3) { findFlame(); sinceFind = 0; }
-      if (target.current >= TOP && reached < TOP) burst();
+      if (target.current >= BURST_FROM && target.current > reached) burst(HEATS[Math.min(TOP, target.current)].ring);
       reached = Math.max(reached, target.current);
       level = lerp(level, target.current, 1 - Math.exp(-dt * 2.5));
       const c = cfg();
