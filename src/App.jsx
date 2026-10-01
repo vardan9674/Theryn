@@ -38,6 +38,8 @@ import SwapSheet from "./components/exercise/SwapSheet.jsx";
 import QuickWorkoutSheet from "./components/exercise/QuickWorkoutSheet.jsx";
 import EquipmentScreen from "./components/exercise/EquipmentScreen.jsx";
 import { findInLibrary, EQUIPMENT_LABEL } from "./lib/exerciseLibrary.js";
+import { workoutWins, lastTimes } from "./lib/workoutWins.js";
+import WinsPanel from "./components/WinsPanel.jsx";
 import useEquipment from "./components/exercise/useEquipment.js";
 import { signInErrorFromUrl, friendlySignInError, addressWithoutSignInError } from "./lib/signInError";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
@@ -1682,6 +1684,13 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       }).map(s => isCardioExercise(ex.name) ? { dist: s.dist, dur: s.dur } : { w: s.w, r: s.r }),
     })).filter(ex => ex.sets.length > 0);
 
+    // Better than last time: each exercise against the last day it was done,
+    // the same wins a client sees after sending a workout on their link.
+    // Worked out before this workout joins the history. Never worth failing
+    // the save over.
+    let wins = [];
+    try { wins = workoutWins(completedExercises, lastTimes(workoutHistory, todayStr())); } catch { /* summary without wins */ }
+
     // Build summary before resetting state
     const summary = {
       type: todayType,
@@ -1689,6 +1698,7 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
       totalSets: doneSets,
       totalVolume: totalVol,
       exercises: completedExercises,
+      wins,
     };
 
     if (completedExercises.length > 0) {
@@ -2378,8 +2388,8 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
 
       {/* ── Workout Summary Overlay ── */}
       {workoutSummary && (
-        <div style={{ position:"fixed", top:0, bottom:0, left:0, right:0, width:"100%", background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:215 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"24px", padding:"32px 24px", width:"calc(100% - 32px)", maxWidth:"380px", border:`1px solid ${BD}`, boxSizing:"border-box" }}>
+        <div style={{ position:"fixed", top:0, bottom:0, left:0, right:0, width:"100%", background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:215, overflowY:"auto", padding:"16px 0", boxSizing:"border-box" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:S1, borderRadius:"24px", padding:"32px 24px", width:"calc(100% - 32px)", maxWidth:"380px", border:`1px solid ${BD}`, boxSizing:"border-box", margin:"auto" }}>
             {/* Celebration icon */}
             <div style={{ textAlign:"center", marginBottom:"20px" }}>
               <div style={{ width:"64px", height:"64px", borderRadius:"50%", background:`${A}18`, border:`2px solid ${A}44`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto", fontSize:"28px" }}>💪</div>
@@ -2404,6 +2414,13 @@ function LogScreen({ session, setSession, templates, setTemplates, exercisesChan
                 <div style={{ fontSize:"11px", color:SB, marginTop:"4px", textTransform:"uppercase", letterSpacing:"0.06em" }}>{units === "metric" ? "kg" : "lbs"} Vol</div>
               </div>
             </div>
+
+            {/* Better than last time */}
+            {workoutSummary.wins?.length > 0 && (
+              <div style={{ marginBottom:"20px" }}>
+                <WinsPanel wins={workoutSummary.wins} unit={units === "metric" ? "kg" : "lb"} />
+              </div>
+            )}
 
             {/* Exercise breakdown */}
             {workoutSummary.exercises.length > 0 && (

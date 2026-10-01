@@ -1,0 +1,28 @@
+/* Better than last time (WinsPanel): on the link's receipt and the athlete
+   app's "Workout complete". One frosted panel, a row per exercise: what it
+   was, then what it is now. Lime only on the new number, so the eye lands on
+   the part that went up. Colours fall back for pages outside .cx-app. */
+.lk-wins { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.lk-wins-h { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cx-mu, #8A8A8A); }
+.lk-wins-p { margin: 0; font-size: 17px; font-weight: 700; color: var(--cx-tx, #F0F0F0); }
+.lk-wins small { font-size: 13px; color: var(--cx-mu, #8A8A8A); }
+.lk-wins-list { list-style: none; margin: 0; padding: 4px 0; border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 32px -18px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(24px) saturate(140%); backdrop-filter: blur(24px) saturate(140%); }
+.lk-win { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 12px 14px; position: relative;
+  animation: lk-win-in 0.32s ease-out var(--d, 0s) both; }
+.lk-win + .lk-win::before { content: ""; position: absolute; top: 0; left: 52px; right: 14px; height: 1px; background: rgba(255, 255, 255, 0.07); }
+.lk-win-ic { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: rgba(200, 255, 0, 0.1); color: var(--cx-a, #C8FF00); }
+.lk-win-ic svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.lk-win-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lk-win-txt b { font-size: 15px; font-weight: 600; color: var(--cx-tx, #F0F0F0); overflow-wrap: anywhere; line-height: 1.3; }
+.lk-win-txt span { font-size: 13px; color: var(--cx-mu, #8A8A8A); }
+.lk-win-num { display: flex; align-items: center; gap: 4px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lk-win-num .was { font-size: 14px; color: var(--cx-mu, #8A8A8A); }
+.lk-win-num svg { width: 11px; height: 11px; fill: none; stroke: var(--cx-mu, #8A8A8A); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.lk-win-num b { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--cx-a, #C8FF00); }
+.lk-win-num small { font-size: 12px; color: var(--cx-tx2, #B0B0B0); padding-top: 3px; }
+@keyframes lk-win-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lk-win { animation: none; } }
