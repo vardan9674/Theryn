@@ -501,9 +501,9 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-fire { position: absolute; left: -56px; top: -112px; width: 280px; height: 320px; pointer-events: none; z-index: 0; }
 .lk-ring > svg { position: relative; z-index: 1; }
 /* Room above the ring for the flames once it's properly alight */
-.lk-ring.h3, .lk-ring.h4 { margin-top: 56px; transition: margin-top 0.4s ease; }
+.lk-ring.h3, .lk-ring.h4, .lk-ring.h5 { margin-top: 56px; transition: margin-top 0.4s ease; }
 .lk-ring-in { z-index: 2; }
-.lk-ring.h3 .lk-ring-in b, .lk-ring.h4 .lk-ring-in b, .lk-ring.h3 .lk-ring-in span, .lk-ring.h4 .lk-ring-in span { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
+.lk-ring.h3 .lk-ring-in b, .lk-ring.h4 .lk-ring-in b, .lk-ring.h5 .lk-ring-in b, .lk-ring.h3 .lk-ring-in span, .lk-ring.h4 .lk-ring-in span, .lk-ring.h5 .lk-ring-in span { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); }
 /* A new heat: a shockwave off the ring, and the number lands with a punch */
 .lk-shock { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--cx-a); pointer-events: none; z-index: 1; animation: lk-shock 0.8s cubic-bezier(.1, .7, .3, 1) both; }
 .lk-ring.h3 .lk-shock { border-color: var(--cx-a); }
@@ -512,6 +512,23 @@ button.lk-day { font: inherit; padding: 0; cursor: pointer; -webkit-appearance: 
 .lk-ring-in b.punch { animation: lk-punch 0.55s cubic-bezier(.2, 1.6, .4, 1) both; }
 @keyframes lk-punch { 0% { transform: scale(1.45); color: #FFFFFF; text-shadow: 0 0 24px rgba(255, 220, 120, 0.9); } 100% { transform: scale(1); } }
 /* The flame in the middle breathes with the fire */
-.lk-ring.h3 .lk-flame, .lk-ring.h4 .lk-flame { animation: lk-breathe 1.2s ease-in-out infinite; }
+.lk-ring.h3 .lk-flame, .lk-ring.h4 .lk-flame, .lk-ring.h5 .lk-flame { animation: lk-breathe 1.2s ease-in-out infinite; }
 .lk-ring.h4 .lk-flame { animation-duration: 0.7s; }
 @keyframes lk-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+/* Legendary (30 in a row): not a bigger fire, a hotter one. White-hot flame,
+   a gold-to-white ring, a warm halo, and a slow shimmer across the number. */
+.lk-flame.h5 { width: 38px; height: 38px; }
+.lk-flame.h5 .outer { fill: #FFC24A; animation-duration: 0.6s; filter: drop-shadow(0 0 10px rgba(255, 214, 120, 0.95)) drop-shadow(0 0 24px rgba(255, 248, 230, 0.5)); }
+.lk-flame.h5 .mid { opacity: 1; fill: #FFE7A3; animation-duration: 0.7s; }
+.lk-flame.h5 .core { opacity: 1; fill: #FFFFFF; animation-duration: 0.5s; }
+.lk-ring.h5::before { opacity: 1; box-shadow: 0 0 52px rgba(255, 214, 120, 0.45), inset 0 0 34px rgba(255, 236, 190, 0.18); animation: lk-halo 1.1s ease-in-out infinite; }
+.lk-ring.h5 .lk-ring-fill { filter: drop-shadow(0 0 7px rgba(255, 224, 150, 0.8)); }
+.lk-ring.h5 .lk-shock { border-color: #FFF1C9; box-shadow: 0 0 30px #FFD27A; }
+.lk-ring.h5 .lk-ring-in b { color: #FFF8E6; animation: lk-glint 2.4s ease-in-out infinite; }
+.lk-ring.h5 .lk-ring-in b.punch { animation: lk-punch 0.55s cubic-bezier(.2, 1.6, .4, 1) both, lk-glint 2.4s ease-in-out 0.6s infinite; }
+@keyframes lk-glint { 0%, 100% { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9); } 50% { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9), 0 0 18px rgba(255, 214, 120, 0.75); } }
+.lk-heat-word.h5 { color: #2A1A00; background: linear-gradient(100deg, #F5B84A 0%, #FFE08A 40%, #FFF8E6 50%, #FFE08A 60%, #F5B84A 100%); background-size: 250% 100%;
+  animation: lk-badge-in 0.5s cubic-bezier(.2, 1.4, .4, 1) 0.9s both, lk-sheen 3s linear 1.4s infinite; }
+@keyframes lk-sheen { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .lk-ring.h5 .lk-ring-in b, .lk-heat-word.h5 { animation: none; } }
