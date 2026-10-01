@@ -123,7 +123,7 @@ export function workoutDetail(entry) {
       };
     });
     return {
-      id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true, byCoach: p.logged_by === "coach", submissionId: sub.id,
+      id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true, byCoach: p.logged_by === "coach", submissionId: sub.id, at: sub.submitted_at || null,
       payload: p, editedByCoach: Boolean(p.edited_by_coach_at),
       note: (p.note || entry.note || "").trim(),
       feel: ["easy", "medium", "hard"].includes(p.feel) ? p.feel : null,
@@ -147,6 +147,80 @@ export function workoutDetail(entry) {
     plannedSets: entry.plannedSets || 0,
     exercises,
   };
+}
+
+const nameKey = (n) => String(n || "").trim().toLowerCase();
+
+/**
+ * One card per day when a day was logged in parts: the coach logs the part
+ * they ran with the client, the client sends the rest later through their
+ * link. Link workouts with the same date and type become one, exercise by
+ * exercise. An exercise done in more than one part counts once, from the
+ * latest part that did it, so no set is counted twice. Each part stays its
+ * own record (in `parts`, oldest first) for fixing, moving or removing.
+ * `details` come from workoutDetail, newest first; so does the result.
+ */
+export function mergeSameDay(details) {
+  const list = details || [];
+  const groups = new Map();
+  list.forEach((w) => {
+    if (!w?.submissionId) return;
+    const k = `${w.date}|${nameKey(w.type)}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(w);
+  });
+  const merged = new Map();
+  for (const [k, ws] of groups) {
+    if (ws.length < 2) continue;
+    const parts = [...ws].sort((a, b) => (String(a.at || "") < String(b.at || "") ? -1 : String(a.at || "") > String(b.at || "") ? 1 : 0));
+    // The plan's order, from the part that carried the most of it.
+    const base = [...parts].sort((a, b) => b.exercises.length - a.exercises.length)[0];
+    const order = [];
+    const seen = new Set();
+    for (const w of [base, ...parts]) for (const e of w.exercises) { const n = nameKey(e.swappedFrom || e.name); if (!seen.has(n)) { seen.add(n); order.push(n); } }
+    const exercises = order.map((n) => {
+      const match = (w) => w.exercises.find((e) => nameKey(e.swappedFrom || e.name) === n);
+      // The latest part that did any of it; else the plan's line, as skipped.
+      const from = [...parts].reverse().find((w) => (match(w)?.done || 0) > 0) || parts.find((w) => match(w));
+      return { ...match(from), by: from.byCoach ? "coach" : "client", partId: from.submissionId };
+    });
+    const last = parts[parts.length - 1];
+    merged.set(k, {
+      ...last,
+      id: `day:${k}`,
+      merged: true,
+      parts,
+      byCoach: parts.every((w) => w.byCoach),
+      editedByCoach: false,
+      submissionId: null,
+      exercises,
+      totalSets: exercises.reduce((a, e) => a + e.done, 0),
+      plannedSets: exercises.reduce((a, e) => a + e.planned, 0),
+      feel: [...parts].reverse().find((w) => w.feel)?.feel || null,
+      note: "",
+      notes: parts.filter((w) => w.note).map((w) => ({ byCoach: w.byCoach, text: w.note })),
+    });
+  }
+  const out = [];
+  const placed = new Set();
+  for (const w of list) {
+    const k = w?.submissionId ? `${w.date}|${nameKey(w.type)}` : null;
+    if (k && merged.has(k)) { if (!placed.has(k)) { placed.add(k); out.push(merged.get(k)); } continue; }
+    out.push(w);
+  }
+  return out;
+}
+
+/** "6 logged by you, 5 by Asha" for a day logged in parts: exercises done, by who. */
+export function partsLine(w, firstName) {
+  if (!w?.merged) return "";
+  const done = w.exercises.filter((e) => e.done > 0);
+  const coach = done.filter((e) => e.by === "coach").length;
+  const client = done.length - coach;
+  const bits = [];
+  if (coach) bits.push(`${coach} logged by you`);
+  if (client) bits.push(`${client} by ${firstName || "them"}`);
+  return bits.join(", ");
 }
 
 /** "8 of 9 sets" / "12 sets · 45 min" for a row summary. */

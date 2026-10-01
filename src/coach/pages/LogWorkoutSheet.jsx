@@ -7,6 +7,7 @@ import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.
 import { readDraft, saveDraft, clearDraft } from "../lib/logDraft.js";
 import { shapeExercises, plannedSets, anyChanges, MAX_SETS } from "../lib/logChanges.js";
 import SwapExerciseSheet from "./SwapExerciseSheet.jsx";
+import { editStateFromPayload } from "../../link/sentWorkout.js";
 import { TYPE_COLORS } from "../../components/templates/tokens.js";
 
 const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -21,9 +22,28 @@ function recentDays(routine, now = new Date()) {
   });
 }
 
-/** Everything ticked, as the sheet opens: whatever the plan asks, minus the skips. */
+/** Everything ticked: whatever the plan asks, minus the skips. What "Done as planned" sends. */
 function defaultTicks(planExercises, changes) {
   return Object.fromEntries(shapeExercises(planExercises, changes).map((e, i) => [i, changes?.skipped?.[i] ? 0 : plannedSets(e)]));
+}
+
+/**
+ * A workout already sent, back in the sheet's terms so it can be redone:
+ * ticks, typed numbers, skips, swaps (by name) and changed set counts.
+ */
+function stateFromWorkout(payload, planExercises, units) {
+  const s = editStateFromPayload(payload, planExercises, units);
+  const swaps = Object.fromEntries(Object.entries(s.swaps).map(([i, x]) => [i, x.name]));
+  const sets = {};
+  for (const e of payload?.exercises || []) {
+    const k = String(e?.swapped_from || e?.name || "").trim().toLowerCase();
+    const i = planExercises.findIndex((p) => String(p?.name || "").trim().toLowerCase() === k);
+    const n = Number(e?.sets_planned) || 0;
+    if (i >= 0 && n > 0 && n !== plannedSets(planExercises[i])) sets[i] = n;
+  }
+  // A workout doesn't say "skipped", only 0 sets done: that opens unticked,
+  // since it may be the part the client does later.
+  return { ticks: s.ticks, log: s.log, skipped: {}, swaps, sets, note: s.note };
 }
 
 /**
@@ -33,8 +53,15 @@ function defaultTicks(planExercises, changes) {
  * for something else, or done for more or fewer sets — for that day only, never
  * touching the plan. Saved like a link submission, marked logged_by "coach", so
  * it counts for their streak and shows as "logged by you".
+ *
+ * Nothing starts ticked. A coach often logs only the part they ran (the
+ * weights) and the client sends the rest (the abs) through their link, so an
+ * exercise the coach doesn't touch is saved as not done, never as done.
+ *
+ * With `replacing` (a workout from the list), the sheet redoes that workout:
+ * same day, opened as it was sent, and saving replaces it.
  */
-export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now }) {
+export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now, replacing = null }) {
   const toast = useToast();
   // "Today" is the client's today (#95): a coach in India logging a US client's evening workout.
   const days = React.useMemo(() => recentDays(routine, now || new Date()), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -58,21 +85,22 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   const changed = anyChanges(plan.exercises, { skipped, swaps, sets });
   // Reopening the sheet, or coming back to a day: whatever they had typed for
   // that day is still there. Only a day they never touched opens as planned.
-  React.useEffect(() => { if (open) setDate(pickDefault()); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (open) setDate(replacing?.date || pickDefault()); }, [open, replacing?.date]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!open) return;
-    const draft = readDraft(clientId, date);
-    const d = { skipped: draft?.skipped || {}, swaps: draft?.swaps || {}, sets: draft?.sets || {} };
-    setSkipped(d.skipped); setSwaps(d.swaps); setSets(d.sets);
-    setTicks(draft?.ticks || defaultTicks(plan.exercises, d));
+    const draft = replacing
+      ? (replacing.date === date ? stateFromWorkout(replacing.payload, plan.exercises, unit === "kg" ? "metric" : "imperial") : null)
+      : readDraft(clientId, date);
+    setSkipped(draft?.skipped || {}); setSwaps(draft?.swaps || {}); setSets(draft?.sets || {});
+    setTicks(draft?.ticks || {});
     setLog(draft?.log || {});
     setNote(draft?.note || "");
     setOpenEx(null);
   }, [open, date, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // Every tick, every number and every change, kept until it is sent.
   React.useEffect(() => {
-    if (!open || plan.isRest) return;
-    saveDraft(clientId, date, { ticks, log, note, skipped, swaps, sets }, defaultTicks(plan.exercises, { skipped, swaps, sets }));
+    if (!open || plan.isRest || replacing) return;
+    saveDraft(clientId, date, { ticks, log, note, skipped, swaps, sets });
   }, [open, clientId, date, ticks, log, note, skipped, swaps, sets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setsTotal = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : plannedSets(e)), 0);
@@ -120,8 +148,9 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
       const sent = exercises.map((e) => ({ ...e, sets: plannedSets(e) }));
       const payload = { ...workoutPayload({ ...plan, exercises: sent }, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach" };
       await onSave(payload);
-      clearDraft(clientId, date); // the coach has sent it; nothing left to keep
-      toast(`Saved ${dayInfo?.label === "Today" ? "today's" : `${DAY_LONG[plan.key]}'s`} workout for ${firstName}. It counts for their streak.`);
+      if (!replacing) clearDraft(clientId, date); // the coach has sent it; nothing left to keep
+      if (replacing) toast(`Replaced ${DAY_LONG[plan.key]}'s workout for ${firstName}.`);
+      else toast(`Saved ${dayInfo?.label === "Today" ? "today's" : `${DAY_LONG[plan.key]}'s`} workout for ${firstName}. It counts for their streak.`);
       onClose();
     } catch (e) {
       toast(e.message || "Could not save", "error");
@@ -132,21 +161,23 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
 
   const color = TYPE_COLORS[plan.type] || "var(--cx-tx2)";
   return (
-    <Sheet open={open} onClose={onClose} title={`Log a workout for ${firstName}`} subtitle="For when they trained but didn't tick it off themselves.">
+    <Sheet open={open} onClose={onClose}
+      title={replacing ? `Redo ${firstName}'s ${DAY_LONG[plan.key]} workout` : `Log a workout for ${firstName}`}
+      subtitle={replacing ? "Tick what they actually did. Saving replaces the workout that's there now." : "Tick only what they did with you. They can send the rest through their link."}>
       <div className="lw">
-        <div className="lw-days" role="group" aria-label="Which day">
+        {!replacing && <div className="lw-days" role="group" aria-label="Which day">
           {days.map((x) => (
             <button key={x.iso} type="button" className={`lw-day ${x.rest ? "rest" : ""}`} aria-pressed={x.iso === date} onClick={() => setDate(x.iso)}>
               <b>{x.label}</b><small>{x.rest ? "Rest" : x.type}</small>{doneDates.has(x.iso) && <i aria-label="already logged"><Icon.Check size={10} /></i>}
             </button>
           ))}
-        </div>
+        </div>}
 
         {plan.isRest ? (
           <div className="lw-empty">Nothing was planned for {DAY_LONG[plan.key]}. Pick a workout day above.</div>
         ) : (
           <>
-            {already && <div className="lw-warn">{firstName} already has a workout on this day. Saving adds another one.</div>}
+            {already && !replacing && <div className="lw-warn">{firstName} already has a workout on this day. Tick only what isn't in it. Both show as one day.</div>}
             {!changed && (
               <>
                 <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, useToast } from "../ui/primitives.jsx";
+import { Avatar, Button, Icon, Tabs, Tone, Empty, Pill, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { DAYS, DAY_LONG, exerciseName, setsReps, normalizeExercise, shortDate, plural, dayKey, isoDate } from "../lib/format.js";
 import { streakStats, streakLabel, consistencyStats } from "../lib/streak.js";
@@ -8,12 +8,13 @@ import { TYPE_COLORS } from "../../components/templates/tokens.js";
 import { computeBMI, bmiCategory } from "../../lib/coachInsights.js";
 import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
-import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine } from "../lib/workouts.js";
+import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine, mergeSameDay, partsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
-import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage, todayFromPlan, replacePayload } from "../lib/clientLinks.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 import { clientNow, theirTimeNote } from "../lib/clientClock.js";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
+import MoveWorkoutSheet from "./MoveWorkoutSheet.jsx";
 import ReportsTab, { HeightField } from "./ReportsTab.jsx";
 import { supersetInfo } from "../lib/exerciseKinds.js";
 
@@ -302,9 +303,14 @@ function ProgressTab({ data, row, actions }) {
   const toast = useToast();
   const firstName = row.name.split(" ")[0];
   const [logging, setLogging] = React.useState(false);
-  const [removing, setRemoving] = React.useState(null);
+  const [removing, setRemoving] = React.useState(null); // the workout asked about, before it goes
+  const [removeBusy, setRemoveBusy] = React.useState(false);
   const [editing, setEditing] = React.useState(null); // the workout being corrected
+  const [moving, setMoving] = React.useState(null);   // the workout being put on another day
+  const [redoing, setRedoing] = React.useState(null); // the workout being redone in full
   const canEdit = row.link.manual && typeof coachData.updateSubmission === "function";
+  // Redo opens the plan for that day, so only when the workout is that day's plan.
+  const canRedo = (w) => canEdit && routine && (() => { const t = todayFromPlan(routine, new Date(w.date + "T12:00:00")); return !t.isRest && String(t.type).toLowerCase() === String(w.type).toLowerCase(); })();
   const canLog = row.link.manual && typeof coachData.logWorkoutForClient === "function" && routine && DAYS.some((d) => routine[d]?.type && routine[d].type !== "Rest" && (routine[d].exercises || []).length);
   const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
   const sheet = canLog ? (
@@ -312,17 +318,41 @@ function ProgressTab({ data, row, actions }) {
       onClose={() => setLogging(false)}
       onSave={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
   ) : null;
-  async function removeLogged(w) {
-    setRemoving(w.id);
-    try { await coachData.deleteSubmission(w.submissionId); toast("Removed"); actions?.reloadClient?.(row.link.athlete_id); }
+  async function removeWorkout(w) {
+    setRemoveBusy(true);
+    try { await coachData.deleteSubmission(w.submissionId); toast("Removed"); setRemoving(null); actions?.reloadClient?.(row.link.athlete_id); }
     catch (e) { toast(e.message || "Could not remove", "error"); }
-    finally { setRemoving(null); }
+    finally { setRemoveBusy(false); }
   }
+  const saveOver = (w) => async (payload) => { await coachData.updateSubmission(w.submissionId, payload); actions?.reloadClient?.(row.link.athlete_id); };
+  const clock = (iso) => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
+  const exCount = (w) => w.exercises.filter((e) => e.done > 0).length;
+  // Who sent one workout, and what can be done with it.
+  const partActions = (w, label) => (
+    <div className="cx-part" key={w.submissionId}>
+      <span className="cx-small cx-muted" style={{ flex: "1 1 160px" }}>
+        {label}
+        {w.exercises.some((e) => e.sets.some((s) => s.suspect)) && <span style={{ color: "#F5A742", display: "block" }}>A number looks off. Fix it if it's a typo.</span>}
+      </span>
+      <span className="cx-part-acts">
+        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Fix numbers</Button>}
+        {canRedo(w) && <Button size="sm" onClick={() => setRedoing(w)}>Redo</Button>}
+        {canEdit && <Button size="sm" onClick={() => setMoving(w)}>Move</Button>}
+        {canEdit && <Button size="sm" onClick={() => setRemoving(w)}>Remove</Button>}
+      </span>
+    </div>
+  );
+  const partLabel = (w) => {
+    const what = `${plural(exCount(w), "exercise")}${w.at ? ` at ${clock(w.at)}` : ""}`;
+    if (w.byCoach) return `You logged ${what}.`;
+    return w.editedByCoach ? `${firstName} sent ${what}. You changed it.` : `${firstName} sent ${what}.`;
+  };
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
   const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine, cnow), [history, routine, cnow]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
-  const workouts = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail), [history, data.submissions]);
+  // A day logged in parts (the coach's and the client's) reads as one workout.
+  const workouts = React.useMemo(() => mergeSameDay(attachSubmissions(history || [], data.submissions).map(workoutDetail)), [history, data.submissions]);
   const week = React.useMemo(() => weekProgress(history || [], routine, cnow), [history, routine, cnow]);
   const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at, cnow), [history, routine, row.link.created_at, cnow]);
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
@@ -331,13 +361,26 @@ function ProgressTab({ data, row, actions }) {
   const editSheet = canEdit && editing ? (
     <EditWorkoutSheet open={Boolean(editing)} workout={editing} firstName={firstName} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
       onClose={() => setEditing(null)}
-      onSave={async (payload) => { await coachData.updateSubmission(editing.submissionId, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
+      onSave={saveOver(editing)} />
+  ) : null;
+  const unitShort = profile?.unit_system === "metric" ? "kg" : "lb";
+  const changeSheets = canEdit ? (
+    <>
+      {moving && <MoveWorkoutSheet open workout={moving} firstName={firstName} routine={routine} now={cnow} onClose={() => setMoving(null)} onSave={saveOver(moving)} />}
+      {redoing && <LogWorkoutSheet open replacing={redoing} now={cnow} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={unitShort}
+        onClose={() => setRedoing(null)} onSave={(payload) => saveOver(redoing)(replacePayload(redoing.payload, payload))} />}
+      <Confirm open={Boolean(removing)} danger busy={removeBusy} confirmLabel="Remove"
+        title={removing?.byCoach ? `Remove the workout you logged for ${firstName}?` : `Remove the workout ${firstName} sent?`}
+        body={removing ? `${shortDate(removing.date)} · ${removing.type} · ${workoutSummary(removing)}. ${removing.byCoach ? "" : `It goes from ${firstName}'s link too. `}This can't be undone. To change it instead, use Fix numbers, Redo or Move.` : ""}
+        onConfirm={() => removeWorkout(removing)} onClose={() => !removeBusy && setRemoving(null)} />
+    </>
   ) : null;
   if (!history || history.length === 0) return <><Empty title="No workouts yet" action={logButton}>{row.link.manual ? `Workouts they tick off through their link show up here. If ${firstName} trained but didn't tick it off, you can log it for them.` : "Workouts they log in the app or tick off through their link show up here."}</Empty>{sheet}</>;
   return (
     <>
       {sheet}
       {editSheet}
+      {changeSheets}
       {logButton && <div className="cx-row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="cx-small cx-muted" style={{ flex: "1 1 180px" }}>Trained but didn't tick it off? Log it for them.</span>{logButton}</div>}
       <div className="cx-stats" style={{ marginBottom: 0 }}>
         <div className="cx-card cx-stat"><span className="k">Streak</span><span className="v" style={st.current >= 2 ? { color: "var(--cx-a)" } : undefined}>{st.current}d</span><span className="s">{st.best > st.current ? `best ${st.best}` : st.current >= 2 ? "their best yet" : " "}</span></div>
@@ -364,8 +407,8 @@ function ProgressTab({ data, row, actions }) {
             <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
               <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
                 <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
-                  <span className="cx-row" style={{ gap: 8, flexWrap: "wrap" }}><b style={{ whiteSpace: "nowrap" }}>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
-                  <span className="cx-small cx-muted">{workoutSummary(w)}{w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
+                  <span className="cx-row" style={{ gap: 8, flexWrap: "wrap" }}><b style={{ whiteSpace: "nowrap" }}>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.merged && !w.byCoach ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>you + {firstName}</span> : w.byCoach ?<span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-small cx-muted">{workoutSummary(w)}{w.merged ? `: ${partsLine(w, firstName)}` : w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
                 </span>
                 <Icon.Down />
               </button>
@@ -373,7 +416,7 @@ function ProgressTab({ data, row, actions }) {
                 <div className="cx-card-pad" style={{ paddingTop: 0 }}>
                   {w.exercises.map((e, i) => (
                     <div key={i} className="cx-exrow" style={{ alignItems: "flex-start", padding: "6px 0", opacity: e.skipped ? 0.55 : 1 }}>
-                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.band && <span className="cx-small cx-muted"> · {e.band} band</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}</span>
+                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.band && <span className="cx-small cx-muted"> · {e.band} band</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}{w.merged && e.done > 0 && <span className="cx-by">{e.by === "coach" ? "you" : firstName}</span>}</span>
                       <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -389,16 +432,8 @@ function ProgressTab({ data, row, actions }) {
                     </div>
                   ))}
                   {w.feel && <div className="cx-small" style={{ marginTop: 6 }}><span className="cx-muted">Felt </span><b className={`cx-feel ${w.feel}`}>{w.feel}</b></div>}
-                  {w.note && <div className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{w.byCoach ? "Your note" : row.name.split(" ")[0]}: "{w.note}"</div>}
-                  {w.submissionId && (canEdit || w.byCoach) && (
-                    <div className="cx-row" style={{ justifyContent: "space-between", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                      <span className="cx-small cx-muted" style={{ flex: "1 1 160px" }}>{w.exercises.some((e) => e.sets.some((s) => s.suspect)) ? <span style={{ color: "#F5A742" }}>A number looks off. Fix it if it's a typo.</span> : w.byCoach ? `You logged this for ${firstName}.` : w.editedByCoach ? "You fixed numbers in this workout." : `Sent by ${firstName}.`}</span>
-                      <span className="cx-row" style={{ gap: 8 }}>
-                        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Fix numbers</Button>}
-                        {w.byCoach && <Button size="sm" onClick={() => removeLogged(w)} disabled={removing === w.id}>{removing === w.id ? "Removing…" : "Remove"}</Button>}
-                      </span>
-                    </div>
-                  )}
+                  {(w.merged ? w.notes : w.note ? [{ byCoach: w.byCoach, text: w.note }] : []).map((n, k) => <div key={k} className="cx-card-pad" style={{ marginTop: 6, background: "var(--cx-s2)", borderRadius: 8, padding: "8px 10px", color: "var(--cx-tx2)", fontSize: 13 }}>{n.byCoach ? "Your note" : firstName}: "{n.text}"</div>)}
+                  {canEdit && (w.merged ? w.parts : w.submissionId ? [w] : []).map((p) => partActions(p, partLabel(p)))}
                 </div>
               )}
             </div>

@@ -408,6 +408,73 @@ export function submissionToHistory(sub) {
   return { id: sub.id, date: submissionDate(sub), type: p.type || "Workout", duration: 45 * 60, startedAt: sub.submitted_at, exercises, totalSets, totalVolume, source: "link", byCoach: p.logged_by === "coach", note: p.note || "", feel: p.feel || null, plannedSets: (p.exercises || []).reduce((a, e) => a + (e.sets_planned || 0), 0) };
 }
 
+const exKey = (name) => String(name || "").trim().toLowerCase();
+
+/**
+ * Which of a day's planned exercises the coach has already logged for the
+ * client, as { [planIndex]: setsDone }. A coach who runs part of a session
+ * (the weights at the gym) logs that part; the client's link then asks only
+ * for what is left (the abs at home). `entries` are that day's workouts, as
+ * link_me returns them or as submission rows. Matched by name, or by the plan
+ * exercise a swap stood in for.
+ */
+export function coachDoneByIndex(entries, planExercises) {
+  const done = new Map();
+  for (const h of entries || []) {
+    const p = h?.payload || {};
+    if (!(h?.by_coach || p.logged_by === "coach")) continue;
+    for (const e of p.exercises || []) {
+      const n = Number(e?.sets_done) || 0;
+      if (n <= 0) continue;
+      for (const k of [exKey(e.swapped_from), exKey(e.name)]) if (k) done.set(k, Math.max(done.get(k) || 0, n));
+    }
+  }
+  const out = {};
+  (planExercises || []).forEach((e, i) => {
+    const k = exKey(typeof e === "string" ? e : e?.name);
+    if (k && done.has(k)) out[i] = done.get(k);
+  });
+  return out;
+}
+
+/**
+ * A workout moved to another day by the coach (logged on the wrong day).
+ * Both dates move, so every reader — the dashboard, the link, the streak —
+ * puts it on the new day. Where it was is kept in `moved_from`.
+ */
+export function movePayload(payload, toIso, now = new Date()) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  if (!ISO_DAY.test(toIso || "")) throw new Error("Pick a day to move it to.");
+  const from = ISO_DAY.test(p.local_date || "") ? p.local_date : p.date;
+  const [y, m, d] = toIso.split("-").map(Number);
+  return {
+    ...p,
+    date: toIso, local_date: toIso, day: dayKeyOf(new Date(y, m - 1, d, 12)),
+    ...(p.moved_from ? {} : { moved_from: from || null }),
+    moved_by_coach_at: now.toISOString(),
+  };
+}
+
+/**
+ * The coach redoes a whole workout (ticks, skips, swaps) in place of what is
+ * there. Whoever sent it keeps it — a client's workout stays theirs, marked
+ * fixed by the coach — and the first version is kept in `original_exercises`.
+ */
+export function replacePayload(old, next, now = new Date()) {
+  const o = old && typeof old === "object" ? old : {};
+  const n = next && typeof next === "object" ? next : {};
+  const { logged_by, ...rest } = n;
+  return {
+    ...o,
+    ...rest,
+    ...(o.logged_by === "coach" ? { logged_by: "coach" } : {}),
+    // The day stays where it was; moving is its own action.
+    date: o.date || n.date, local_date: o.local_date || o.date || n.local_date,
+    original_exercises: o.original_exercises || o.exercises || [],
+    edited_by_coach_at: now.toISOString(),
+  };
+}
+
 /**
  * Everything the coach sees for a name-only client, built from their link
  * submissions, in the coach's units: the client may send pounds and inches,

@@ -85,6 +85,18 @@ export function createPreviewApi() {
     Sun: { type: "Rest", exercises: [] },
   };
   const submissions = [];
+  // `?coachpart` in the preview's address: today is the Pull day, and the
+  // coach has already logged its first three exercises with them.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("coachpart")) {
+    const now = new Date();
+    const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][now.getDay()];
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    plan[k] = plan.Tue;
+    submissions.push({ id: "preview-coach", at: new Date(now.getTime() - 3 * 3600e3).toISOString(), kind: "workout", payload: {
+      date, local_date: date, day: k, type: plan.Tue.type, logged_by: "coach", note: "",
+      exercises: plan.Tue.exercises.map((e, i) => ({ name: e.name, sets_planned: e.sets, sets_done: i < 3 ? e.sets : 0 })),
+    } });
+  }
   let connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] };
   // One shared report for last week, in the exact shape reportSnapshot() makes.
   // `?noreport` in the preview's address shows a link with none.
