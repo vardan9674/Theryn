@@ -16,7 +16,7 @@ import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { winsForSend } from "./sendWins.js";
-import { winWords, winsHeadline, winNumbers } from "../lib/workoutWins.js";
+import WinsPanel from "../components/WinsPanel.jsx";
 import StreakFire from "./StreakFire.jsx";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
 import { streakStats, streakWith, streakLabel, streakHeat } from "../coach/lib/streak.js";
@@ -1492,50 +1492,6 @@ function nextTraining(plan, from = new Date()) {
   return null;
 }
 
-/** What they did better than last time. Nothing at all when there's nothing: no "0 wins". */
-function Wins({ wins, unit }) {
-  if (!wins?.length) return null;
-  const shown = wins.slice(0, 4);
-  return (
-    <section className="lk-wins" aria-label="Better than last time">
-      <span className="lk-wins-h">Better than last time</span>
-      <p className="lk-wins-p">{winsHeadline(wins.length)}</p>
-      <ul className="lk-wins-list">
-        {shown.map((w, i) => <WinBadge key={w.name} win={w} unit={unit} delay={i} />)}
-      </ul>
-      {wins.length > shown.length && <small>And {wins.length - shown.length} more.</small>}
-    </section>
-  );
-}
-
-const BADGE_ICON = {
-  heavier: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>,
-  reps: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>,
-  longer: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></svg>,
-  more: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18l6-6 4 4 6-8" /></svg>,
-};
-
-/** One exercise's win: last time → this time, big, on a badge that pops in. */
-function WinBadge({ win, unit, delay = 0 }) {
-  const x = winNumbers(win, unit);
-  const tag = winWords(win, unit).tag;
-  return (
-    <li className={`lk-win ${win.kind}`} style={{ "--d": `${0.1 + delay * 0.08}s` }}
-      aria-label={`${win.name}: ${tag}. ${x.from} last time, ${x.to} ${x.what} now${x.note ? " " + x.note : ""}.`}>
-      <span className="lk-win-ic" aria-hidden="true">{BADGE_ICON[win.kind]}</span>
-      <span className="lk-win-txt" aria-hidden="true">
-        <b>{win.name}</b>
-        <span>{tag}{x.note ? ` · ${x.note}` : ""}</span>
-      </span>
-      <span className="lk-win-num" aria-hidden="true">
-        <span className="was">{x.from}</span>
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        <b>{x.to}</b><small>{x.what}</small>
-      </span>
-    </li>
-  );
-}
-
 /**
  * The streak's flame. It burns hotter as the number counts up, so a client
  * who just reached 7 watches it catch: bigger, more layers. The live fire
@@ -1600,7 +1556,7 @@ function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }
             <div><span>This month</span><b>{st.thisMonth}</b></div>
           </div>
         )}
-        {sent.kind === "workout" && <Wins wins={s.wins} unit={s.unit} />}
+        {sent.kind === "workout" && <WinsPanel wins={s.wins} unit={s.unit} />}
         {sent.kind === "workout" && <MuscleHeat exercises={s.worked} />}
         <div className="lk-card lk-keep"><Icon.Link size={20} /><span style={{ fontSize: 15, color: "var(--cx-tx2)", lineHeight: 1.45 }}>{next
           ? `Keep this link. ${next.label} is ${next.type}; tick it to make ${st.current + 1}.`
