@@ -39,6 +39,8 @@ import QuickWorkoutSheet from "./components/exercise/QuickWorkoutSheet.jsx";
 import EquipmentScreen from "./components/exercise/EquipmentScreen.jsx";
 import { findInLibrary, EQUIPMENT_LABEL } from "./lib/exerciseLibrary.js";
 import useEquipment from "./components/exercise/useEquipment.js";
+import LegalOverlay from "./legal/LegalOverlay.jsx";
+import { signInWithApple, isAppleCancel } from "./lib/appleSignIn.js";
 import { signInErrorFromUrl, friendlySignInError, addressWithoutSignInError } from "./lib/signInError";
 import { motion, useAnimation, useMotionValue, useTransform } from "framer-motion";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, TouchSensor } from "@dnd-kit/core";
@@ -4320,6 +4322,7 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
   const [selectedUnits, setSelectedUnits] = useState(profile.units || "imperial");
   const [saveState, setSaveState] = useState("idle"); // "idle" | "saved"
   const [showEquipment, setShowEquipment] = useState(false);
+  const [legalView, setLegalView] = useState(null); // "privacy" | "terms" | "delete"
   const { equipment } = useEquipment();
   const equipmentSummary = equipment.map((e) => EQUIPMENT_LABEL[e]).join(", ");
 
@@ -4466,12 +4469,21 @@ function ProfileScreen({ profile, setProfile, workoutHistory, onSignOut, onSwitc
           </div>
         </div>
         <div style={card}>
+          {[["privacy","Privacy policy"],["terms","Terms of use"]].map(([v,label]) => (
+            <button key={v} onClick={() => setLegalView(v)} style={{ display:"flex", width:"100%", justifyContent:"space-between", alignItems:"center", minHeight:"44px", background:"none", border:"none", padding:"4px 0", color:TX, fontSize:"16px", cursor:"pointer", textAlign:"left" }}>
+              <span>{label}</span><span aria-hidden="true" style={{ color:SB }}>›</span>
+            </button>
+          ))}
+        </div>
+        <div style={card}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"4px 0" }}>
             <span style={{ fontSize:"16px" }}>Sign Out</span>
             <button onClick={async () => { await supabase.auth.signOut(); onSignOut(); }} style={{ background:"none", border:"none", cursor:"pointer", fontSize:"16px", color:RED, fontWeight:"600", padding:0 }}>Sign Out</button>
           </div>
         </div>
+        <button onClick={() => setLegalView("delete")} style={{ display:"block", width:"100%", minHeight:"44px", background:"none", border:"none", color:SB, fontSize:"14px", textDecoration:"underline", textUnderlineOffset:"3px", cursor:"pointer", margin:"8px 0 24px" }}>Delete account</button>
       </div>
+      <LegalOverlay view={legalView} role="athlete" onClose={() => setLegalView(null)} onDeleted={() => { setLegalView(null); onSignOut(); }} />
     </div>
   );
 }
@@ -4505,6 +4517,21 @@ function SignInErrorNotice({ message, onRetry, onDismiss }) {
 function LoginScreen({ authError, onClearError }) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
+  const [legalView, setLegalView] = useState(null);
+
+  const handleAppleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithApple();
+      // iOS finishes here (onAuthStateChange takes over). Android and web
+      // finish through the browser redirect, like Google.
+      if (Capacitor.getPlatform() === "ios") setLoading(false);
+    } catch (err) {
+      if (!isAppleCancel(err)) setError(err?.message || "Apple sign-in failed. Please try again.");
+      setLoading(false);
+    }
+  };
 
   // When GymApp signals an auth error from the deep link handler, stop the spinner
   useEffect(() => {
@@ -4679,9 +4706,29 @@ function LoginScreen({ authError, onClearError }) {
           )}
         </button>
 
-        <div style={{ marginTop: 16, fontSize: 11, color: SB, textAlign: "center", letterSpacing: "0.02em" }}>
-          Free to start · No credit card required
+        {/* Sign in with Apple — App Review guideline 4.8 (offered alongside Google) */}
+        <button
+          onClick={handleAppleSignIn}
+          disabled={loading}
+          aria-label="Sign in with Apple"
+          style={{
+            marginTop: 10, background: "#FFFFFF", border: "none", borderRadius: 14, color: "#000",
+            fontWeight: 700, fontSize: 15, padding: "16px 20px", width: "100%",
+            cursor: loading ? "default" : "pointer", opacity: loading ? 0.6 : 1,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10, letterSpacing: "-0.01em",
+          }}
+        >
+          <svg width="16" height="19" viewBox="0 0 814 1000" aria-hidden="true"><path fill="#000" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>
+          Sign in with Apple
+        </button>
+
+        <div style={{ marginTop: 16, fontSize: 12, color: SB, textAlign: "center", lineHeight: 1.6 }}>
+          By continuing you agree to the{" "}
+          <button onClick={() => setLegalView("terms")} style={{ background: "none", border: "none", padding: 0, color: TX, textDecoration: "underline", fontSize: 12, cursor: "pointer" }}>Terms</button>
+          {" "}and{" "}
+          <button onClick={() => setLegalView("privacy")} style={{ background: "none", border: "none", padding: 0, color: TX, textDecoration: "underline", fontSize: 12, cursor: "pointer" }}>Privacy Policy</button>.
         </div>
+        <LegalOverlay view={legalView} onClose={() => setLegalView(null)} />
       </div>
     </div>
   );

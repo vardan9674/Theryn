@@ -32,7 +32,7 @@ async function syncToken(userId: string, token: string): Promise<void> {
   const platform: 'ios' | 'android' =
     Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
 
-  console.log('[push] syncing token for', platform, 'user', userId, 'token', token.slice(0, 20) + '...');
+  if (import.meta.env.DEV) console.log('[push] syncing token for', platform);
 
   const { error } = await supabase
     .from('device_tokens')
@@ -153,7 +153,7 @@ export function usePushNotifications(userId: string | null | undefined): void {
       // Token received from APNs/FCM
       void PushNotifications.addListener('registration', (t: Token) => {
         const uid = userIdRef.current;
-        console.log('[push] registration token received, uid:', uid);
+        if (import.meta.env.DEV) console.log('[push] registration token received');
         if (uid) void syncToken(uid, t.value);
       });
 
