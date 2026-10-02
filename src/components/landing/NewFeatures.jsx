@@ -173,7 +173,7 @@ export function Library() {
     <section className="tl-section nf-library" id="library" ref={ref}>
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <CoachBubble line="Stuck for an exercise?" clip="point" />
+          <CoachBubble line="Stuck for an exercise?" clip="idea" />
           <h2>{library ? library.length : "870"} exercises. <em>Tap the body.</em></h2>
           <p className="tl-lede">Every exercise shows what it works and how to do it.</p>
         </div>

@@ -460,7 +460,7 @@ function HowItWorks({ reduce }) {
     <section className="tl-section tl-band" id="how" ref={nearRef}>
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <CoachBubble line="So he sent her one link." clip="explain" />
+          <CoachBubble line="So he sent her one link." clip="idea" />
           <h2>Tap. Train. <em>Done.</em></h2>
         </div>
         <div className="tl-flow" ref={flowRef} tabIndex={0} aria-label="Athlete link screens. Scroll sideways.">
@@ -566,7 +566,7 @@ function CoachSide({ desktop, reduce }) {
     <section className="tl-section tl-band" id="coach">
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <CoachBubble line="Now your side of the link." clip="idea" />
+          <CoachBubble line="Now your side of the link." clip="point" />
           <h2>Build once. Send to everyone.</h2>
         </div>
         <div className="tl-tabs" role="tablist">
@@ -634,7 +634,7 @@ function Faq() {
   return (
     <section className="tl-section tl-faq-section" id="faq">
       <div className="tl-wrap">
-        <div className="tl-sec-head"><CoachBubble line="Ask away." clip="explain" /><h2>Before you ask.</h2></div>
+        <div className="tl-sec-head"><CoachBubble line="Ask away." clip="smile" /><h2>Before you ask.</h2></div>
         <div className="tl-faq">
           {FAQ.map(([q, a], i) => <details key={q} open={i === 0}><summary>{q}</summary><p>{a}</p></details>)}
         </div>
