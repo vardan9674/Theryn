@@ -319,12 +319,18 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
 
           <section className="rp-block">
             <span className="rp-eyebrow">What {first} will see</span>
-            {SECTION_LABELS.map(([k, label]) => (
-              <label key={k} className={`rp-check ${has[k] ? "" : "off"}`}>
-                <input type="checkbox" checked={Boolean(sections[k]) && has[k]} disabled={!has[k]} onChange={() => toggle(k)} />
-                <span>{label}{!has[k] && <small>Nothing to show this week</small>}{k === "body" && has[k] && <small>Off by default. Turn it on if {first} asked to see it.</small>}</span>
+            {/* Only sections with something in them get a box. A locked, greyed
+                box read as a button that didn't work; what's empty this week is
+                named once, below, instead. */}
+            {SECTION_LABELS.filter(([k]) => has[k]).map(([k, label]) => (
+              <label key={k} className="rp-check">
+                <input type="checkbox" checked={Boolean(sections[k])} onChange={() => toggle(k)} />
+                <span>{label}{k === "body" && <small>Off by default. Turn it on if {first} asked to see it.</small>}</span>
               </label>
             ))}
+            {SECTION_LABELS.some(([k]) => !has[k]) && (
+              <p className="cx-small cx-muted rp-empty">Nothing to show this week: {SECTION_LABELS.filter(([k]) => !has[k]).map(([, label]) => label.toLowerCase()).join(", ")}.</p>
+            )}
             <p className="cx-small cx-muted">Untick anything you'd rather not send. What Theryn noticed and the suggestions stay with you. They never go to {first}.</p>
           </section>
 
