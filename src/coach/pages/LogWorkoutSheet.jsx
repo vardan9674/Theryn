@@ -61,7 +61,7 @@ function stateFromWorkout(payload, planExercises, units) {
  * With `replacing` (a workout from the list), the sheet redoes that workout:
  * same day, opened as it was sent, and saving replaces it.
  */
-export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now, replacing = null }) {
+export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now, replacing = null, existing = [], canReplace = () => false, onExisting = null }) {
   const toast = useToast();
   // "Today" is the client's today (#95): a coach in India logging a US client's evening workout.
   const days = React.useMemo(() => recentDays(routine, now || new Date()), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,6 +106,8 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   const setsTotal = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : plannedSets(e)), 0);
   const setsDone = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : Math.min(ticks[i] || 0, plannedSets(e))), 0);
   const already = doneDates.has(date);
+  // What is already saved for this day, each with its own Edit, Replace and Remove.
+  const onDay = replacing ? [] : (existing || []).filter((w) => w.date === date);
   const dayInfo = days.find((x) => x.iso === date);
 
   const toggleExercise = (i) => { const full = plannedSets(exercises[i]); setTicks((t) => ({ ...t, [i]: (t[i] || 0) >= full ? 0 : full })); };
@@ -162,7 +164,7 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   const color = TYPE_COLORS[plan.type] || "var(--cx-tx2)";
   return (
     <Sheet open={open} onClose={onClose}
-      title={replacing ? `Redo ${firstName}'s ${DAY_LONG[plan.key]} workout` : `Log a workout for ${firstName}`}
+      title={replacing ? `Replace ${firstName}'s ${DAY_LONG[plan.key]} workout` : `Log a workout for ${firstName}`}
       subtitle={replacing ? "Tick what they actually did. Saving replaces the workout that's there now." : "Tick only what they did with you. They can send the rest through their link."}>
       <div className="lw">
         {!replacing && <div className="lw-days" role="group" aria-label="Which day">
@@ -173,11 +175,27 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
           ))}
         </div>}
 
+        {onDay.length > 0 && onExisting && (
+          <div className="lw-existing">
+            <span className="lw-existing-h">Already saved for this day</span>
+            {onDay.map((w) => (
+              <div key={w.submissionId} className="lw-existing-row">
+                <span><b>{w.byCoach ? "You logged" : `${firstName} sent`}</b> {w.type} · {w.totalSets} of {w.plannedSets || w.totalSets} sets{w.at ? ` · ${new Date(w.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</span>
+                <span className="lw-existing-acts">
+                  <button type="button" className="lw-act" onClick={() => onExisting(w, "edit")}>Edit</button>
+                  {canReplace(w) && <button type="button" className="lw-act" onClick={() => onExisting(w, "replace")}>Replace</button>}
+                  <button type="button" className="lw-act danger" onClick={() => onExisting(w, "remove")}>Remove</button>
+                </span>
+              </div>
+            ))}
+            {!plan.isRest && <small className="lw-hint">Or log more below. Tick only what isn't saved yet. It joins the same day.</small>}
+          </div>
+        )}
+        {already && !onDay.length && !replacing && !plan.isRest && <div className="lw-warn">{firstName} already has a workout on this day. Tick only what isn't in it. Both show as one day.</div>}
         {plan.isRest ? (
           <div className="lw-empty">Nothing was planned for {DAY_LONG[plan.key]}. Pick a workout day above.</div>
         ) : (
           <>
-            {already && !replacing && <div className="lw-warn">{firstName} already has a workout on this day. Tick only what isn't in it. Both show as one day.</div>}
             {!changed && (
               <>
                 <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>

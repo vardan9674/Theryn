@@ -309,12 +309,27 @@ function ProgressTab({ data, row, actions }) {
   const [moving, setMoving] = React.useState(null);   // the workout being put on another day
   const [redoing, setRedoing] = React.useState(null); // the workout being redone in full
   const canEdit = row.link.manual && typeof coachData.updateSubmission === "function";
-  // Redo opens the plan for that day, so only when the workout is that day's plan.
-  const canRedo = (w) => canEdit && routine && (() => { const t = todayFromPlan(routine, new Date(w.date + "T12:00:00")); return !t.isRest && String(t.type).toLowerCase() === String(w.type).toLowerCase(); })();
+  // Replace reopens the plan for that day, so only when the workout is that
+  // day's plan: same type, and its exercises are the plan's. Otherwise the
+  // sheet would open empty and saving would drop what was done.
+  const canRedo = (w) => canEdit && routine && (() => {
+    const t = todayFromPlan(routine, new Date(w.date + "T12:00:00"));
+    if (t.isRest || String(t.type).toLowerCase() !== String(w.type).toLowerCase()) return false;
+    const key = (n) => String(n || "").trim().toLowerCase();
+    const plan = new Set((t.exercises || []).map((e) => key(e?.name)));
+    const done = w.exercises.filter((e) => e.done > 0);
+    return done.length > 0 && done.every((e) => plan.has(key(e.swappedFrom || e.name)));
+  })();
   const canLog = row.link.manual && typeof coachData.logWorkoutForClient === "function" && routine && DAYS.some((d) => routine[d]?.type && routine[d].type !== "Rest" && (routine[d].exercises || []).length);
   const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
+  // Every workout already saved, one per record, so "Log a workout" can offer
+  // to edit, replace or remove what is on a day instead of only adding to it.
+  const saved = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail).filter((w) => w.submissionId), [history, data.submissions]);
   const sheet = canLog ? (
     <LogWorkoutSheet open={logging} now={cnow} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
+      existing={canEdit ? saved : []}
+      canReplace={(w) => canRedo(w)}
+      onExisting={(w, what) => { setLogging(false); if (what === "edit") setEditing(w); else if (what === "replace") setRedoing(w); else if (what === "remove") setRemoving(w); }}
       onClose={() => setLogging(false)}
       onSave={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
   ) : null;
@@ -335,8 +350,8 @@ function ProgressTab({ data, row, actions }) {
         {w.exercises.some((e) => e.sets.some((s) => s.suspect)) && <span style={{ color: "#F5A742", display: "block" }}>A number looks off. Fix it if it's a typo.</span>}
       </span>
       <span className="cx-part-acts">
-        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Fix numbers</Button>}
-        {canRedo(w) && <Button size="sm" onClick={() => setRedoing(w)}>Redo</Button>}
+        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Edit</Button>}
+        {canRedo(w) && <Button size="sm" onClick={() => setRedoing(w)}>Replace</Button>}
         {canEdit && <Button size="sm" onClick={() => setMoving(w)}>Move</Button>}
         {canEdit && <Button size="sm" onClick={() => setRemoving(w)}>Remove</Button>}
       </span>
@@ -371,7 +386,7 @@ function ProgressTab({ data, row, actions }) {
         onClose={() => setRedoing(null)} onSave={(payload) => saveOver(redoing)(replacePayload(redoing.payload, payload))} />}
       <Confirm open={Boolean(removing)} danger busy={removeBusy} confirmLabel="Remove"
         title={removing?.byCoach ? `Remove the workout you logged for ${firstName}?` : `Remove the workout ${firstName} sent?`}
-        body={removing ? `${shortDate(removing.date)} · ${removing.type} · ${workoutSummary(removing)}. ${removing.byCoach ? "" : `It goes from ${firstName}'s link too. `}This can't be undone. To change it instead, use Fix numbers, Redo or Move.` : ""}
+        body={removing ? `${shortDate(removing.date)} · ${removing.type} · ${workoutSummary(removing)}. ${removing.byCoach ? "" : `It goes from ${firstName}'s link too. `}This can't be undone. To change it instead, use Edit, Replace or Move.` : ""}
         onConfirm={() => removeWorkout(removing)} onClose={() => !removeBusy && setRemoving(null)} />
     </>
   ) : null;
@@ -421,7 +436,7 @@ function ProgressTab({ data, row, actions }) {
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                               {e.planned > 0 && <span className="cx-small"><b style={{ color: "var(--cx-tx)" }}>{e.done}/{e.planned}</b> sets{w.viaLink && !e.timed && e.sets.some((x) => x.w) ? <span className="cx-muted"> · {wUnit} × reps</span> : null}</span>}
-                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Fix numbers to correct it." : s.changed ? "Different from the plan" : undefined}>{s.k === "warmup" ? "W " : s.k === "drop" ? "D " : ""}{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
+                              <span className="cx-setchips">{e.sets.map((s, j) => <span key={j} className={`cx-setchip${s.changed ? " changed" : ""}${s.suspect ? " suspect" : ""}`} title={s.suspect ? "Looks like a typo. Tap Edit to correct it." : s.changed ? "Different from the plan" : undefined}>{s.k === "warmup" ? "W " : s.k === "drop" ? "D " : ""}{s.t ? (s.w ? `${s.t} · ${s.w}` : s.t) : s.w ? `${s.w}×${s.r || "?"}` : s.r ? `${s.r} reps` : "✓"}</span>)}</span>
                             </span>
                           : <>
                               <b style={{ color: e.skipped ? "var(--cx-mu)" : "var(--cx-tx)" }}>{e.done}{e.planned ? `/${e.planned}` : ""}</b> sets

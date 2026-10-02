@@ -61,7 +61,7 @@ export default function EditWorkoutSheet({ open, workout, firstName, unit, onClo
 
   const planW = (ex, i) => ex.plan_sets?.[i]?.w ?? ex.weight_target ?? null;
   return (
-    <Sheet open={open} onClose={onClose} title={`Fix ${firstName}'s workout`} subtitle={`${shortDate(workout.date)} · ${payload.type || "Workout"}. Change any number that's wrong; ${firstName}'s other entries stay as they sent them.`}>
+    <Sheet open={open} onClose={onClose} title={`Edit ${firstName}'s workout`} subtitle={`${shortDate(workout.date)} · ${payload.type || "Workout"}. Change any number that's wrong; ${firstName}'s other entries stay as they sent them.`}>
       <div className="ew">
         {(payload.exercises || []).map((ex, ei) => {
           const list = rows[ei];
