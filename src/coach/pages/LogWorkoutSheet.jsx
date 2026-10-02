@@ -194,12 +194,15 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
       title={replacing ? `Replace ${firstName}'s ${DAY_LONG[plan.key]} workout` : `Log a workout for ${firstName}`}
       subtitle={replacing ? "Tick what they actually did. Saving replaces the workout that's there now." : "Tick only what they did with you. They can send the rest through their link."}>
       <div className="lw">
-        {!replacing && <div className="lw-days" role="group" aria-label="Which day">
+        {!replacing && <div className="lw-step">
+          <span className="lw-step-h"><i>1</i>Which day?</span>
+          <div className="lw-days" role="group" aria-label="Which day">
           {days.map((x) => (
             <button key={x.iso} type="button" className={`lw-day ${x.rest ? "rest" : ""}`} aria-pressed={x.iso === date} onClick={() => setDate(x.iso)}>
               <b>{x.label}</b><small>{x.rest ? "Rest" : x.type}</small>{doneDates.has(x.iso) && <i aria-label="already logged"><Icon.Check size={10} /></i>}
             </button>
           ))}
+          </div>
         </div>}
 
         {onDay.length > 0 && onExisting && (
@@ -224,8 +227,8 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
 
         {/* What they did: the day's plan, another workout from the plan, or a rest. */}
         {workoutsInPlan.length > 0 && (
-          <div className="lw-kinds" role="group" aria-label="What did they do">
-            <span className="lw-kinds-h">What did they do?</span>
+          <div className="lw-kinds lw-step" role="group" aria-label="What did they do">
+            <span className="lw-step-h"><i>{replacing ? 1 : 2}</i>What did they do?</span>
             <div className="lw-kinds-row">
               {workoutsInPlan.map((w) => {
                 const isPlanned = !planned.isRest && w.type.toLowerCase() === planned.type.toLowerCase();
@@ -237,9 +240,18 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
                 );
               })}
               {!replacing && onSaveRest && !planned.isRest && !restMarked && (
-                <button type="button" className="lw-kind" aria-pressed={resting} onClick={() => setKind(resting ? null : "Rest")}>Rested</button>
+                <>
+                  <span className="lw-kinds-or">or</span>
+                  <button type="button" className="lw-kind lw-kind-rest" aria-pressed={resting} onClick={() => setKind(resting ? null : "Rest")}>They rested</button>
+                </>
               )}
             </div>
+            {kind && !resting && (
+              <div className="lw-swapnote">
+                <span>Logging <b>{plan.type}</b> {planned.isRest ? "on a rest day" : <>instead of <b>{planned.type}</b></>}. Their plan stays the same.</span>
+                <button type="button" className="lw-linkbtn" onClick={() => setKind(null)}>Undo</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -255,6 +267,7 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
           <div className="lw-empty">Nothing was planned for {DAY_LONG[plan.key]}. If they trained, pick what they did above.</div>
         ) : (
           <>
+            <span className="lw-step-h"><i>{replacing ? 2 : 3}</i>Tick the sets they did</span>
             {!changed && (
               <>
                 <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>
