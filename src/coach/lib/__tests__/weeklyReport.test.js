@@ -290,6 +290,21 @@ describe("what the client gets when the coach shares it", () => {
   });
 });
 
+describe("reopening a report already shared", () => {
+  it("keeps the coach's choices", async () => {
+    const { sectionsFrom } = await import("../weeklyReport.js");
+    expect(sectionsFrom({ v: 2, workouts: {}, wins: {}, muscles: {}, note: "x" })).toEqual({ workouts: true, wins: true, volume: false, muscles: true, gap: false, body: false, note: true });
+  });
+  it("turns on what an older report didn't have yet, so sharing again sends it all", async () => {
+    const { sectionsFrom } = await import("../weeklyReport.js");
+    expect(sectionsFrom({ v: 1, workouts: {}, muscles: {}, note: "x" })).toEqual({ workouts: true, wins: true, volume: true, muscles: true, gap: false, body: false, note: true });
+  });
+  it("starts from the defaults when nothing was shared", async () => {
+    const { sectionsFrom } = await import("../weeklyReport.js");
+    expect(sectionsFrom(null)).toEqual(DEFAULT_SECTIONS);
+  });
+});
+
 describe("small pieces", () => {
   it("rates a muscle's week against its plan", () => {
     expect(gapStatus(9, 10)).toBe("on");
