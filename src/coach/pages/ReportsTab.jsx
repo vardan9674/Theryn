@@ -3,7 +3,7 @@ import { Button, Icon, Sheet, Pill, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import BodyMap from "../../components/BodyMap.jsx";
 import { GROUP_LABEL } from "../../lib/exerciseLibrary.js";
-import { buildWeeklyReport, defaultReportWeek, weekLabel, addDays, reportSnapshot, reportMessage, applySuggestion, volumeLine, DEFAULT_SECTIONS } from "../lib/weeklyReport.js";
+import { buildWeeklyReport, defaultReportWeek, weekLabel, addDays, reportSnapshot, reportMessage, applySuggestion, volumeLine, sectionsFrom } from "../lib/weeklyReport.js";
 import { clientNow } from "../lib/clientClock.js";
 import { linkUrl, whatsappUrl } from "../lib/clientLinks.js";
 import { ReportView, VolumeBars } from "../../link/LinkReport.jsx";
@@ -155,10 +155,7 @@ function ReportReview({ open, onClose, report, data, row, first, shared, onShare
   const clientId = row.link.athlete_id;
   const prev = shared?.snapshot;
   // Starting from what was shared keeps a coach's own edits when they reopen it.
-  const [sections, setSections] = React.useState(() => prev
-    // A report shared before workouts could be left out always had them.
-    ? { workouts: prev.v < 2 || Boolean(prev.workouts), wins: Boolean(prev.wins || prev.best), volume: Boolean(prev.volume), muscles: Boolean(prev.muscles), gap: Boolean(prev.gap), body: Boolean(prev.body), note: Boolean(prev.note || prev.focus) }
-    : DEFAULT_SECTIONS);
+  const [sections, setSections] = React.useState(() => sectionsFrom(prev));
   const [note, setNote] = React.useState(prev?.note ?? report.draftNote);
   const [focus, setFocus] = React.useState(prev?.focus ?? report.draftFocus);
   const [mode, setMode] = React.useState("review"); // review | preview | share
@@ -359,7 +356,8 @@ function ShareStep({ row, first, start, snapshot, onBack, onShared, onDone, onMa
   const clientId = row.link.athlete_id;
   const [link, setLink] = React.useState({ loading: true, link: null, token: null });
   const [busy, setBusy] = React.useState(false);
-  const [done, setDone] = React.useState(false);
+  // Once shared: the message that goes with it, and how the coach meant to send it.
+  const [done, setDone] = React.useState(null); // { text, how }
 
   React.useEffect(() => {
     let alive = true;
@@ -370,27 +368,25 @@ function ShareStep({ row, first, start, snapshot, onBack, onShared, onDone, onMa
 
   const message = (id) => (link.token ? reportMessage(first, `${linkUrl(link.token)}?r=${id}`) : `Hi ${first}, your week is ready. Open your Theryn link to see it.`);
 
+  // Save first, then send. WhatsApp opens from its own button on the next
+  // screen, a plain link the coach taps: opening it from here after waiting
+  // for the save left iPhone Safari on a blank tab, with the save paused
+  // behind it, and the client never got the message.
   async function share(how) {
     setBusy(true);
-    // Opened now, while the tap still counts, or the browser blocks it once we've waited.
-    const pre = how === "whatsapp" && !api.isNative ? window.open("", "_blank") : null;
-    if (pre) pre.opener = null;
     try {
       const res = await api.shareReport(clientId, start, snapshot);
       const text = message(res.id);
-      if (how === "whatsapp") {
-        const wa = whatsappUrl(text);
-        if (pre) pre.location.href = wa; else window.open(wa, "_blank", "noopener");
-      } else {
-        try { await navigator.clipboard.writeText(text); toast(`Shared, and the message is copied. Paste it to ${first}.`); }
-        catch { toast(`Shared. ${first} can open it on their link.`); }
-      }
-      setDone(true);
+      if (how === "copy") await copy(text);
+      setDone({ text, how });
       onShared?.();
     } catch (e) {
-      pre?.close();
       toast(e.message || "Could not share it", "error");
     } finally { setBusy(false); }
+  }
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); toast(`Message copied. Paste it to ${first}.`); }
+    catch { toast(`Couldn't copy it. ${first} can still open it on their link.`); }
   }
 
   async function saveImage() {
@@ -405,8 +401,15 @@ function ShareStep({ row, first, start, snapshot, onBack, onShared, onDone, onMa
       <div className="cx-col rp-done">
         <span className="rp-done-tick" aria-hidden="true"><Icon.Check size={26} /></span>
         <h3>Shared with {first}.</h3>
-        <p className="cx-muted">It's on their Theryn link now. You'll see here when they open it, and you can stop sharing it any time.</p>
-        <Button variant="primary" block onClick={onDone}>Done</Button>
+        <p className="cx-muted">It's on their Theryn link now. {done.how === "whatsapp" ? `Send ${first} the message so they know it's there.` : `You'll see here when they open it.`}</p>
+        {done.how === "whatsapp" && (
+          <>
+            <a className="cx-btn cx-btn-primary cx-btn-block" href={whatsappUrl(done.text)} target="_blank" rel="noopener noreferrer"><Icon.Messages size={18} />Send on WhatsApp</a>
+            <p className="cx-small cx-muted rp-center">Opens WhatsApp with the message ready. Pick {first}'s chat.</p>
+          </>
+        )}
+        <Button block icon={<Icon.Copy size={16} />} onClick={() => copy(done.text)}>Copy message</Button>
+        <Button block onClick={onDone}>Done</Button>
       </div>
     );
   }
@@ -427,7 +430,7 @@ function ShareStep({ row, first, start, snapshot, onBack, onShared, onDone, onMa
       ) : (
         <>
           <Button variant="primary" block disabled={busy || link.loading} icon={<Icon.Messages size={18} />} onClick={() => share("whatsapp")}>{busy ? "Sharing…" : "Share and send on WhatsApp"}</Button>
-          <p className="cx-small cx-muted rp-center">Opens WhatsApp with the message ready. Pick {first}'s chat.</p>
+          <p className="cx-small cx-muted rp-center">Shares it, then gives you the WhatsApp button with the message ready.</p>
           <div className="cx-actions-2">
             <Button disabled={busy || link.loading} icon={<Icon.Copy size={16} />} onClick={() => share("copy")}>Share and copy message</Button>
             <Button icon={<Icon.Download size={16} />} onClick={saveImage}>Save as image</Button>

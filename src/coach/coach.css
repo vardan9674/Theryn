@@ -119,7 +119,8 @@
 }
 .cx-btn:hover { background: var(--cx-s2); }
 .cx-btn:active { transform: scale(0.98); }
-.cx-app .cx-btn-primary { background: var(--cx-a); color: var(--cx-bg); border-color: var(--cx-a); font-weight: 700; }
+/* Sheets open outside .cx-app, so they need saying too. */
+.cx-app .cx-btn-primary, .cx-sheet .cx-btn-primary { background: var(--cx-a); color: var(--cx-bg); border-color: var(--cx-a); font-weight: 700; }
 .cx-btn-primary:hover { background: #D9FF4D; }
 .cx-btn-soft { background: var(--cx-s2); border-color: var(--cx-s2); }
 .cx-btn-soft:hover { background: var(--cx-s3); }
@@ -946,3 +947,4 @@
 .rp-review .lk-vol-col.now .lk-vol-bar i { background: var(--cx-a); }
 .rp-review .lk-vol-x { font-size: 11px; color: var(--cx-mu); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rp-review .lk-vol-col.now .lk-vol-x { color: var(--cx-tx); font-weight: 700; }
+.rp-done a.cx-btn { text-decoration: none; }

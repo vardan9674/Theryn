@@ -506,6 +506,27 @@ export function applySuggestion(routine, s) {
 // it on: weight is the one a client may not want sent to them.
 export const DEFAULT_SECTIONS = { workouts: true, wins: true, volume: true, muscles: true, gap: true, body: false, note: true };
 export const MAX_WINS = 5;
+
+/**
+ * The sections a coach starts from when they reopen a report they already
+ * shared: what they chose then. A report shared before a section existed
+ * (v1 had no workouts toggle, wins or weight lifted) starts with that section
+ * as a new report would, so "Share again" sends the whole report, not the
+ * old cut of it.
+ */
+export function sectionsFrom(prev) {
+  if (!prev) return { ...DEFAULT_SECTIONS };
+  const old = !(Number(prev.v) >= 2);
+  return {
+    workouts: old ? DEFAULT_SECTIONS.workouts : Boolean(prev.workouts),
+    wins: old ? DEFAULT_SECTIONS.wins : Boolean(prev.wins),
+    volume: old ? DEFAULT_SECTIONS.volume : Boolean(prev.volume),
+    muscles: Boolean(prev.muscles),
+    gap: Boolean(prev.gap),
+    body: Boolean(prev.body),
+    note: Boolean(prev.note || prev.focus),
+  };
+}
 const clip = (s, n) => String(s || "").trim().slice(0, n);
 
 /**
