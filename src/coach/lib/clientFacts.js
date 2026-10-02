@@ -34,9 +34,11 @@ export function lastWorkoutTone(history, now = new Date()) {
 
 /**
  * Week starting Monday: which planned days are done, missed (past and not
- * done) or upcoming. Rest days are not planned.
+ * done) or upcoming. Rest days are not planned, and nor is a day the coach
+ * marked as rested (`rested`, ISO dates).
  */
-export function weekProgress(history, routine, now = new Date()) {
+export function weekProgress(history, routine, now = new Date(), rested = []) {
+  const off = new Set(rested || []);
   const monday = startOfWeek(now);
   const todayIso = isoDate(now);
   const doneDates = new Set((history || []).map((h) => h.date));
@@ -45,10 +47,11 @@ export function weekProgress(history, routine, now = new Date()) {
     d.setDate(monday.getDate() + i);
     const iso = isoDate(d);
     const type = routine?.[key]?.type;
-    const planned = Boolean(type) && type !== "Rest";
+    const restedDay = off.has(iso);
+    const planned = Boolean(type) && type !== "Rest" && !restedDay;
     const done = doneDates.has(iso);
     const isPast = iso < todayIso;
-    return { key, iso, planned, done, isPast, missed: planned && isPast && !done };
+    return { key, iso, planned, done, isPast, rested: restedDay, missed: planned && isPast && !done };
   });
   const plannedDays = days.filter((d) => d.planned);
   const done = plannedDays.filter((d) => d.done).length + days.filter((d) => !d.planned && d.done).length;
@@ -56,9 +59,9 @@ export function weekProgress(history, routine, now = new Date()) {
 }
 
 /** Routine streak in days: worked out or rested-on-rest-day, walking back from today. */
-export function routineStreak(history, routine, now = new Date()) {
+export function routineStreak(history, routine, now = new Date(), rested = []) {
   if (!history || history.length === 0 || !routine) return 0;
-  return streakStats(history.map((w) => w.date), routine, now).current;
+  return streakStats(history.map((w) => w.date), routine, now, rested).current;
 }
 
 /**
@@ -68,8 +71,8 @@ export function routineStreak(history, routine, now = new Date()) {
  */
 export function whatToDo(data, now = new Date()) {
   if (!data) return { text: "", severity: null, tab: "plan", color: null };
-  const { history, routine, weights, measurements } = data;
-  const streak = routineStreak(history, routine, now);
+  const { history, routine, weights, measurements, restDates } = data;
+  const streak = routineStreak(history, routine, now, restDates);
   const signals = detectSignals({ history, routine, weights, measurements, streak, now });
   const sum = summarizeForRow(signals);
   if (sum.primaryLine) {

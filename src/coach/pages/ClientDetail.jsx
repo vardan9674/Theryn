@@ -10,7 +10,7 @@ import { fmtMoney } from "../../hooks/usePayments.ts";
 import { AthleteAttendanceCalendar, AthleteVolumeChart, AthletePRTimeline } from "../../components/coach/AthleteDepth.jsx";
 import { attachSubmissions, workoutDetail, workoutSummary, lastSetsFor, setsLine, mergeSameDay, partsLine } from "../lib/workouts.js";
 import { planTemplate } from "../lib/manualTemplates.js";
-import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage, todayFromPlan, replacePayload } from "../lib/clientLinks.js";
+import { MEASUREMENT_FIELDS, inviteUrl, inviteMessage, planForDay, replacePayload, isRestMark, submissionDate } from "../lib/clientLinks.js";
 import LogWorkoutSheet from "./LogWorkoutSheet.jsx";
 import { clientNow, theirTimeNote } from "../lib/clientClock.js";
 import EditWorkoutSheet from "./EditWorkoutSheet.jsx";
@@ -309,11 +309,11 @@ function ProgressTab({ data, row, actions }) {
   const [moving, setMoving] = React.useState(null);   // the workout being put on another day
   const [redoing, setRedoing] = React.useState(null); // the workout being redone in full
   const canEdit = row.link.manual && typeof coachData.updateSubmission === "function";
-  // Replace reopens the plan for that day, so only when the workout is that
-  // day's plan: same type, and its exercises are the plan's. Otherwise the
-  // sheet would open empty and saving would drop what was done.
-  const canRedo = (w) => canEdit && routine && (() => {
-    const t = todayFromPlan(routine, new Date(w.date + "T12:00:00"));
+  // Replace reopens the plan's workout of that type (the day's own, or the one
+  // they swapped to), so only when the exercises are that workout's. Otherwise
+  // the sheet would open empty and saving would drop what was done.
+  const canRedo = (w) => canEdit && routine && !w.rest && (() => {
+    const t = planForDay(routine, new Date(w.date + "T12:00:00"), w.type);
     if (t.isRest || String(t.type).toLowerCase() !== String(w.type).toLowerCase()) return false;
     const key = (n) => String(n || "").trim().toLowerCase();
     const plan = new Set((t.exercises || []).map((e) => key(e?.name)));
@@ -324,12 +324,18 @@ function ProgressTab({ data, row, actions }) {
   const logButton = canLog ? <Button variant="soft" icon={<Icon.Check size={16} />} onClick={() => setLogging(true)}>Log a workout for {firstName}</Button> : null;
   // Every workout already saved, one per record, so "Log a workout" can offer
   // to edit, replace or remove what is on a day instead of only adding to it.
-  const saved = React.useMemo(() => attachSubmissions(history || [], data.submissions).map(workoutDetail).filter((w) => w.submissionId), [history, data.submissions]);
+  // Days marked as rested: not workouts, but listed with them so they can be moved or removed.
+  const restMarks = React.useMemo(() => (data.submissions || []).filter((s) => s.kind === "workout" && isRestMark(s)).map((s) => ({
+    id: s.id, submissionId: s.id, date: submissionDate(s), type: "Rest", rest: true, byCoach: true, at: s.submitted_at || null,
+    payload: s.payload, exercises: [], totalSets: 0, plannedSets: 0, note: (s.payload?.note || "").trim(),
+  })), [data.submissions]);
+  const saved = React.useMemo(() => [...attachSubmissions(history || [], data.submissions).map(workoutDetail).filter((w) => w.submissionId), ...restMarks], [history, data.submissions, restMarks]);
   const sheet = canLog ? (
     <LogWorkoutSheet open={logging} now={cnow} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={profile?.unit_system === "metric" ? "kg" : "lb"}
       existing={canEdit ? saved : []}
       canReplace={(w) => canRedo(w)}
-      onExisting={(w, what) => { setLogging(false); if (what === "edit") setEditing(w); else if (what === "replace") setRedoing(w); else if (what === "remove") setRemoving(w); }}
+      onExisting={(w, what) => { setLogging(false); if (what === "edit") setEditing(w); else if (what === "replace") setRedoing(w); else if (what === "move") setMoving(w); else if (what === "remove") setRemoving(w); }}
+      onSaveRest={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }}
       onClose={() => setLogging(false)}
       onSave={async (payload) => { await coachData.logWorkoutForClient(row.link.athlete_id, payload); actions?.reloadClient?.(row.link.athlete_id); }} />
   ) : null;
@@ -350,7 +356,7 @@ function ProgressTab({ data, row, actions }) {
         {w.exercises.some((e) => e.sets.some((s) => s.suspect)) && <span style={{ color: "#F5A742", display: "block" }}>A number looks off. Fix it if it's a typo.</span>}
       </span>
       <span className="cx-part-acts">
-        {canEdit && <Button size="sm" onClick={() => setEditing(w)}>Edit</Button>}
+        {canEdit && !w.rest && <Button size="sm" onClick={() => setEditing(w)}>Edit</Button>}
         {canRedo(w) && <Button size="sm" onClick={() => setRedoing(w)}>Replace</Button>}
         {canEdit && <Button size="sm" onClick={() => setMoving(w)}>Move</Button>}
         {canEdit && <Button size="sm" onClick={() => setRemoving(w)}>Remove</Button>}
@@ -358,18 +364,20 @@ function ProgressTab({ data, row, actions }) {
     </div>
   );
   const partLabel = (w) => {
+    if (w.rest) return "You marked this day as rested. It isn't counted as missed.";
     const what = `${plural(exCount(w), "exercise")}${w.at ? ` at ${clock(w.at)}` : ""}`;
     if (w.byCoach) return `You logged ${what}.`;
     return w.editedByCoach ? `${firstName} sent ${what}. You changed it.` : `${firstName} sent ${what}.`;
   };
   const unit = profile?.unit_system === "metric" ? "kg" : "lbs";
   const wUnit = profile?.unit_system === "metric" ? "kg" : "lb";
-  const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine, cnow), [history, routine, cnow]);
+  const st = React.useMemo(() => streakStats((history || []).map((h) => h.date), routine, cnow, data.restDates), [history, routine, cnow, data.restDates]);
   // Each workout with what the client actually did: link submissions carry planned vs done sets, weights used and the note.
   // A day logged in parts (the coach's and the client's) reads as one workout.
-  const workouts = React.useMemo(() => mergeSameDay(attachSubmissions(history || [], data.submissions).map(workoutDetail)), [history, data.submissions]);
-  const week = React.useMemo(() => weekProgress(history || [], routine, cnow), [history, routine, cnow]);
-  const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at, cnow), [history, routine, row.link.created_at, cnow]);
+  const workouts = React.useMemo(() => [...mergeSameDay(attachSubmissions(history || [], data.submissions).map(workoutDetail)), ...restMarks]
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)), [history, data.submissions, restMarks]);
+  const week = React.useMemo(() => weekProgress(history || [], routine, cnow, data.restDates), [history, routine, cnow, data.restDates]);
+  const cons = React.useMemo(() => consistencyStats((history || []).map((h) => h.date), routine, row.link.created_at, cnow, data.restDates), [history, routine, row.link.created_at, cnow, data.restDates]);
   const efforts = workouts.filter((w) => w.feel).slice(0, 5).map((w) => w.feel); // newest first
   const [openId, setOpenId] = React.useState(null);
   React.useEffect(() => { setOpenId(workouts[0]?.id || null); }, [row.link.athlete_id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -385,8 +393,8 @@ function ProgressTab({ data, row, actions }) {
       {redoing && <LogWorkoutSheet open replacing={redoing} now={cnow} clientId={row.link.athlete_id} firstName={firstName} routine={routine} history={history} unit={unitShort}
         onClose={() => setRedoing(null)} onSave={(payload) => saveOver(redoing)(replacePayload(redoing.payload, payload))} />}
       <Confirm open={Boolean(removing)} danger busy={removeBusy} confirmLabel="Remove"
-        title={removing?.byCoach ? `Remove the workout you logged for ${firstName}?` : `Remove the workout ${firstName} sent?`}
-        body={removing ? `${shortDate(removing.date)} · ${removing.type} · ${workoutSummary(removing)}. ${removing.byCoach ? "" : `It goes from ${firstName}'s link too. `}This can't be undone. To change it instead, use Edit, Replace or Move.` : ""}
+        title={removing?.rest ? `Remove the rest day on ${removing ? shortDate(removing.date) : ""}?` : removing?.byCoach ? `Remove the workout you logged for ${firstName}?` : `Remove the workout ${firstName} sent?`}
+        body={removing?.rest ? "The day goes back to planned. If they didn't train, it counts as missed." : removing ? `${shortDate(removing.date)} · ${removing.type} · ${workoutSummary(removing)}. ${removing.byCoach ? "" : `It goes from ${firstName}'s link too. `}This can't be undone. To change it instead, use Edit, Replace or Move.` : ""}
         onConfirm={() => removeWorkout(removing)} onClose={() => !removeBusy && setRemoving(null)} />
     </>
   ) : null;
@@ -422,8 +430,8 @@ function ProgressTab({ data, row, actions }) {
             <div key={w.id} className="cx-workout" style={{ borderBottom: "1px solid var(--cx-bd)" }}>
               <button type="button" className="cx-workout-hd cx-card-pad" onClick={() => setOpenId(isOpen ? null : w.id)} aria-expanded={isOpen}>
                 <span className="cx-col" style={{ gap: 2, minWidth: 0, textAlign: "left" }}>
-                  <span className="cx-row" style={{ gap: 8, flexWrap: "wrap" }}><b style={{ whiteSpace: "nowrap" }}>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.merged && !w.byCoach ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>you + {firstName}</span> : w.byCoach ?<span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>logged by you</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
-                  <span className="cx-small cx-muted">{workoutSummary(w)}{w.merged ? `: ${partsLine(w, firstName)}` : w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} skipped` : "some sets missed"}` : ""}</span>
+                  <span className="cx-row" style={{ gap: 8, flexWrap: "wrap" }}><b style={{ whiteSpace: "nowrap" }}>{shortDate(w.date)}</b><Pill color={color}>{w.type}</Pill>{w.insteadOf && w.insteadOf !== "Rest" ? <span className="cx-small cx-muted">instead of {w.insteadOf}</span> : null}{w.editedByCoach && !w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>fixed by you</span> : null}{w.merged && !w.byCoach ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>you + {firstName}</span> : w.byCoach ? <span className="cx-tag" style={{ color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }}>{w.rest ? "marked by you" : "logged by you"}</span> : w.viaLink ? <span className="cx-tag" style={{ color: "var(--cx-a)", borderColor: "rgba(200,255,0,0.35)" }}>via link</span> : <span className="cx-tag">in app</span>}</span>
+                  <span className="cx-small cx-muted">{w.rest ? "Rested. Not counted as missed." : workoutSummary(w)}{w.rest ? "" : w.merged ? `: ${partsLine(w, firstName)}` : w.plannedSets > 0 && w.totalSets < w.plannedSets ? ` · ${w.exercises.filter((e) => e.skipped).length ? `${w.exercises.filter((e) => e.skipped).length} ${w.byCoach ? "not done" : "skipped"}` : "some sets missed"}` : ""}</span>
                 </span>
                 <Icon.Down />
               </button>
@@ -431,7 +439,7 @@ function ProgressTab({ data, row, actions }) {
                 <div className="cx-card-pad" style={{ paddingTop: 0 }}>
                   {w.exercises.map((e, i) => (
                     <div key={i} className="cx-exrow" style={{ alignItems: "flex-start", padding: "6px 0", opacity: e.skipped ? 0.55 : 1 }}>
-                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.band && <span className="cx-small cx-muted"> · {e.band} band</span>}{e.skipped && <span className="cx-small cx-muted"> · skipped</span>}{w.merged && e.done > 0 && <span className="cx-by">{e.by === "coach" ? "you" : firstName}</span>}</span>
+                      <span>{e.name}{e.addedByClient && <span className="cx-tag" style={{ marginLeft: 6, color: "#8FB8FF", borderColor: "rgba(143,184,255,0.4)" }} title="They added this themselves. It isn't in your plan.">added by them</span>}{e.swappedFrom && <span className="cx-small cx-muted"> · instead of {e.swappedFrom}</span>}{e.band && <span className="cx-small cx-muted"> · {e.band} band</span>}{e.skipped && <span className="cx-small cx-muted"> · {w.byCoach || e.by === "coach" ? "not done" : "skipped"}</span>}{w.merged && e.done > 0 && <span className="cx-by">{e.by === "coach" ? "you" : firstName}</span>}</span>
                       <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                         {e.sets.length > 0
                           ? <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>

@@ -153,7 +153,7 @@ export function createSupabaseCoachData({ authUser, profile, setProfile, onSignO
         const linked = linkClientData(subs, { plan: row.plan, coachUnits: u });
         // Target weights in this client's units (the editor saves them stamped with those units).
         const routine = row.plan ? convertPlan(row.plan, u, { assumeFrom: u }) : base.routine;
-        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions, timeZone: linked.timeZone };
+        return { ...base, routine, history: linked.history, measurements: linked.measurements, weights: linked.weights, profile: { ...base.profile, unit_system: linked.unitSystem }, submissions: linked.submissions, restDates: linked.restDates, timeZone: linked.timeZone };
       }
       const [d, subs] = await Promise.all([loadAthleteData(clientId, { strict: true }), loadSubmissions({ athlete_id: clientId })]);
       // Promoted rows already live in the real tables; keep the raw submissions for notes and "via link" tags.

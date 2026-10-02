@@ -181,6 +181,39 @@ export function todayFromPlan(plan, now = new Date()) {
 }
 
 /**
+ * The workouts in a plan, one per type, in week order: what a coach can pick
+ * when the client did something other than the day's plan (Pull on a Push
+ * day). [{ key, type }], `key` being the first weekday with that workout.
+ */
+export function planWorkouts(plan) {
+  const out = [];
+  const seen = new Set();
+  for (const k of DAY_ORDER) {
+    const d = plan?.[k];
+    if (!d?.type || d.type === "Rest" || !(d.exercises || []).length) continue;
+    const t = String(d.type).trim().toLowerCase();
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({ key: k, type: d.type });
+  }
+  return out;
+}
+
+/**
+ * The day's plan, as todayFromPlan gives it, but for workout `type` when it
+ * isn't the one planned that day: that day's own if it matches, else the
+ * first day of the week with it. The day (`key`) stays the real one.
+ */
+export function planForDay(plan, now = new Date(), type = null) {
+  const base = todayFromPlan(plan, now);
+  if (!type || String(type).toLowerCase() === String(base.type).toLowerCase()) return base;
+  const pick = planWorkouts(plan).find((w) => w.type.toLowerCase() === String(type).toLowerCase());
+  if (!pick) return base;
+  const d = plan[pick.key];
+  return { ...base, type: d.type, exercises: (d.exercises || []).map(normalizeExercise).filter((e) => e.name), isRest: false, swappedFrom: base.isRest ? "Rest" : base.type };
+}
+
+/**
  * Which measurements are required on the link page. The coach's ticks, as
  * link_view returns them: an empty list means none are required (every field
  * is still on the page, optional); a missing list means the pre-2026-09-18
@@ -400,6 +433,23 @@ export function doneSets(e) {
   });
 }
 
+/**
+ * A day the coach marked as rested (ill, travelling, a deload): saved like a
+ * workout the coach logged, with `rest: true` and no exercises. It is not a
+ * workout. The streak and week treat it like a planned rest day.
+ */
+export function isRestMark(sub) {
+  const p = sub?.payload || {};
+  return p.rest === true && p.logged_by === "coach";
+}
+
+/** The payload for "They rested" on `iso` (the client's local day). */
+export function restPayload(iso, note = "") {
+  if (!ISO_DAY.test(iso || "")) throw new Error("Pick a day.");
+  const [y, m, d] = iso.split("-").map(Number);
+  return { date: iso, local_date: iso, day: dayKeyOf(new Date(y, m - 1, d, 12)), type: "Rest", rest: true, exercises: [], note: String(note || "").trim().slice(0, 300), logged_by: "coach" };
+}
+
 export function submissionToHistory(sub) {
   const p = sub.payload || {};
   const exercises = (p.exercises || []).filter((e) => (e.sets_done || 0) > 0).map((e) => ({ name: e.name, sets: doneSets(e) }));
@@ -464,8 +514,10 @@ export function replacePayload(old, next, now = new Date()) {
   const o = old && typeof old === "object" ? old : {};
   const n = next && typeof next === "object" ? next : {};
   const { logged_by, ...rest } = n;
+  // Swapped back to the planned workout: the old "instead of" no longer holds.
+  const { instead_of, ...kept } = o;
   return {
-    ...o,
+    ...kept,
     ...rest,
     ...(o.logged_by === "coach" ? { logged_by: "coach" } : {}),
     // The day stays where it was; moving is its own action.
@@ -491,8 +543,10 @@ export function linkClientData(submissions, { plan = null, coachUnits = "imperia
   const byDate = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
   const measurements = subs.filter((x) => x.kind === "measurements").map(submissionToMeasurement).sort(byDate);
   const weights = measurements.filter((m) => m.weight != null).map((m) => ({ id: m.id + ":w", date: m.date, weight: m.weight, source: "link" }));
-  const history = subs.filter((x) => x.kind === "workout").map(submissionToHistory).sort(byDate);
-  return { history, measurements, weights, unitSystem, submissions: subs, timeZone: timeZoneFromSubmissions(subs) };
+  const history = subs.filter((x) => x.kind === "workout" && !isRestMark(x)).map(submissionToHistory).sort(byDate);
+  // Days the coach marked as rested: not workouts, but not missed either.
+  const restDates = [...new Set(subs.filter((x) => x.kind === "workout" && isRestMark(x)).map(submissionDate).filter(Boolean))];
+  return { history, measurements, weights, unitSystem, submissions: subs, restDates, timeZone: timeZoneFromSubmissions(subs) };
 }
 
 /**

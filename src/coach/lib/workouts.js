@@ -124,7 +124,7 @@ export function workoutDetail(entry) {
     });
     return {
       id: entry.id, date: entry.date, type: p.type || entry.type || "Workout", viaLink: true, byCoach: p.logged_by === "coach", submissionId: sub.id, at: sub.submitted_at || null,
-      payload: p, editedByCoach: Boolean(p.edited_by_coach_at),
+      payload: p, editedByCoach: Boolean(p.edited_by_coach_at), insteadOf: typeof p.instead_of === "string" ? p.instead_of : null,
       note: (p.note || entry.note || "").trim(),
       feel: ["easy", "medium", "hard"].includes(p.feel) ? p.feel : null,
       durationMin: null,

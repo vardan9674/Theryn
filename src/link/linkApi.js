@@ -111,6 +111,16 @@ export function createPreviewApi() {
       exercises: Object.entries(last).map(([name, rows]) => ({ name, sets_planned: 3, sets_done: rows.length, sets: rows.map(([reps, weight], i) => ({ n: i + 1, done: true, reps, weight })) })),
     } });
   }
+  // `?coachrest`: today is a training day the coach has marked as rested.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("coachrest")) {
+    const now = new Date();
+    const k = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][now.getDay()];
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    plan[k] = plan.Tue;
+    submissions.push({ id: "preview-rest", at: new Date(now.getTime() - 3600e3).toISOString(), kind: "workout", payload: {
+      date, local_date: date, day: k, type: "Rest", rest: true, exercises: [], note: "Fever, take it easy", logged_by: "coach",
+    } });
+  }
   let connected = { connected: false, you: false, signed_in: false, name: null, locked: false, history: [] };
   // One shared report for last week, in the exact shape reportSnapshot() makes.
   // `?noreport` in the preview's address shows a link with none.

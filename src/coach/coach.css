@@ -578,6 +578,14 @@
 .lw-existing-h { font-size: 12px; font-weight: 600; color: var(--cx-mu); }
 .lw-existing-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .lw-existing-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.lw-kinds { display: flex; flex-direction: column; gap: 6px; }
+.lw-kinds-h { font-size: 12px; font-weight: 600; color: var(--cx-mu); }
+.lw-kinds-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.lw-kind { min-height: 40px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--cx-bd2); background: var(--cx-s1); color: var(--cx-tx); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.lw-kind small { font-size: 11px; font-weight: 500; color: var(--cx-mu); }
+.lw-kind[aria-pressed="true"] { border-color: var(--k, var(--cx-a)); background: color-mix(in srgb, var(--k, var(--cx-a)) 14%, transparent); }
+.lw-rest { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--cx-bd2); border-radius: 12px; background: var(--cx-s1); }
+.lw-rest span { font-size: 13px; color: var(--cx-tx2); line-height: 1.45; }
 .lw-quick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 14px; border-radius: 14px; border: 0; background: var(--cx-a); color: var(--cx-bg); text-align: left; font: inherit; cursor: pointer; }
 .lw-quick span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lw-quick b { font-size: 16px; }

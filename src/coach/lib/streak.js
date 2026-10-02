@@ -12,14 +12,16 @@ const at = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new D
 /**
  * @param doneDates ISO dates with a workout (array or Set; duplicates fine)
  * @param plan      weekly plan { Mon: { type }, ... }; no plan = every day is a training day
+ * @param rested    ISO dates the coach marked as rested (ill, travelling): kept like a rest day
  * @returns { current, best, atRisk, brokeAt, doneToday, thisMonth, days }
  *   brokeAt: length of a streak of 3+ that ended in the last 7 days (when current is 0)
  *   days: the last 14 days, oldest first: { iso, state: "done" | "rest" | "missed" | "today" | "before" }
  */
-export function streakStats(doneDates, plan, now = new Date()) {
+export function streakStats(doneDates, plan, now = new Date(), rested = []) {
   const done = new Set([...(doneDates || [])].filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x))));
   const todayIso = isoDate(now);
-  const isRest = (d) => plan?.[dayKey(d)]?.type === "Rest";
+  const off = new Set(rested || []);
+  const isRest = (d) => plan?.[dayKey(d)]?.type === "Rest" || off.has(isoDate(d));
   const empty = { current: 0, best: 0, atRisk: false, brokeAt: 0, doneToday: done.has(todayIso), thisMonth: 0, days: [] };
 
   let first = null;
@@ -61,8 +63,8 @@ export function streakStats(doneDates, plan, now = new Date()) {
 }
 
 /** What the streak becomes if `iso` is also done (the receipt, right after sending). */
-export function streakWith(doneDates, iso, plan, now = new Date()) {
-  return streakStats([...(doneDates || []), iso], plan, now);
+export function streakWith(doneDates, iso, plan, now = new Date(), rested = []) {
+  return streakStats([...(doneDates || []), iso], plan, now, rested);
 }
 
 /** "6 workouts in a row" (rest days keep a streak, they don't add to it) */
@@ -75,11 +77,13 @@ export const streakLabel = (n) => `${n} workout${n === 1 ? "" : "s"} in a row`;
  * for a missed one, never past 100%.
  *   1 of 1 → 100%, 1 of 2 → 50%.
  * startIso: the day they were added (earlier workouts move it back).
+ * rested: days the coach marked as rested; like a rest day, they don't count.
  */
-export function consistencyStats(doneDates, plan, startIso, now = new Date()) {
+export function consistencyStats(doneDates, plan, startIso, now = new Date(), rested = []) {
   const done = new Set([...(doneDates || [])].filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x))));
   const todayIso = isoDate(now);
-  const isPlanned = (d) => { const day = plan?.[dayKey(d)]; return Boolean(day?.type && day.type !== "Rest" && (day.exercises || []).length); };
+  const off = new Set(rested || []);
+  const isPlanned = (d) => { if (off.has(isoDate(d))) return false; const day = plan?.[dayKey(d)]; return Boolean(day?.type && day.type !== "Rest" && (day.exercises || []).length); };
   let first = /^\d{4}-\d{2}-\d{2}/.test(String(startIso || "")) ? String(startIso).slice(0, 10) : null;
   for (const x of done) if (!first || x < first) first = x;
   if (!first || first > todayIso) return { planned: 0, done: 0, pct: null, since: first };

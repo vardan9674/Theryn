@@ -31,6 +31,8 @@ export function readDraft(clientId, date, s) {
     ticks: d.ticks || {}, log: d.log || {}, note: typeof d.note === "string" ? d.note : "",
     // Skipped, swapped and done-for-more-sets: changes to the day, not the plan.
     skipped: d.skipped || {}, swaps: d.swaps || {}, sets: d.sets || {},
+    // The workout they did instead of the day's plan (Pull on a Push day), or null.
+    ...(typeof d.kind === "string" && d.kind ? { kind: d.kind } : {}),
   };
 }
 
@@ -45,6 +47,7 @@ export function saveDraft(clientId, date, draft, allDone = {}, s) {
   else all[date] = {
     ticks: draft.ticks || {}, log: draft.log || {}, note: (draft.note || "").slice(0, 300),
     skipped: draft.skipped || {}, swaps: draft.swaps || {}, sets: draft.sets || {},
+    ...(draft.kind ? { kind: draft.kind } : {}),
   };
   writeAll(clientId, all, s);
 }
@@ -64,6 +67,7 @@ export function clearDraft(clientId, date, s) {
 export function isEmpty(draft, allDone = {}) {
   if (!draft) return true;
   if ((draft.note || "").trim()) return false;
+  if (draft.kind) return false;
   // A skip, a swap or a changed set count is worth keeping on its own, even
   // with nothing typed and everything still ticked.
   if (Object.values(draft.skipped || {}).some(Boolean)) return false;
