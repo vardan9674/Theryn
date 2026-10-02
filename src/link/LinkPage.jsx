@@ -16,6 +16,7 @@ import { rememberJoinLink, forgetJoinLink } from "./joinReturn.js";
 import { isNetworkError, sendWithRetry, sendKey } from "./sendRetry.js";
 import { editStateFromPayload } from "./sentWorkout.js";
 import { winsForSend } from "./sendWins.js";
+import { lastTimeLookup } from "./lastTime.js";
 import WinsPanel from "../components/WinsPanel.jsx";
 import StreakRing from "../components/StreakRing.jsx";
 import { submitRefusal, loadFailure, canRetryLoad, failedSignIn, LINK_OFF_MESSAGE } from "./linkErrors.js";
@@ -450,10 +451,10 @@ function lastLine(last, units) {
  * week only has to change what actually changed. Exercises they have never
  * done stay empty, showing the coach's plan as a hint.
  */
-function seedFromLast(exercises, store, units) {
+function seedFromLast(exercises, lastOf, units) {
   const log = {};
   (exercises || []).forEach((e, i) => {
-    const last = store?.last(e.name);
+    const last = lastOf?.(e.name);
     if (!last?.sets?.length) return;
     const per = {};
     last.sets.forEach((s, si) => {
@@ -800,8 +801,25 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   React.useEffect(() => { if (controlledTicks) setTicks(controlledTicks); }, [controlledTicks]);
   // exerciseIndex → setIndex → { r, w }: the numbers in the boxes. A half-done
   // draft wins; otherwise they start on last time's, so the client edits what
-  // changed instead of typing everything again.
-  const [log, setLog] = React.useState(() => draft?.log || seedFromLast(today.exercises, store, d.unit_system));
+  // changed instead of typing everything again. Last time comes from the
+  // server's copy of their workouts first, so it is there on any phone.
+  const lastOf = React.useMemo(() => lastTimeLookup(me?.history, date, store), [me, date, store]);
+  const [log, setLog] = React.useState(() => draft?.log || seedFromLast(today.exercises, lastOf, d.unit_system));
+  // Their history usually lands after the page is drawn. Exercises still
+  // without numbers, and not ticked yet, then start on last time's too.
+  React.useEffect(() => {
+    if (controlledTicks) return;
+    const seeded = seedFromLast(today.exercises, lastOf, d.unit_system);
+    setLog((l) => {
+      let o = l;
+      for (const [i, v] of Object.entries(seeded)) {
+        if (l[i] != null || (ticks[i] || 0) > 0) continue;
+        if (o === l) o = { ...l };
+        o[i] = v;
+      }
+      return o;
+    });
+  }, [lastOf]); // eslint-disable-line react-hooks/exhaustive-deps
   const [skipped, setSkipped] = React.useState(() => draft?.skipped || {});
   const [note, setNote] = React.useState(() => draft?.note || "");
   const [feel, setFeel] = React.useState(() => draft?.feel || null); // "easy" | "medium" | "hard"
@@ -843,7 +861,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   const addExtra = (ex) => {
     const i = today.exercises.length;
     onExtras?.([...extras, ex]);
-    const seeded = seedFromLast([ex], store, d.unit_system)[0];
+    const seeded = seedFromLast([ex], lastOf, d.unit_system)[0];
     if (seeded) setLog((l) => ({ ...l, [i]: seeded }));
     setAdding(false);
   };
@@ -858,7 +876,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   // Done as something else. The boxes held the other exercise's numbers, so
   // they start again on this one's last time (or empty, showing the plan).
   const reseed = (i, ex) => {
-    const seeded = seedFromLast([ex], store, d.unit_system)[0];
+    const seeded = seedFromLast([ex], lastOf, d.unit_system)[0];
     setLog((l) => { const o = { ...l }; if (seeded) o[i] = seeded; else delete o[i]; return o; });
     if (timer?.i === i) { setTimer(null); keepAwake(false); }
   };
@@ -1163,7 +1181,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
               const n = ticks[i] || 0;
               const done = n >= full;
               const isCurrent = i === currentIdx;
-              const last = store?.last(e.name);
+              const last = lastOf(e.name);
               // The coach's numbers for set `si`: its own when the sets differ.
               const planR = (si) => e.setList?.[si]?.reps ?? e.reps;
               const planW = (si) => e.setList?.[si]?.weight ?? e.weight;
