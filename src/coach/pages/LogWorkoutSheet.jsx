@@ -1,7 +1,7 @@
 import React from "react";
 import { Sheet, Icon, useToast } from "../ui/primitives.jsx";
 import { DAY_LONG } from "../lib/format.js";
-import { todayFromPlan, workoutPayload, dayKeyOf, cleanDecimal, workoutNumbersProblem } from "../lib/clientLinks.js";
+import { todayFromPlan, planForDay, planWorkouts, restPayload, workoutPayload, dayKeyOf, cleanDecimal, workoutNumbersProblem } from "../lib/clientLinks.js";
 import { planSets } from "../lib/planSets.js";
 import { maskDuration, tidyDuration, durationInput } from "../lib/exerciseKinds.js";
 import { readDraft, saveDraft, clearDraft } from "../lib/logDraft.js";
@@ -61,7 +61,7 @@ function stateFromWorkout(payload, planExercises, units) {
  * With `replacing` (a workout from the list), the sheet redoes that workout:
  * same day, opened as it was sent, and saving replaces it.
  */
-export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now, replacing = null, existing = [], canReplace = () => false, onExisting = null }) {
+export default function LogWorkoutSheet({ open, clientId, firstName, routine, history, unit, onClose, onSave, now, replacing = null, existing = [], canReplace = () => false, onExisting = null, onSaveRest = null }) {
   const toast = useToast();
   // "Today" is the client's today (#95): a coach in India logging a US client's evening workout.
   const days = React.useMemo(() => recentDays(routine, now || new Date()), [routine, open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,30 +78,44 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
   const [swapAt, setSwapAt] = React.useState(null);
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // What they did, when it isn't the day's plan: another workout's type (Pull
+  // on a Push day), "Rest" for a day they rested, or null for as planned.
+  const [kind, setKind] = React.useState(null);
 
-  const plan = React.useMemo(() => todayFromPlan(routine, noon(date)), [routine, date]);
+  const planned = React.useMemo(() => todayFromPlan(routine, noon(date)), [routine, date]);
+  const resting = kind === "Rest";
+  const plan = React.useMemo(() => (resting ? planned : planForDay(routine, noon(date), kind)), [routine, date, kind, planned, resting]);
+  const workoutsInPlan = React.useMemo(() => planWorkouts(routine), [routine]);
   // The day as the coach is logging it. The plan itself is never written to.
   const exercises = React.useMemo(() => shapeExercises(plan.exercises, { swaps, sets }), [plan.exercises, swaps, sets]);
   const changed = anyChanges(plan.exercises, { skipped, swaps, sets });
   // Reopening the sheet, or coming back to a day: whatever they had typed for
   // that day is still there. Only a day they never touched opens as planned.
   React.useEffect(() => { if (open) setDate(replacing?.date || pickDefault()); }, [open, replacing?.date]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A new day starts on its plan, or on what was picked for it before; a
+  // workout being replaced starts on its own type.
   React.useEffect(() => {
     if (!open) return;
+    const want = replacing ? replacing.type : readDraft(clientId, date)?.kind;
+    setKind(want && String(want).toLowerCase() !== String(planned.type).toLowerCase() ? want : null);
+  }, [open, date]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!open) return;
+    const stored = replacing ? null : readDraft(clientId, date);
     const draft = replacing
       ? (replacing.date === date ? stateFromWorkout(replacing.payload, plan.exercises, unit === "kg" ? "metric" : "imperial") : null)
-      : readDraft(clientId, date);
+      : ((stored?.kind || null) === kind ? stored : null);
     setSkipped(draft?.skipped || {}); setSwaps(draft?.swaps || {}); setSets(draft?.sets || {});
     setTicks(draft?.ticks || {});
     setLog(draft?.log || {});
     setNote(draft?.note || "");
     setOpenEx(null);
-  }, [open, date, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, date, kind, plan.exercises.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // Every tick, every number and every change, kept until it is sent.
   React.useEffect(() => {
-    if (!open || plan.isRest || replacing) return;
-    saveDraft(clientId, date, { ticks, log, note, skipped, swaps, sets });
-  }, [open, clientId, date, ticks, log, note, skipped, swaps, sets]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!open || plan.isRest || resting || replacing) return;
+    saveDraft(clientId, date, { ticks, log, note, skipped, swaps, sets, kind });
+  }, [open, clientId, date, ticks, log, note, skipped, swaps, sets, kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setsTotal = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : plannedSets(e)), 0);
   const setsDone = exercises.reduce((a, e, i) => a + (skipped[i] ? 0 : Math.min(ticks[i] || 0, plannedSets(e))), 0);
@@ -148,7 +162,7 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
       // showed a count and the coach ticked it off, so that is what was asked
       // for — without this the workout reads "10 of 0 sets" afterwards.
       const sent = exercises.map((e) => ({ ...e, sets: plannedSets(e) }));
-      const payload = { ...workoutPayload({ ...plan, exercises: sent }, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach" };
+      const payload = { ...workoutPayload({ ...plan, exercises: sent }, t, asPlanned ? {} : log, asPlanned ? "" : note, date, units), logged_by: "coach", ...(plan.swappedFrom ? { instead_of: plan.swappedFrom } : {}) };
       await onSave(payload);
       if (!replacing) clearDraft(clientId, date); // the coach has sent it; nothing left to keep
       if (replacing) toast(`Replaced ${DAY_LONG[plan.key]}'s workout for ${firstName}.`);
@@ -161,18 +175,34 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
     }
   }
 
+  async function saveRest() {
+    if (!onSaveRest) return;
+    setBusy(true);
+    try {
+      await onSaveRest(restPayload(date, note));
+      clearDraft(clientId, date);
+      toast(`Marked ${DAY_LONG[plan.key]} as a rest day for ${firstName}. It isn't counted as missed.`);
+      onClose();
+    } catch (e) { toast(e.message || "Could not save", "error"); }
+    finally { setBusy(false); }
+  }
+  const restMarked = onDay.some((w) => w.rest);
+
   const color = TYPE_COLORS[plan.type] || "var(--cx-tx2)";
   return (
     <Sheet open={open} onClose={onClose}
       title={replacing ? `Replace ${firstName}'s ${DAY_LONG[plan.key]} workout` : `Log a workout for ${firstName}`}
       subtitle={replacing ? "Tick what they actually did. Saving replaces the workout that's there now." : "Tick only what they did with you. They can send the rest through their link."}>
       <div className="lw">
-        {!replacing && <div className="lw-days" role="group" aria-label="Which day">
+        {!replacing && <div className="lw-step">
+          <span className="lw-step-h"><i>1</i>Which day?</span>
+          <div className="lw-days" role="group" aria-label="Which day">
           {days.map((x) => (
             <button key={x.iso} type="button" className={`lw-day ${x.rest ? "rest" : ""}`} aria-pressed={x.iso === date} onClick={() => setDate(x.iso)}>
               <b>{x.label}</b><small>{x.rest ? "Rest" : x.type}</small>{doneDates.has(x.iso) && <i aria-label="already logged"><Icon.Check size={10} /></i>}
             </button>
           ))}
+          </div>
         </div>}
 
         {onDay.length > 0 && onExisting && (
@@ -180,26 +210,68 @@ export default function LogWorkoutSheet({ open, clientId, firstName, routine, hi
             <span className="lw-existing-h">Already saved for this day</span>
             {onDay.map((w) => (
               <div key={w.submissionId} className="lw-existing-row">
-                <span><b>{w.byCoach ? "You logged" : `${firstName} sent`}</b> {w.type} · {w.totalSets} of {w.plannedSets || w.totalSets} sets{w.at ? ` · ${new Date(w.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</span>
+                {w.rest
+                  ? <span><b>Rest day</b> · marked by you</span>
+                  : <span><b>{w.byCoach ? "You logged" : `${firstName} sent`}</b> {w.type} · {w.totalSets} of {w.plannedSets || w.totalSets} sets{w.at ? ` · ${new Date(w.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</span>}
                 <span className="lw-existing-acts">
-                  <button type="button" className="lw-act" onClick={() => onExisting(w, "edit")}>Edit</button>
+                  {!w.rest && <button type="button" className="lw-act" onClick={() => onExisting(w, "edit")}>Edit</button>}
                   {canReplace(w) && <button type="button" className="lw-act" onClick={() => onExisting(w, "replace")}>Replace</button>}
+                  <button type="button" className="lw-act" onClick={() => onExisting(w, "move")}>Move</button>
                   <button type="button" className="lw-act danger" onClick={() => onExisting(w, "remove")}>Remove</button>
                 </span>
               </div>
             ))}
-            {!plan.isRest && <small className="lw-hint">Or log more below. Tick only what isn't saved yet. It joins the same day.</small>}
+            {!plan.isRest && !resting && <small className="lw-hint">{restMarked ? "Trained after all? Log it below, then remove the rest day." : "Or log more below. Tick only what isn't saved yet. It joins the same day."}</small>}
           </div>
         )}
-        {already && !onDay.length && !replacing && !plan.isRest && <div className="lw-warn">{firstName} already has a workout on this day. Tick only what isn't in it. Both show as one day.</div>}
-        {plan.isRest ? (
-          <div className="lw-empty">Nothing was planned for {DAY_LONG[plan.key]}. Pick a workout day above.</div>
+
+        {/* What they did: the day's plan, another workout from the plan, or a rest. */}
+        {workoutsInPlan.length > 0 && (
+          <div className="lw-kinds lw-step" role="group" aria-label="What did they do">
+            <span className="lw-step-h"><i>{replacing ? 1 : 2}</i>What did they do?</span>
+            <div className="lw-kinds-row">
+              {workoutsInPlan.map((w) => {
+                const isPlanned = !planned.isRest && w.type.toLowerCase() === planned.type.toLowerCase();
+                const on = !resting && w.type.toLowerCase() === plan.type.toLowerCase();
+                return (
+                  <button key={w.type} type="button" className="lw-kind" aria-pressed={on} onClick={() => setKind(isPlanned ? null : w.type)} style={{ "--k": TYPE_COLORS[w.type] || "var(--cx-tx2)" }}>
+                    {w.type}{isPlanned && <small>planned</small>}
+                  </button>
+                );
+              })}
+              {!replacing && onSaveRest && !planned.isRest && !restMarked && (
+                <>
+                  <span className="lw-kinds-or">or</span>
+                  <button type="button" className="lw-kind lw-kind-rest" aria-pressed={resting} onClick={() => setKind(resting ? null : "Rest")}>They rested</button>
+                </>
+              )}
+            </div>
+            {kind && !resting && (
+              <div className="lw-swapnote">
+                <span>Logging <b>{plan.type}</b> {planned.isRest ? "on a rest day" : <>instead of <b>{planned.type}</b></>}. Their plan stays the same.</span>
+                <button type="button" className="lw-linkbtn" onClick={() => setKind(null)}>Undo</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {already && !onDay.length && !replacing && !plan.isRest && !resting && <div className="lw-warn">{firstName} already has a workout on this day. Tick only what isn't in it. Both show as one day.</div>}
+        {resting ? (
+          <div className="lw-rest">
+            <b>{firstName} rested on {DAY_LONG[plan.key]}</b>
+            <span>Ill, travelling or taking a break. Their streak is kept and the day isn't counted as missed. Their plan doesn't change.</span>
+            <input className="cx-input lw-note" value={note} onChange={(e) => setNote(e.target.value.slice(0, 300))} placeholder="Why (optional)" aria-label="Why they rested" />
+            <button type="button" className="lw-save" onClick={saveRest} disabled={busy}>{busy ? "Saving…" : "Save rest day"}</button>
+          </div>
+        ) : plan.isRest ? (
+          <div className="lw-empty">Nothing was planned for {DAY_LONG[plan.key]}. If they trained, pick what they did above.</div>
         ) : (
           <>
+            <span className="lw-step-h"><i>{replacing ? 2 : 3}</i>Tick the sets they did</span>
             {!changed && (
               <>
                 <button type="button" className="lw-quick" onClick={() => save(true)} disabled={busy}>
-                  <Icon.Check size={18} /><span><b>Done as planned</b><small>All {setsTotal} sets of {DAY_LONG[plan.key]}'s <span style={{ color }}>{plan.type.toLowerCase()}</span> workout</small></span>
+                  <Icon.Check size={18} /><span><b>{kind ? "Did all of it" : "Done as planned"}</b><small>All {setsTotal} sets of {kind ? "the " : `${DAY_LONG[plan.key]}'s `}<span style={{ color }}>{plan.type.toLowerCase()}</span> workout{kind && !planned.isRest ? `, instead of ${planned.type.toLowerCase()}` : ""}</small></span>
                 </button>
                 <div className="lw-or"><span>or tick what they did</span></div>
               </>

@@ -235,6 +235,14 @@ export default function LinkPage({ token, api }) {
   const clientUnits = units || coachUnits;
   const d = { ...state.data, plan: convertPlan(state.data.plan, clientUnits, { assumeFrom: coachUnits }), unit_system: clientUnits, onUnits: setUnits };
   d.doneDates = [...(Array.isArray(state.data.done_dates) ? state.data.done_dates : []), ...store.doneDates()];
+  // Days the coach marked as rested. The server lists them with the workout
+  // days; they are rest days, not workouts, unless they trained as well.
+  {
+    const hist = (me?.history || []).filter((h) => h?.kind === "workout");
+    const trained = new Set(hist.filter((h) => !(h.by_coach && h.payload?.rest)).map((h) => h.date));
+    d.rested = [...new Set(hist.filter((h) => h.by_coach && h.payload?.rest).map((h) => h.date))].filter((x) => !trained.has(x) && !store.doneDates().includes(x));
+    if (d.rested.length) d.doneDates = d.doneDates.filter((x) => !d.rested.includes(x));
+  }
   // Connected clients can open any day of the week; everyone else gets today.
   const joined = Boolean(me?.you);
   const date = (joined && dayIso) || isoToday();
@@ -252,7 +260,7 @@ export default function LinkPage({ token, api }) {
   // The newest report stays on the link for two weeks after it's shared.
   const latestReport = reports[0] && Date.now() - Date.parse(reports[0].shared_at) < 14 * 86400000 ? reports[0] : null;
 
-  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} joined={joined} onBack={() => { setSent(null); setTab("workout"); setDayIso(null); window.scrollTo(0, 0); }} />;
+  if (sent) return <Receipt sent={sent} coach={d.coach_name} today={today} plan={d.plan} doneDates={d.doneDates} rested={d.rested} joined={joined} onBack={() => { setSent(null); setTab("workout"); setDayIso(null); window.scrollTo(0, 0); }} />;
 
   // After sending, their own history is a workout out of date — and that
   // history is what "Edit workout" reopens on any other phone.
@@ -528,6 +536,24 @@ function SentCard({ sent, coach, dayLabel, isToday, onEdit, onAgain }) {
   );
 }
 
+/**
+ * A day the coach marked as rested (ill, travelling, a break). Their streak
+ * is safe. If they trained after all, they can still log it.
+ */
+function RestCard({ coach, dayLabel, isToday, note, onAgain }) {
+  const who = coach ? `Coach ${coach}` : "Your coach";
+  return (
+    <div className="lk-card lk-sent">
+      <h2 className="lk-sent-h">{isToday ? "Today is a rest day." : `${dayLabel} is a rest day.`}</h2>
+      <p className="lk-sent-by">{who} marked it as rest. Your streak is safe.</p>
+      {note ? <p className="lk-sent-p"><span>"{note}"</span></p> : null}
+      <div className="lk-sent-acts one">
+        <button type="button" className="lk-sendalt" onClick={onAgain}><Icon.Plus size={18} />I trained anyway</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Connecting an account ──────────────────────────────────────────────────
 /**
  * The link alone opens today's workout. Connecting a Google account — with the
@@ -785,7 +811,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   const upcoming = date > isoToday(); // a day later this week: show the plan, nothing to tick yet
   const realToday = dayKeyOf(new Date());
   const sentBefore = store?.sent(date) || null;
-  const st = React.useMemo(() => streakStats(d.doneDates || [], d.plan), [d.doneDates, d.plan]);
+  const st = React.useMemo(() => streakStats(d.doneDates || [], d.plan, new Date(), d.rested), [d.doneDates, d.plan, d.rested]);
   // Save every tick as it happens.
   React.useEffect(() => {
     if (!store || controlledTicks || upcoming) return;
@@ -945,7 +971,10 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
   // The coach logged only part of the day and they haven't sent theirs yet:
   // the workout stays open for the rest instead of reading as done.
   const restIsTheirs = coachCount > 0 && coachCount < planCount && !dayEntries.some((h) => h?.id) && !sentBefore;
-  const showSent = Boolean(sentInfo) && !mode && !upcoming && !restIsTheirs;
+  // The coach marked this day as rested (and they sent nothing of their own).
+  const restMark = dayEntries.find((h) => h?.by_coach && h?.payload?.rest) || null;
+  const showRest = Boolean(restMark) && !mode && !upcoming && !dayEntries.some((h) => h?.id) && !sentBefore;
+  const showSent = Boolean(sentInfo) && !mode && !upcoming && !restIsTheirs && !showRest;
   const startEdit = () => {
     // What the coach actually received comes first — it is the same on every
     // phone. What this phone remembers is the fallback, for a client whose
@@ -1013,7 +1042,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
         throw new Error(no.message);
       }
       store?.setKey(date, null);
-      const before = streakStats(d.doneDates || [], d.plan).current;
+      const before = streakStats(d.doneDates || [], d.plan, new Date(), d.rested).current;
       // Enough to show them what went, and to open it again if they want to
       // change it: the submission's id, the totals, and what was in the boxes.
       store?.markSent(date, {
@@ -1061,7 +1090,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
             ? <h1 className="lk-h1">Rest day.</h1>
             : <h1 className="lk-h1">Your <span style={{ color }}>{today.type.toLowerCase()}</span> day.</h1>}
           {/* A day already sent says so in its own card; no need to be told to tick it. */}
-          {!showSent && <p className="lk-lede">{today.isRest
+          {!showSent && !showRest && <p className="lk-lede">{today.isRest
             ? (!isToday ? `Hi ${first}. Nothing is planned for ${DAY_LONG[today.key]}.` : today.next ? `Hi ${first}. Nothing planned today. Next up is ${DAY_LONG[today.next.key]}, ${today.next.type}.` : `Hi ${first}. No workouts are planned yet. Your coach will add them.`)
             : isToday ? `Hi ${first}. ${st.current >= 2 && !st.doneToday ? `Tick today and that's ${st.current + 1} workouts in a row.${st.best > st.current + 1 ? ` Your best is ${st.best}.` : ""}` : "Follow your coach's plan and tick off each exercise."}`
             : upcoming ? `Hi ${first}. Here's ${DAY_LONG[today.key]}'s plan. You can tick it off on the day.`
@@ -1106,8 +1135,9 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
         )}
 
         {showSent && <SentCard sent={sentInfo} coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} onEdit={startEdit} onAgain={startAgain} />}
+        {showRest && <RestCard coach={d.coach_name} dayLabel={DAY_LONG[today.key]} isToday={isToday} note={restMark?.payload?.note || ""} onAgain={startAgain} />}
 
-        {!today.isRest && !showSent && (
+        {!today.isRest && !showSent && !showRest && (
           <>
             {coachCount > 0 && coachCount < planCount && !upcoming && (
               <div className="lk-sentnote" role="status"><Icon.Check size={16} /><span>
@@ -1482,9 +1512,9 @@ function nextTraining(plan, from = new Date()) {
   return null;
 }
 
-function Receipt({ sent, coach, today, plan, doneDates, onBack, joined = false }) {
+function Receipt({ sent, coach, today, plan, doneDates, rested = [], onBack, joined = false }) {
   const s = sent.summary;
-  const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan) : null;
+  const st = sent.kind === "workout" && s.date ? streakWith(doneDates, s.date, plan, new Date(), rested) : null;
   const showStreak = Boolean(st && st.current >= 2);
   const newBest = showStreak && st.current >= 3 && st.current >= st.best;
   const fill = showStreak ? Math.min(1, st.current / Math.max(st.best, st.current, 1)) : 0;

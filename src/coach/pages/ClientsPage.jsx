@@ -51,8 +51,8 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
           : { text: hasPlan ? "Not on the app yet. Share their link so they can tick off workouts." : "Not on the app yet. Build their plan, then share their link.", severity: null, tab: "plan", color: null };
         const row = { link, name: link.athlete_name, loading: false, data,
           last: hasHistory ? lastWorkoutLabel(data.history, cnow) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, cnow) : "muted",
-          week: hasHistory ? weekProgress(data.history, data.routine, cnow) : null, todo, payment, manual: true,
-          streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow) };
+          week: hasHistory ? weekProgress(data.history, data.routine, cnow, data.restDates) : null, todo, payment, manual: true,
+          streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow, data.restDates) };
         row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : noPlan && !hasHistory ? "new" : "ok";
         return row;
       }
@@ -60,8 +60,8 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
       const row = {
         link, name: link.athlete_name, loading: false, data,
         last: lastWorkoutLabel(data.history, cnow), lastTone: lastWorkoutTone(data.history, cnow),
-        week: weekProgress(data.history, data.routine, cnow), todo, payment,
-        streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow),
+        week: weekProgress(data.history, data.routine, cnow, data.restDates), todo, payment,
+        streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow, data.restDates),
       };
       row.bucket = attentionBucket(row, cnow);
       if (row.bucket === "ok" && noPlan && !(data.history || []).length) row.bucket = "new";
