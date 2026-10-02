@@ -25,11 +25,32 @@ export function lastWorkoutLabel(history, now = new Date()) {
 
 /** Tone for the last-workout cell: ok under 3 days, warn 3–6, bad 7+. */
 export function lastWorkoutTone(history, now = new Date()) {
-  const d = daysSinceLastWorkout(history, now);
+  return toneForDays(daysSinceLastWorkout(history, now));
+}
+function toneForDays(d) {
   if (d == null) return "bad";
   if (d < 3) return "ok";
   if (d < 7) return "warn";
   return "bad";
+}
+
+/**
+ * When the client was last accounted for: their latest workout, or a day the
+ * coach marked as rested (ill, travelling). A client resting on the coach's
+ * say-so isn't out of touch, so neither the "no check-in" nudge nor the
+ * last-workout colour counts those days against them.
+ * { days, resting, tone }: days since either (null if neither), resting when
+ * the latest is a rest day, tone for the last-workout cell.
+ */
+export function checkInFact(history, restDates, now = new Date()) {
+  const today = isoDate(now);
+  let workout = null;
+  for (const h of history || []) if (h?.date && h.date <= today && (!workout || h.date > workout)) workout = h.date;
+  let rest = null;
+  for (const x of restDates || []) if (/^\d{4}-\d{2}-\d{2}$/.test(String(x)) && x <= today && (!rest || x > rest)) rest = x;
+  const latest = workout && rest ? (rest > workout ? rest : workout) : workout || rest;
+  const days = latest ? Math.max(0, daysBetween(latest, today)) : null;
+  return { days, resting: Boolean(rest && (!workout || rest > workout)), tone: toneForDays(days) };
 }
 
 /**

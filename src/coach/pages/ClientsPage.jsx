@@ -1,7 +1,7 @@
 import React from "react";
 import { Avatar, Chip, Icon, Tone, Empty, Button, useViewport } from "../ui/primitives.jsx";
 import { streakStats } from "../lib/streak.js";
-import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients, daysSinceLastWorkout as daysSinceLast } from "../lib/clientFacts.js";
+import { lastWorkoutLabel, lastWorkoutTone, weekProgress, whatToDo, paymentFact, attentionBucket, sortClients, checkInFact } from "../lib/clientFacts.js";
 import { plural, isoDate, daysBetween } from "../lib/format.js";
 import { clientNow } from "../lib/clientClock.js";
 import ClientDetail from "./ClientDetail.jsx";
@@ -41,19 +41,24 @@ export default function ClientsPage({ clients, cache, selectedId, onSelect, fees
         const hasPlan = data.routine && Object.values(data.routine).some((d) => d?.type && d.type !== "Rest" && d.exercises?.length);
         const hasHistory = (data.history || []).length > 0;
         const latestM = data.measurements?.[0];
-        const days = hasHistory ? daysSinceLast(data.history, cnow) : null;
-        const todo = hasHistory && days != null && days >= 5
+        // A rest day the coach marked counts as hearing from them: no nudge for a client off sick.
+        const seen = checkInFact(data.history, data.restDates, cnow);
+        const heard = hasHistory || seen.days != null;
+        const days = seen.days;
+        const todo = heard && days != null && days >= 5
           ? { text: `No check-in for ${days} days. Send them a nudge.`, severity: "warn", tab: "plan", color: null }
           : latestM && daysBetweenIso(latestM.date, cnow) <= 2
           ? { text: `Sent measurements ${daysBetweenIso(latestM.date, cnow) === 0 ? "today" : "recently"}. Have a look.`, severity: "celebrate", tab: "body", color: null }
+          : seen.resting
+          ? { text: `Resting, marked by you ${days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`}. Nothing needed.`, severity: null, tab: "progress", color: null }
           : hasHistory
           ? { text: "Checking in through their link. Nothing needed.", severity: null, tab: "plan", color: null }
           : { text: hasPlan ? "Not on the app yet. Share their link so they can tick off workouts." : "Not on the app yet. Build their plan, then share their link.", severity: null, tab: "plan", color: null };
         const row = { link, name: link.athlete_name, loading: false, data,
-          last: hasHistory ? lastWorkoutLabel(data.history, cnow) : null, lastTone: hasHistory ? lastWorkoutTone(data.history, cnow) : "muted",
+          last: hasHistory ? lastWorkoutLabel(data.history, cnow) : null, lastTone: hasHistory ? seen.tone : "muted",
           week: hasHistory ? weekProgress(data.history, data.routine, cnow, data.restDates) : null, todo, payment, manual: true,
           streak: streakStats((data.history || []).map((h) => h.date), data.routine, cnow, data.restDates) };
-        row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : noPlan && !hasHistory ? "new" : "ok";
+        row.bucket = todo.severity === "warn" ? "attention" : payment.status === "overdue" || payment.status === "due" ? "payment" : noPlan && !heard ? "new" : "ok";
         return row;
       }
       const todo = whatToDo(data, cnow);
