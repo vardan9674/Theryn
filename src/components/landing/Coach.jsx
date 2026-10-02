@@ -7,14 +7,15 @@ import React, { useEffect, useRef } from "react";
 // ad-creative/mascot/MASCOT.md for who he is).
 
 // One expression per beat of the story, so he reacts instead of repeating himself:
-// wave (hello / goodbye), phone (checking it, worried), explain (open hand),
+// wave (hello / goodbye), phone (checking it, worried), smile (warm, no hand),
 // point, psst (leans in to whisper), count (grin), idea (finger up), fist (pump).
-const CLIP_NAMES = ["wave", "phone", "explain", "point", "psst", "count", "idea", "fist"];
+// Only "phone" is meant to look unhappy.
+const CLIP_NAMES = ["wave", "phone", "smile", "point", "psst", "count", "idea", "fist"];
 const CLIPS = Object.fromEntries(CLIP_NAMES.map(n => [n, [`/coach/coach-${n}.mp4`, `/coach/coach-${n}.jpg`]]));
 
-export function CoachBubble({ line, clip = "explain" }) {
+export function CoachBubble({ line, clip = "smile" }) {
   const ref = useRef(null);
-  const [src, poster] = CLIPS[clip] || CLIPS.explain;
+  const [src, poster] = CLIPS[clip] || CLIPS.smile;
   // Only the bubble on screen plays, so a phone never runs a dozen clips at once.
   useEffect(() => {
     const v = ref.current;
