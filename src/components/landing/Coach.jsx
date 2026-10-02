@@ -28,7 +28,8 @@ export function CoachBubble({ line, clip = "smile" }) {
   }, [src]);
   return (
     <div className="nf-coach">
-      <video ref={ref} key={src} className="nf-coach-clip" src={src} poster={poster} muted loop playsInline preload="none" aria-hidden="true" />
+      {/* His still sits behind the clip, so the ring is never empty while the clip loads or if it can’t play. */}
+      <video ref={ref} key={src} className="nf-coach-clip" style={{ backgroundImage: `url(${poster})` }} src={src} poster={poster} muted loop playsInline preload="none" aria-hidden="true" />
       <p className="nf-coach-line" key={line}>{line}</p>
     </div>
   );

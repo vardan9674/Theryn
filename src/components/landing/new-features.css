@@ -9,7 +9,7 @@
 
 /* the coach: small, round, lime ring */
 .nf-coach { display: flex; align-items: center; gap: 12px; }
-.nf-coach-clip { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; flex: none; background: #cfd0cc; border: 3px solid var(--acc); box-shadow: 0 0 0 4px rgba(200, 255, 0, .14); }
+.nf-coach-clip { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; flex: none; background: #cfd0cc center / cover no-repeat; border: 3px solid var(--acc); box-shadow: 0 0 0 4px rgba(200, 255, 0, .14); }
 @keyframes nf-say { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 .nf-coach-line { animation: nf-say .45s ease both; position: relative; padding: 9px 13px; border-radius: 14px 14px 14px 4px; background: var(--s2); border: 1px solid var(--line); font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--tx); }
 
