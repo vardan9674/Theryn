@@ -167,44 +167,33 @@ html:has(body[data-landing]) { scroll-behavior: smooth; }
 .tl-cons { padding-block: 44px; border-block: 1px solid var(--line); background: var(--s1); scroll-margin-top: 60px; }
 /* phones: headline, the chart, then three one-liners. Nothing to read twice. */
 .tl-cons-grid { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "vis" "list"; gap: 22px; }
-.tl .tl-cons-title { grid-area: title; font-size: clamp(42px, 12vw, 72px); }
+.tl h2.tl-cons-title { font-size: clamp(36px, 10.2vw, 72px); }
 .tl-cons-list { grid-area: list; margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .tl-cons-list li { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; line-height: 1.25; }
 .tl-cons-list i { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--acc); color: var(--acc-ink); display: grid; place-items: center; font: normal 900 14px/1 var(--body); }
 .tl-cons-vis { grid-area: vis; perspective: 900px; }
-.tl-cons-card { padding: 18px 16px 16px; border-radius: 20px; background: var(--bg); border: 1px solid var(--line); display: grid; gap: 14px; transform: rotateX(9deg); transform-origin: bottom; box-shadow: 0 30px 60px var(--shadow), 0 0 50px var(--glow); }
 .tl-seg { display: inline-flex; padding: 4px; border-radius: 100px; background: var(--s1); border: 1px solid var(--line); justify-self: start; }
 .tl-seg button { min-height: 42px; padding: 8px 18px; border-radius: 100px; border: 0; background: none; color: var(--mute); font: 800 17px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; cursor: pointer; }
 .tl-seg button[aria-selected="true"] { background: var(--acc); color: var(--acc-ink); }
-.tl-cons-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.tl-cons-top b { font-size: 16px; }
-.tl-cons-top small { display: block; font: 500 11px/1.3 var(--mono); color: var(--dim); }
-.tl-streak { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 100px; background: var(--acc-soft); border: 1px solid var(--acc-bd); color: var(--acc-tx); font: 700 13px/1 var(--mono); white-space: nowrap; }
-.tl-view { display: grid; gap: 14px; }
-.tl-weeks { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; position: relative; padding-top: 22px; }
-.tl-weeks .wk { display: grid; gap: 5px; }
-.tl-weeks .wk i { aspect-ratio: 1; border-radius: 5px; background: var(--cell); border: 1px solid var(--cell-bd); }
-.tl-weeks .wk i.miss { background: var(--miss); border-color: var(--miss-bd); }
-.tl-weeks .wk i.hit { background: var(--acc); border-color: var(--acc); box-shadow: 0 0 10px rgba(200, 255, 0, .25); }
-.tl-linksent { position: absolute; top: 0; bottom: -4px; left: calc((100% + 5px) / 12 * 4 - 3px); border-left: 1.5px dashed var(--acc-tx); }
-.tl-linksent span { position: absolute; top: 0; left: 7px; font: 700 10px/1 var(--mono); letter-spacing: .08em; color: var(--acc-tx); white-space: nowrap; text-transform: uppercase; }
-.tl-axis { display: flex; justify-content: space-between; font: 500 11px/1 var(--mono); color: var(--dim); }
-.tl-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.tl-foot div { padding: 12px; border-radius: 12px; background: var(--s1); border: 1px solid var(--line); }
-.tl-foot small { display: block; font: 700 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
-.tl-foot b { font: 900 30px/1 var(--display); }
-.tl-foot .after b { color: var(--acc-tx); }
-.tl-foot span { display: block; font-size: 13px; color: var(--mute); margin-top: 2px; }
-.tl-chart { width: 100%; height: auto; display: block; }
-.tl-chart .grid { stroke: var(--chart-grid); stroke-width: 1; }
-.tl-chart .goal { stroke: var(--teal); stroke-width: 1.5; stroke-dasharray: 5 5; }
-.tl-chart .line { fill: none; stroke: var(--chart-line); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-.tl-chart .area { fill: var(--chart-area); }
-.tl-chart .dot { fill: var(--chart-line); }
-.tl-chart .halo { fill: var(--chart-area); }
-.tl-chart text { font: 700 11px var(--mono); fill: var(--mute); }
-.tl-chart text.hi { fill: var(--acc-tx); }
-.tl-chart text.tg { fill: var(--teal); }
+.tl-cons-head { grid-area: title; display: grid; gap: 14px; }
+/* Maya's month: the same 16 planned sessions, before the link and with it */
+.tl-story { padding: 18px 16px 16px; border-radius: 22px; background: #080808; color: #f0f0f0; border: 1px solid #262a22; display: grid; gap: 16px; box-shadow: 0 30px 60px var(--shadow), 0 0 50px var(--glow); }
+.tl-story .tl-seg { background: #101010; border-color: #262a22; }
+.tl-story .tl-seg { justify-self: stretch; display: grid; grid-template-columns: 1fr 1fr; }
+.tl-story .tl-seg button { color: #a8aeb7; font-size: clamp(13px, 3.7vw, 16px); padding-inline: 8px; white-space: nowrap; letter-spacing: .03em; }
+.tl-story .tl-seg button[aria-selected="true"] { background: #c8ff00; color: #0a0b08; }
+.tl-story-num { display: flex; align-items: flex-end; gap: 12px; }
+.tl-story-num b { font: 900 clamp(84px, 24vw, 120px)/.78 var(--display); color: #8a5a3a; transition: color .6s; font-variant-numeric: tabular-nums; }
+.tl-story[data-after="true"] .tl-story-num b { color: #c8ff00; }
+.tl-story-num span { font: 600 15px/1.25 var(--body); color: #a8aeb7; padding-bottom: 6px; }
+.tl-story-weeks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.tl-story-weeks .wk { display: grid; gap: 7px; }
+.tl-story-weeks .wk i { aspect-ratio: 1.75; border-radius: 9px; background: #c8ff00; box-shadow: 0 0 14px rgba(200, 255, 0, .22); transition: background .45s, box-shadow .45s, transform .45s; transition-delay: calc(var(--i) * 45ms); }
+.tl-story-weeks .wk i.miss { background: #3b2416; box-shadow: inset 0 0 0 1.5px #6e4020; transform: scale(.92); }
+.tl-story-weeks .wk small { font: 500 11px/1 var(--mono); color: #7a8075; text-align: center; margin-top: 2px; }
+.tl-story-cap { font: 700 18px/1.3 var(--body); animation: tl-cap .5s ease both; }
+@keyframes tl-cap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tl-story .tl-illus { color: #7a8075; }
 .tl-illus { font: 500 11px/1.3 var(--mono); color: var(--dim); text-align: center; }
 
 /* ── problem ── */
@@ -403,10 +392,10 @@ html:has(body[data-landing]) { scroll-behavior: smooth; }
   .tl-tag-a { left: -6%; bottom: 84px; }
   .tl-tag-b { right: 8%; bottom: 70px; transform: translateZ(200px); }
   .tl-cons-grid { grid-template-columns: 1fr 1fr; grid-template-areas: "title vis" "list vis"; gap: 28px 64px; }
-  .tl .tl-cons-title { align-self: end; }
+  .tl-cons-head { align-self: end; }
   .tl-cons-list { align-self: start; }
   .tl-cons-list li { font-size: 20px; }
-  .tl-cons-card { transform: rotateX(8deg) rotateY(-8deg); padding: 24px; }
+  .tl-story { padding: 26px; }
   .tl-problem-grid { grid-template-columns: .9fr 1.1fr; grid-template-areas: "copy vis" "cta vis"; align-items: center; gap: 24px 64px; }
   .tl-problem-copy { align-self: end; }
   .tl-problem-cta { align-self: start; justify-items: start; }

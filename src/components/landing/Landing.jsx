@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WorkoutLinkPreview } from "../../link/LinkPage.jsx";
 import "./landing.css";
+import { Payoff, WeeklyReport, Library } from "./NewFeatures.jsx";
+import { CoachBubble } from "./Coach.jsx";
 
 // Public marketing page. Mobile-first: most visitors arrive on a phone from a
 // link a coach shared. Every product screen here is the real UI — the athlete
@@ -8,13 +10,13 @@ import "./landing.css";
 // product-preview.html — with sample data, so the page never drifts from the app.
 
 const LINK_URL = "theryn.fit/f/k7Qm2xVd";
-const ASK_COACH_MESSAGE = "Hey coach — can you set me up on Theryn? It's free, and you send my workouts as a link so I don't need another app. https://theryn.fit";
+const ASK_COACH_MESSAGE = "Hey coach, can you set me up on Theryn? It's free, and you send my workouts as a link, so I don't need another app. https://theryn.fit";
 
 const BENEFITS = [
-  { id: "cons", title: <>Better <u>consistency</u></>, text: "They always know today’s plan, so they show up.", to: "consistency" },
-  { id: "prog", title: <>Visible <u>progress</u></>, text: "Every lift charted, so they see it working.", to: "consistency" },
+  { id: "cons", title: <>Better <u>consistency</u></>, text: "They know you’ll see every session.", to: "consistency" },
+  { id: "prog", title: <>Visible <u>progress</u></>, text: "A medal for every lift they beat.", to: "payoff" },
   { id: "fast", title: <><u>4 min</u></>, text: "to send your first plan.", to: "how" },
-  { id: "brain", title: <><u>0 lb</u> to remember</>, text: "Theryn remembers every weight they lift.", to: "problem" },
+  { id: "brain", title: <><u>0 lb</u> to remember</>, text: "Theryn keeps every weight.", to: "problem" },
 ];
 
 const COMPARE = [
@@ -22,35 +24,37 @@ const COMPARE = [
   ["Works on", "Any phone browser", "App store installs"],
   ["Your plans", "Export to Excel anytime", "Kept inside the app"],
   ["See who trained", "The second they tap Finish", "When they open the app"],
-  ["A machine is taken", "Your stand-ins are already on the link", "They skip it, or text you"],
+  ["A machine is taken", "Your stand-ins are on the link", "They skip it, or text you"],
   ["Cost to start", "Free", "Usually a monthly fee"],
 ];
 
 const FAQ = [
-  ["Do my athletes need to download anything?", "No. The link opens in any phone browser with no account and no password. There’s an optional athlete app for people who want more, but they never need it."],
-  ["How do I send the link?", "Copy it and send it however you already talk to them: WhatsApp, iMessage, SMS or email. Each athlete gets their own private link."],
-  ["Can I bring my Excel plans?", "Build the week once in the plan builder, save it as a template and give it to any athlete. You can export any plan back to Excel whenever you want."],
-  ["Do athletes have to log weights?", "No. They can just tick each set. If they want, they can add reps and weight, rate how it felt and leave you a note."],
-  ["What if they can’t do an exercise?", "Put a couple of stand-ins on it when you build the plan and they show up on the link under that exercise, so a busy machine means they swap instead of skip. After they finish, the link shows them which muscles the session worked."],
-  ["Can I track payments and measurements?", "Yes. Mark who has paid and see who is overdue. Ask for body measurements and they fill them in on the same link."],
-  ["Is it really free?", "Yes, for coaches and athletes. Sign in with Google and start. No card needed."],
+  ["Do my athletes need to download anything?", "No. The link opens in any phone browser. No account, no password."],
+  ["How do I send the link?", "Copy it into WhatsApp, iMessage, SMS or email. Each athlete gets a private link."],
+  ["Can I bring my Excel plans?", "There’s no Excel import yet. Build the week once, save it as a template and reuse it. Any plan exports to Excel."],
+  ["Do athletes have to log weights?", "No. They can just tick each set. Reps, weight and a note are optional."],
+  ["What if they can’t do an exercise?", "Add stand-ins when you build the plan. They show under that exercise on the link, so a busy machine means a swap instead of a skip."],
+  ["Can I track payments and measurements?", "Yes. Mark who has paid and see who is overdue. Athletes fill in measurements on the same link."],
+  ["Is it really free?", "Yes, for coaches and athletes. Sign in with Google. No card."],
 ];
 
-// 12 weeks × 4 planned sessions: patchy until the link, then near-perfect.
-const WEEKS = [[1,0,0,0],[1,1,0,0],[0,0,0,0],[1,0,1,0],[1,1,1,0],[1,1,1,1],[1,1,0,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1]];
-const BENCH = [95, 95, 100, 105, 105, 110, 115, 115, 120, 125, 130, 135];
+// Maya's month: 4 weeks × 4 planned sessions, before the link and with it.
+const STORY = {
+  before: { weeks: [[1,0,0,0],[1,1,0,0],[0,0,0,0],[1,0,1,0]], line: "Meet Maya. Great plan. Nobody checking.", clip: "wave", cap: "So she skipped." },
+  after: { weeks: [[1,1,1,1],[1,1,1,1],[1,1,0,1],[1,1,1,1]], line: "Now her coach sees every session.", clip: "fist", cap: "So she shows up." },
+};
 
 const TABS = {
-  dashboard: ["Athletes", <><b>Every athlete, one screen.</b> Last workout, streak, this week, payment, and what to do next.</>],
-  plan: ["Plan builder", <><b>Build the week once.</b> Exercises, sets and notes, with a live preview of what your athlete sees. Add stand-ins for anything they might not get to.</>],
-  templates: ["Templates", <><b>Save it as a template.</b> Give it to any number of athletes, update them all in one tap, or export to Excel.</>],
+  dashboard: ["Athletes", <><b>Every athlete, one screen.</b> Last workout, streak, payment, what to do next.</>],
+  plan: ["Plan builder", <><b>Build the week once.</b> A live preview shows what your athlete sees.</>],
+  templates: ["Templates", <><b>Save it as a template.</b> Give it to any athlete. Update them all in one tap.</>],
 };
 
 const DEMO = [
   ["Tap the link", <><b>Your coach texts you a link.</b> Tap it.</>],
-  ["Tick a set", <><b>Today’s plan opens.</b> No app, no sign-in. Tick off your first exercise.</>],
+  ["Tick a set", <><b>Today’s plan opens.</b> Tick off your first exercise.</>],
   ["Tick the rest", <><b>Finished exercises fold away.</b> Keep going.</>],
-  ["Finish workout", <><b>All three done.</b> Tell your coach how it felt, then send.</>],
+  ["Finish workout", <><b>All three done.</b> Send it to your coach.</>],
   ["Flip to the coach’s view ↻", <><b>Sent to Coach Vardan.</b> Now see what your coach sees.</>],
   ["Start over", <><b>Your coach knows the same second.</b> No more “did you train?” texts.</>],
 ];
@@ -259,10 +263,10 @@ function Hero({ onStart, onAskCoach, askState, heroCtaRef, desktop, reduce }) {
           <span className="tl-chip"><b>FREE</b> No app for your athletes</span>
           <h1>Your athletes train from <em>one link.</em></h1>
           <div className="tl-cta-col" ref={heroCtaRef}>
-            <button className="tl-btn tl-btn-primary" onClick={onStart}>Start free: send your first plan →</button>
+            <button className="tl-btn tl-btn-primary" onClick={onStart}>Send your first plan free →</button>
             <a className="tl-btn tl-btn-ghost" href="#demo">See what your athlete sees</a>
           </div>
-          <div className="tl-trust"><span>Free for coaches and athletes</span><span>Export plans to Excel anytime</span></div>
+          <div className="tl-trust"><span>No card</span><span>Export to Excel anytime</span></div>
           <AthleteLine onAskCoach={onAskCoach} askState={askState} />
         </div>
 
@@ -291,76 +295,84 @@ function AthleteLine({ onAskCoach, askState }) {
     <p className="tl-athlete-line" aria-live="polite">
       {askState === "copied" ? "Message copied. Paste it to your coach."
         : askState === "failed" ? <>Couldn’t open sharing. Send your coach this: <span className="tl-ask-text">{ASK_COACH_MESSAGE}</span></>
-        : <>Got a link from your coach? Just tap it, no sign-in. <button className="tl-textbtn" onClick={onAskCoach}>No link yet? Ask your coach →</button></>}
+        : <>Got a link from your coach? Tap it. <button className="tl-textbtn" onClick={onAskCoach}>No link yet? Ask your coach →</button></>}
     </p>
   );
 }
 
-function Benefits({ onPick }) {
+function Benefits() {
   return (
     <div className="tl-bene">
       <div className="tl-wrap tl-bene-grid">
         {BENEFITS.map(b => (
-          <a key={b.id} href={`#${b.to}`} onClick={() => onPick(b.id)}><b>{b.title}</b><span>{b.text}</span></a>
+          <a key={b.id} href={`#${b.to}`}><b>{b.title}</b><span>{b.text}</span></a>
         ))}
       </div>
     </div>
   );
 }
 
-function ProgressChart() {
-  const X = i => 34 + i * 24.6, Y = v => 140 - (v - 90) / 60 * 120;
-  const pts = BENCH.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
-  const last = BENCH.length - 1;
-  return (
-    <svg className="tl-chart" viewBox="0 0 320 160" role="img" aria-label="Illustration: bench press rising from 95 to 135 pounds over twelve weeks, with a next goal of 145 pounds">
-      {[100, 120, 140].map(v => <g key={v}><line className="grid" x1="34" x2="310" y1={Y(v)} y2={Y(v)} /><text x="28" y={Y(v) + 4} textAnchor="end">{v}</text></g>)}
-      <line className="goal" x1="34" x2="310" y1={Y(145)} y2={Y(145)} />
-      <text className="tg" x="38" y={Y(145) - 6}>NEXT GOAL 145 LB</text>
-      <polygon className="area" points={`${X(0)},140 ${pts} ${X(last)},140`} />
-      <polyline className="line" points={pts} />
-      <circle className="halo" cx={X(last)} cy={Y(135)} r="9" /><circle className="dot" cx={X(last)} cy={Y(135)} r="4.5" />
-      <text className="hi" x={X(last) - 14} y={Y(135) - 8} textAnchor="end">135 LB</text>
-      <text x={X(0)} y={Y(95) - 10}>95 LB</text>
-      <text x="34" y="156">WEEK 1</text><text x="310" y="156" textAnchor="end">WEEK 12</text>
-    </svg>
-  );
+/** Counts to `target` so a changing number reads as a change, not a swap. */
+function useCount(target, animate) {
+  const [n, setN] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    if (!animate) { from.current = target; setN(target); return; }
+    const start = from.current, t0 = performance.now();
+    let raf;
+    const tick = now => {
+      const p = Math.min(1, (now - t0) / 700);
+      setN(Math.round(start + (target - start) * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick); else from.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, animate]);
+  return n;
 }
 
-function Consistency({ view, setView }) {
+function Consistency({ reduce }) {
+  const [after, setAfter] = useState(false);
+  const [nearRef, near] = useNear("-120px");
+  const touched = useRef(false);
+  // The story tells itself once: Maya before the link, then with it.
+  useEffect(() => {
+    if (!near || reduce) return;
+    const t = setTimeout(() => { if (!touched.current) setAfter(true); }, 1800);
+    return () => clearTimeout(t);
+  }, [near, reduce]);
+  const pick = v => { touched.current = true; setAfter(v); };
+  const s = after ? STORY.after : STORY.before;
+  const done = s.weeks.flat().filter(Boolean).length;
+  const shown = useCount(done, !reduce);
   return (
-    <section className="tl-cons" id="consistency">
+    <section className="tl-cons" id="consistency" ref={nearRef}>
       <div className="tl-wrap tl-cons-grid">
-        <h2 className="tl-cons-title">They show up. <em>They see it working.</em></h2>
+        <div className="tl-cons-head">
+          <CoachBubble line={s.line} clip={s.clip} />
+          <h2 className="tl-cons-title">They show up.<br /><em>Because you’ll know.</em></h2>
+        </div>
         <ul className="tl-cons-list">
-          <li><i>✓</i>Today’s plan, one tap away</li>
-          <li><i>✓</i>Slipping? You know on day 3</li>
-          <li><i>✓</i>Every lift charted</li>
+          <li><i>✓</i>Miss a day? You know by day 3</li>
+          <li><i>✓</i>A streak they won’t want to break</li>
         </ul>
         <div className="tl-cons-vis">
-          <div className="tl-cons-card">
-            <div className="tl-seg" role="tablist" aria-label="Choose view">
-              {[["cons", "Consistency"], ["prog", "Progress"]].map(([id, label]) => (
-                <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)}>{label}</button>
+          <div className="tl-story" data-after={after}>
+            <div className="tl-seg" role="tablist" aria-label="Maya’s month">
+              <button role="tab" aria-selected={!after} onClick={() => pick(false)}>Before the link</button>
+              <button role="tab" aria-selected={after} onClick={() => pick(true)}>With the link</button>
+            </div>
+            <div className="tl-story-num" aria-live="polite"><b>{shown}</b><span>of 16 sessions<br />done this month</span></div>
+            <div className="tl-story-weeks" role="img" aria-label={`Illustration: ${done} of 16 planned sessions done ${after ? "with the link" : "before the link"}.`}>
+              {s.weeks.map((w, wi) => (
+                <div className="wk" key={wi}>
+                  {w.map((hit, si) => <i key={si} className={hit ? "hit" : "miss"} style={{ "--i": wi * 4 + si }} />)}
+                  <small>Wk {wi + 1}</small>
+                </div>
               ))}
             </div>
-            <div className="tl-cons-top"><span><b>Maya J.</b><small>4 sessions planned each week</small></span><span className="tl-streak">▲ 27-day streak</span></div>
-            {view === "cons" ? (
-              <div className="tl-view">
-                <div className="tl-weeks" role="img" aria-label="Illustration: twelve weeks of training. Patchy attendance for four weeks, then nearly every session done after the coach sends a Theryn link.">
-                  {WEEKS.map((w, wi) => <div className="wk" key={wi}>{w.map((v, si) => <i key={si} className={v ? "hit" : wi < 4 ? "miss" : ""} />)}</div>)}
-                  <div className="tl-linksent"><span>Link sent</span></div>
-                </div>
-                <div className="tl-axis"><span>Week 1</span><span>Week 12</span></div>
-                <div className="tl-foot"><div><small>Before</small><b>5 / 16</b><span>sessions done</span></div><div className="after"><small>With the link</small><b>30 / 32</b><span>sessions done</span></div></div>
-              </div>
-            ) : (
-              <div className="tl-view">
-                <ProgressChart />
-                <div className="tl-foot"><div><small>Bench · week 1</small><b>95 lb</b><span>3 × 8</span></div><div className="after"><small>Bench · week 12</small><b>135 lb</b><span>+40 lb · next goal 145</span></div></div>
-              </div>
-            )}
-            <p className="tl-illus">Illustration with a sample athlete</p>
+            <p className="tl-story-cap" key={s.cap}>{s.cap}</p>
+            <p className="tl-illus">Illustration · sample athlete</p>
           </div>
         </div>
       </div>
@@ -382,8 +394,9 @@ function Problem() {
     <section className="tl-section" id="problem">
       <div className="tl-wrap tl-problem-grid">
         <div className="tl-problem-copy">
+          <CoachBubble line="Her coach? Buried in four apps." clip="phone" />
           <h2>All in <em>one place.</em></h2>
-          <p className="tl-lede">Plans, questions, notes and payments are scattered across four apps. Theryn keeps them in one row per athlete.</p>
+          <p className="tl-lede">Plan, questions, notes and payments. One row per athlete.</p>
         </div>
         <div className={`tl-chaos${solved ? " solved" : ""}`}>
           <div className="tl-chaos-scene">
@@ -397,8 +410,7 @@ function Problem() {
           </div>
         </div>
         <div className="tl-problem-cta">
-          <button className="tl-btn tl-btn-ghost" aria-pressed={solved} onClick={() => setSolved(s => !s)}>{solved ? "← Show the four apps again" : "See it in one place →"}</button>
-          {solved && <p className="tl-solved-note">One row per athlete: plan, last workout, notes and payment.</p>}
+          <button className="tl-btn tl-btn-ghost" aria-pressed={solved} onClick={() => setSolved(s => !s)}>{solved ? "← Back to four apps" : "See it in one place →"}</button>
         </div>
       </div>
     </section>
@@ -406,11 +418,11 @@ function Problem() {
 }
 
 const FLOW = [
-  { key: "text", title: "Get the text", text: "You send the link however you already talk.", body: <MessageScreen /> },
-  { key: "plan", title: "See today’s plan", text: "Opens in the browser. No account, no password.", body: <LinkScreen screen="workout" /> },
-  { key: "tick", title: "Tick it off", text: "Tap each set. Logging weights is optional.", body: <LinkScreen screen="workout" ticks={3} scroll={330} /> },
-  { key: "sent", title: "Send to coach", text: "One tap. You see it the same second — they see the muscles they worked.", body: <LinkScreen screen="sent" /> },
-  { key: "measure", title: "Check-ins too", text: "Measurements live on the same link.", body: <LinkScreen screen="measure" filled={3} scroll={200} /> },
+  { key: "text", title: "Get the text", text: "Sent in any chat you already use.", body: <MessageScreen /> },
+  { key: "plan", title: "See today’s plan", text: "Opens in the browser. No account.", body: <LinkScreen screen="workout" /> },
+  { key: "tick", title: "Tick it off", text: "Tap each set. Weights are optional.", body: <LinkScreen screen="workout" ticks={3} scroll={330} /> },
+  { key: "sent", title: "Send to coach", text: "One tap. You see it the same second.", body: <LinkScreen screen="sent" /> },
+  { key: "measure", title: "Check-ins too", text: "Measurements, on the same link.", body: <LinkScreen screen="measure" filled={3} scroll={200} /> },
 ];
 
 function HowItWorks({ reduce }) {
@@ -448,7 +460,7 @@ function HowItWorks({ reduce }) {
     <section className="tl-section tl-band" id="how" ref={nearRef}>
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <span className="tl-eyebrow">How it works for your athlete</span>
+          <CoachBubble line="So he sent her one link." clip="explain" />
           <h2>Tap. Train. <em>Done.</em></h2>
         </div>
         <div className="tl-flow" ref={flowRef} tabIndex={0} aria-label="Athlete link screens. Scroll sideways.">
@@ -512,7 +524,7 @@ function Demo() {
     <section className="tl-section" id="demo" ref={nearRef}>
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <span className="tl-eyebrow">Try it as an athlete. No sign-up.</span>
+          <CoachBubble line="Your turn. No sign-up." clip="point" />
           <h2>Be Maya for ten seconds.</h2>
         </div>
         <div className="tl-demo-grid">
@@ -554,7 +566,7 @@ function CoachSide({ desktop, reduce }) {
     <section className="tl-section tl-band" id="coach">
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <span className="tl-eyebrow">Your side of the link</span>
+          <CoachBubble line="Now your side of the link." clip="idea" />
           <h2>Build once. Send to everyone.</h2>
         </div>
         <div className="tl-tabs" role="tablist">
@@ -571,7 +583,7 @@ function CoachSide({ desktop, reduce }) {
           </div>
         </div>
         <p className="tl-tab-cap">{TABS[tab][1]}</p>
-        <p className="tl-real-tag">Actual Theryn coach screens · sample athletes</p>
+        <p className="tl-real-tag">Real Theryn screens · sample athletes</p>
       </div>
     </section>
   );
@@ -582,7 +594,7 @@ function Compare() {
     <section className="tl-section" id="compare">
       <div className="tl-wrap">
         <div className="tl-sec-head">
-          <span className="tl-eyebrow">Why coaches switch</span>
+          <CoachBubble line="Why a link and not an app?" clip="psst" />
           <h2>Your clients shouldn’t need an app to train.</h2>
         </div>
         <div className="tl-cmp">
@@ -599,7 +611,7 @@ function Pricing({ onStart }) {
   return (
     <section className="tl-section" id="pricing">
       <div className="tl-wrap">
-        <div className="tl-sec-head"><span className="tl-eyebrow">Pricing</span><h2>Free. So what’s the catch?</h2></div>
+        <div className="tl-sec-head"><CoachBubble line="No catch." clip="fist" /><h2>Free. So what’s the catch?</h2></div>
         <div className="tl-catch-grid">
           <div className="tl-price">
             <span className="tl-eyebrow">For coaches</span>
@@ -609,7 +621,7 @@ function Pricing({ onStart }) {
           </div>
           <div className="tl-promise">
             <div><b>No card, no trial clock</b><span>Sign in with Google. Nothing to cancel.</span></div>
-            <div><b>Athletes never pay or sign up</b><span>They just open your link.</span></div>
+            <div><b>Athletes never pay or sign up</b><span>They open your link.</span></div>
             <div><b>Your plans stay yours</b><span>Export to Excel anytime.</span></div>
           </div>
         </div>
@@ -622,7 +634,7 @@ function Faq() {
   return (
     <section className="tl-section tl-faq-section" id="faq">
       <div className="tl-wrap">
-        <div className="tl-sec-head"><span className="tl-eyebrow">FAQ</span><h2>Before you ask.</h2></div>
+        <div className="tl-sec-head"><CoachBubble line="Ask away." clip="explain" /><h2>Before you ask.</h2></div>
         <div className="tl-faq">
           {FAQ.map(([q, a], i) => <details key={q} open={i === 0}><summary>{q}</summary><p>{a}</p></details>)}
         </div>
@@ -636,6 +648,7 @@ function Final({ onStart, onAskCoach, askState, finalRef }) {
     <section className="tl-final" id="start" ref={finalRef}>
       <div className="tl-wrap">
         <div className="tl-final-logo"><Logo3D className="tl-final-mark" /></div>
+        <CoachBubble line="Your move, coach." clip="wave" />
         <h2>Send one link.<br /><em>Watch them train.</em></h2>
         <button className="tl-btn tl-btn-primary" onClick={onStart}>Create my free coach account →</button>
         <div className="tl-trust"><span>No credit card</span><span>Sign in with Google</span></div>
@@ -652,7 +665,6 @@ export default function Landing({ onEnterApp }) {
   const desktop = useMedia("(min-width: 960px)");
   const reduce = useReducedMotion();
   const [theme, toggleTheme] = useTheme();
-  const [consView, setConsView] = useState("cons");
   const [askState, setAskState] = useState("idle");
   const heroCtaRef = useRef(null);
   const finalRef = useRef(null);
@@ -728,12 +740,15 @@ export default function Landing({ onEnterApp }) {
       </nav>
       <main>
         <Hero onStart={onStart} onAskCoach={askCoach} askState={askState} heroCtaRef={heroCtaRef} desktop={desktop} reduce={reduce} />
-        <Benefits onPick={id => { if (id === "cons" || id === "prog") setConsView(id); }} />
-        <Consistency view={consView} setView={setConsView} />
+        <Benefits />
+        <Consistency reduce={reduce} />
         <Problem />
         <HowItWorks reduce={reduce} />
         <Demo />
+        <Payoff />
+        <WeeklyReport />
         <CoachSide desktop={desktop} reduce={reduce} />
+        <Library />
         <Compare />
         <Pricing onStart={onStart} />
         <Faq />

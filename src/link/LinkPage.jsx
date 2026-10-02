@@ -376,21 +376,39 @@ export function WorkoutLinkPreview({ screen = "workout", ticks = 0, filled = 0 }
   ];
   const todayIdx = DAY_ORDER.indexOf(new Date().toLocaleDateString("en-US", { weekday: "short" }));
   const plan = Object.fromEntries(DAY_ORDER.map((day, i) => [day, week[(i - todayIdx + 7) % 7]]));
-  const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan, requested: ["waist", "hips", "chest"] };
   const today = todayFromPlan(plan);
   const noop = () => {};
+  const daysAgo = (n) => { const x = new Date(); x.setDate(x.getDate() - n); return x; };
+  // Maya's last push day, three days back: lighter bench, fewer presses, a fly
+  // set cut short. It gives each exercise its "Last time" line, and makes the
+  // medals on the receipt real ones, worked out by the same code a client's are.
+  const lastPush = { "Bench Press": [125, [8, 8, 8]], "Overhead Press": [65, [8, 8, 8]], "Cable Fly": [25, [12, 10, 8]] };
+  const sentSets = (reps, weight) => reps.map((r, i) => ({ n: i + 1, done: true, reps: Number(r), weight }));
+  const history = [{ date: isoOf(daysAgo(3)), kind: "workout", payload: { weight_unit: "imperial", exercises: exercises.map((e) => ({ name: e.name, sets_done: e.sets, sets: sentSets(lastPush[e.name][1], lastPush[e.name][0]) })) } }];
+  const sending = { exercises: exercises.map((e) => ({ name: e.name, sets_planned: e.sets, sets_done: e.sets, sets: sentSets(Array(e.sets).fill(e.reps), e.weight) })) };
+  // Six planned workouts in a row before today, so finishing makes seven.
+  const doneDates = [];
+  for (let i = 1; doneDates.length < 6 && i < 30; i++) if (plan[dayKeyOf(daysAgo(i))].type !== "Rest") doneDates.push(isoOf(daysAgo(i)));
+  const d = { first_name: "Maya", coach_name: "Vardan", unit_system: "imperial", plan, requested: ["waist", "hips", "chest"], doneDates };
+  const me = React.useMemo(() => ({ history }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Today's plan sits in the boxes the way a saved draft would, so a tick logs
+  // today's numbers rather than last time's. Nothing is read from or written to the phone.
+  const store = React.useMemo(() => {
+    const log = Object.fromEntries(exercises.map((e, i) => [i, Object.fromEntries(Array.from({ length: e.sets }, (_, si) => [si, { r: e.reps, w: String(e.weight) }]))]));
+    return { draft: () => ({ day: today.key, type: today.type, units: "imperial", log }), sent: () => null, last: () => null, key: () => null, setKey: noop, saveDraft: noop, addDone: noop, markSent: noop, saveLast: noop };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const tickState = React.useMemo(() => Object.fromEntries(Array.from({ length: ticks }, (_, i) => [i, 3])), [ticks]);
   const valueState = React.useMemo(() => Object.fromEntries([["weight", "138"], ["waist", "29"], ["hips", "37"]].slice(0, filled)), [filled]);
   // The muscle picture comes from the same exercises the demo just ticked, so the
   // marketing screens stay true to each other.
-  if (screen === "sent") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "workout", summary: { day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets", worked: today.exercises.map((e) => ({ name: e.name, sets: e.sets })) } }} />;
+  if (screen === "sent") return <Receipt coach={d.coach_name} today={today} plan={plan} doneDates={doneDates} onBack={noop} sent={{ kind: "workout", summary: { date: isoToday(), streakBefore: doneDates.length, wins: winsForSend(sending, isoToday(), d.unit_system, history), unit: "lb", day: DAY_LONG[today.key], type: today.type, done: 9, planned: 9, what: "sets", worked: today.exercises.map((e) => ({ name: e.name, sets: e.sets })) } }} />;
   if (screen === "measured") return <Receipt coach={d.coach_name} today={today} onBack={noop} sent={{ kind: "measurements", summary: { count: 3, date: isoToday() } }} />;
   const measuring = screen === "measure";
   return <div className="lk-page cx-app">
     <div className="lk-tabs"><span className="lk-tab" aria-selected={!measuring}>Today's workout</span><span className="lk-tab" aria-selected={measuring}>Measurements</span></div>
     {measuring
       ? <MeasurementsTab d={d} controlledValues={valueState} onSubmit={async () => ({ ok: true })} onSent={noop} />
-      : <WorkoutTab d={d} today={today} controlledTicks={tickState} onSubmit={async () => ({ ok: true })} onSent={noop} onMeasure={noop} />}
+      : <WorkoutTab d={d} today={today} store={store} me={me} controlledTicks={tickState} onSubmit={async () => ({ ok: true })} onSent={noop} onMeasure={noop} />}
   </div>;
 }
 
