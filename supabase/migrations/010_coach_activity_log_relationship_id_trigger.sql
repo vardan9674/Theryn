@@ -3,7 +3,7 @@
 -- ============================================================================
 -- The production coach_activity_log table has a NOT NULL column
 -- coaching_relationship_id that is not in any repo migration (schema drift).
--- Five RPCs in 005_routine_templates.sql write to coach_activity_log and only
+-- Five RPCs in 0052_routine_templates.sql write to coach_activity_log and only
 -- set coach_athlete_id, so each one fails the moment its code path runs:
 --
 --   - assign_template            (line ~463)

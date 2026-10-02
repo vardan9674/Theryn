@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_coach_athletes_coach_status
 CREATE INDEX IF NOT EXISTS idx_coach_activity_log_link_date
   ON coach_activity_log (coach_athlete_id, created_at DESC);
 
--- profiles.role was added in migration 004_user_role.sql but never indexed.
+-- profiles.role was added in migration 0041_user_role.sql but never indexed.
 -- The coach app filters profiles by role and several RLS policies branch on it.
 CREATE INDEX IF NOT EXISTS idx_profiles_role
   ON profiles (role) WHERE role IS NOT NULL;

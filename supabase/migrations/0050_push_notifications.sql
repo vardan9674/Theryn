@@ -13,7 +13,7 @@
 --      - within_daily_budget()              - per-user/day cap.
 --
 -- The Edge Function `process-outbox` calls claim_outbox_batch every minute
--- via pg_cron (wired in 006_notify_cron.sql once the function is deployed).
+-- via pg_cron (wired in 0060_notify_cron.sql once the function is deployed).
 -- ============================================================================
 
 -- ── 1. PROFILE EXTENSIONS ───────────────────────────────────────────────────
