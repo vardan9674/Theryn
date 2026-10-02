@@ -2,6 +2,7 @@ import React from "react";
 import { Sheet, Button, Icon, Field, Avatar, Confirm, useToast } from "../ui/primitives.jsx";
 import { useCoachData } from "../data/CoachDataContext.jsx";
 import { SUPPORTED_CURRENCIES } from "../../hooks/usePayments.ts";
+import LegalOverlay from "../../legal/LegalOverlay.jsx";
 
 // ── Add a client: show my code, or enter theirs ───────────────────────────
 const sameName = (a, b) => String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -78,6 +79,7 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, u
   const [currency, setCurrency] = React.useState(data.defaultCurrency);
   const [busy, setBusy] = React.useState(false);
   const [removing, setRemoving] = React.useState(null);
+  const [legalView, setLegalView] = React.useState(null); // "privacy" | "terms" | "delete"
   React.useEffect(() => { if (open) { setName(data.coachName); setCurrency(data.defaultCurrency); setEditing(false); } }, [open, data.coachName, data.defaultCurrency]);
 
   async function saveName() {
@@ -155,15 +157,23 @@ export function ProfileSheet({ open, onClose, clients, onRemoveClient, onTour, u
           <Button onClick={() => { onClose(); data.switchRole(); }}>Switch to Athlete</Button>
           <Button variant="danger" onClick={() => { onClose(); data.signOut(); }}>Sign out</Button>
         </div>
+        <div className="cx-row" style={{ justifyContent: "center", gap: 18, flexWrap: "wrap" }}>
+          <button type="button" className="cx-linkbtn" onClick={() => setLegalView("privacy")} style={legalLink}>Privacy policy</button>
+          <button type="button" className="cx-linkbtn" onClick={() => setLegalView("terms")} style={legalLink}>Terms</button>
+          <button type="button" className="cx-linkbtn" onClick={() => setLegalView("delete")} style={legalLink}>Delete account</button>
+        </div>
       </div>
       <Confirm open={Boolean(removing)} title={`Remove ${removing?.athlete_name}?`} body={removing?.manual
         ? (data.historyKept === false
           ? `${removing.athlete_name.split(" ")[0]} can only be removed once the database update for keeping history is applied, if they've sent anything through their link.`
           : `${removing.athlete_name.split(" ")[0]} leaves your list and their link stops working. Their workouts, measurements, plan and payments are kept, for reports and in case they join the app later.`)
         : "They keep their app and data. You stop seeing them here and can't message them until you connect again."} confirmLabel="Remove" danger busy={busy} onConfirm={confirmRemove} onClose={() => setRemoving(null)} />
+      <LegalOverlay view={legalView} role="coach" onClose={() => setLegalView(null)} onDeleted={() => { setLegalView(null); onClose(); data.signOut(); }} />
     </Sheet>
   );
 }
+
+const legalLink = { background: "none", border: "none", padding: "10px 4px", minHeight: 44, color: "var(--cx-mu)", fontSize: 13, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" };
 
 // ── Kilograms or pounds (asked once) ─────────────────────────────────────
 // profiles.unit_system defaults to imperial, so a coach may never have picked.

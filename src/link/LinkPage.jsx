@@ -1376,6 +1376,7 @@ function WorkoutTab({ d, today: planned, date = isoToday(), store = null, onSubm
             <button type="button" className="lk-send secondary" onClick={onMeasure}>Go to Measurements</button>
           </div>
         )}
+        <p className="lk-small" style={{ textAlign: "center", margin: "18px 0 4px" }}><a href="/privacy" target="_blank" rel="noopener" style={{ color: "inherit" }}>Privacy</a></p>
       </main>
       {!today.isRest && !upcoming && !showSent && (
         <div className="lk-footer"><div className="lk-footer-inner">

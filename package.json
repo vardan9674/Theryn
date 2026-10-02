@@ -10,11 +10,16 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync": "npm run build && npx cap sync android",
-    "android": "npm run build && npx cap sync android && npx cap open android",
-    "ios": "npm run build && npx cap sync ios && npx cap open ios"
+    "sync": "npm run cap:sync",
+    "android": "npm run cap:sync && npx cap open android",
+    "ios": "npm run cap:sync && npx cap open ios",
+    "release:check": "node scripts/release-check.mjs",
+    "cap:sync": "npm run build && node scripts/prepare-native.mjs && npx cap sync",
+    "android:bundle": "npm run cap:sync && cd android && ./gradlew bundleRelease",
+    "android:apk": "npm run cap:sync && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/android": "^8.3.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.3",

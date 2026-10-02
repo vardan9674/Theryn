@@ -2,8 +2,6 @@ node_modules
 dist
 .env
 .env.local
-ios
-android
 *.tsbuildinfo
 
 # OS / editor junk
@@ -16,6 +14,15 @@ vite.config.ts.timestamp-*.mjs
 .claude/worktrees/
 
 # Sensitive credentials — never commit these
+# Firebase client configs live at the repo root and are copied into the
+# native projects by scripts/prepare-native.mjs (see docs/RELEASE.md).
+ios/App/App/GoogleService-Info.plist
+android/app/google-services.json
+*.keystore
+*.jks
+keystore.properties
+*.mobileprovision
+*.p12
 *.p8
 theryn-fcm.json
 *-service-account*.json

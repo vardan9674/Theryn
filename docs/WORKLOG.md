@@ -4,6 +4,32 @@ Newest first. One entry per working session. Record what was done, what was foun
 
 
 
+## 2026-10-01 — iOS and Android ready for the stores: privacy, account deletion, Apple sign-in
+
+**Asked**
+- "Build the app for iOS and Android, every platform. Make sure it is suitable long term, keep privacy in place, and follow all App Store and Google Play rules."
+
+**Found**
+- `ios/` and `android/` were git-ignored: every native setting lived only on one Mac.
+- No privacy policy, no terms, no account deletion anywhere (web or app), and no Sign in with Apple (required by guideline 4.8 because Google sign-in is offered).
+- iOS: no privacy manifest, an `armv7` device requirement, an unused `fetch` background mode, no export-compliance flag, landscape allowed on iPhone.
+- Android: `allowBackup=true` (session tokens copied into Google Drive backups), the FileProvider shared all external storage, no release signing, versionCode 1.
+- Deleting `auth.users` cascades through every table; only a few copied names and emails, and ids without a foreign key, need clean-up first.
+- iOS push can't deliver: the app registers an APNs token but the server sends through FCM, which needs an FCM token. Documented, not changed.
+
+**Done** (branch `feat/native-release`)
+- Native projects committed and cleaned: privacy manifest, Sign in with Apple entitlement, data-extraction rules, signing from env or `keystore.properties`, versions from `package.json`.
+- `/privacy`, `/terms` and `/delete-account` pages; in-app Privacy, Terms and Delete account (athlete Profile, coach You sheet, sign-in screen); website footer links.
+- Edge Function `delete-account` (not deployed) with tested clean-up steps.
+- Sign in with Apple (native sheet on iOS, OAuth on Android and web).
+- `npm run release:check`, CI (web, Android, iOS compile), the *Mobile release* workflow, `docs/RELEASE.md`, `docs/store/`.
+- Android release AAB and APK built locally with Java 21.
+
+**Open**
+- Fill the legal facts in `src/legal/legalConfig.js`; get a legal review.
+- Deploy `delete-account`; configure the Apple provider in Supabase; accept the Xcode licence.
+- iOS push through an FCM token.
+
 ## 2026-09-26 (night) — Dashboard QA sweep: failures that said nothing (#129–#142), PRs #144–#147
 
 **Asked**

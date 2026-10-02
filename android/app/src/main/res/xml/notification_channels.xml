@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Notification channels are registered programmatically in MainActivity.java.
+  See createNotificationChannels() for channel definitions.
+  This file is kept as a reference but is not parsed by Android.
+-->
+<resources />
