@@ -1,35 +1,29 @@
 import React from "react";
 import { winWords, winsHeadline, winNumbers } from "../lib/workoutWins.js";
+import Medal from "./Medal.jsx";
 import "./wins.css";
 
 // What they did better than last time, straight after a workout: on the
-// client link's receipt and the athlete app's "Workout complete". The wins
-// themselves come from lib/workoutWins.js; this only draws them.
+// client link's receipt and the athlete app's "Workout complete". Each win
+// is a medal carrying the new number, the same medal the weekly report
+// hands out. The wins themselves come from lib/workoutWins.js.
 
-const ICON = {
-  heavier: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>,
-  reps: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>,
-  longer: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></svg>,
-  more: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18l6-6 4 4 6-8" /></svg>,
-};
+/** "was 42.5 kg" / "was 10" / "was 0:45" / "was 20 in all" */
+function wasLine(win, x) {
+  if (win.kind === "heavier") return `was ${x.from} ${x.what}`;
+  if (win.kind === "more") return `was ${x.from} in all`;
+  return `was ${x.from}`;
+}
 
-/** One exercise's win: last time → this time. */
-function WinRow({ win, unit, delay = 0 }) {
+function WinMedal({ win, unit, delay = 0 }) {
   const x = winNumbers(win, unit);
   const tag = winWords(win, unit).tag;
   return (
-    <li className={`lk-win ${win.kind}`} style={{ "--d": `${0.1 + delay * 0.08}s` }}
+    <li className="lk-medal" style={{ "--d": `${0.1 + delay * 0.08}s` }}
       aria-label={`${win.name}: ${tag}. ${x.from} last time, ${x.to} ${x.what} now${x.note ? " " + x.note : ""}.`}>
-      <span className="lk-win-ic" aria-hidden="true">{ICON[win.kind]}</span>
-      <span className="lk-win-txt" aria-hidden="true">
-        <b>{win.name}</b>
-        <span>{tag}{x.note ? ` · ${x.note}` : ""}</span>
-      </span>
-      <span className="lk-win-num" aria-hidden="true">
-        <span className="was">{x.from}</span>
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        <b>{x.to}</b><small>{x.what}</small>
-      </span>
+      <Medal tone="lime" value={x.to} unit={x.what} label="" />
+      <b aria-hidden="true">{win.name}</b>
+      <span aria-hidden="true">{wasLine(win, x)}</span>
     </li>
   );
 }
@@ -42,8 +36,8 @@ export default function WinsPanel({ wins, unit, max = 4 }) {
     <section className="lk-wins" aria-label="Better than last time">
       <span className="lk-wins-h">Better than last time</span>
       <p className="lk-wins-p">{winsHeadline(wins.length)}</p>
-      <ul className="lk-wins-list">
-        {shown.map((w, i) => <WinRow key={w.name} win={w} unit={unit} delay={i} />)}
+      <ul className={`lk-medals n${shown.length}`}>
+        {shown.map((w, i) => <WinMedal key={w.name} win={w} unit={unit} delay={i} />)}
       </ul>
       {wins.length > shown.length && <small>And {wins.length - shown.length} more.</small>}
     </section>

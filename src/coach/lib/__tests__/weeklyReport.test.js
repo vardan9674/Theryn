@@ -260,7 +260,7 @@ describe("what the client gets when the coach shares it", () => {
     expect(withBody.body).toMatchObject({ weight: 138, unit: "lb" });
   });
   it("carries the kind headline, the muscles, the weak spot, the wins and the note", () => {
-    expect(snap).toMatchObject({ v: 2, coach: "Vardan", first: "Maya", headline: "Strong upper-body week.", note: "Great week, Maya!", focus: "Both leg days" });
+    expect(snap).toMatchObject({ v: 3, coach: "Vardan", first: "Maya", headline: "Strong upper-body week.", note: "Great week, Maya!", focus: "Both leg days" });
     expect(snap.muscles.top).toEqual(["chest", "shoulders"]);
     expect(snap.gap).toEqual({ weak: { label: "Legs", done: 5, planned: 26 }, strong: { label: "Upper body", done: 44, planned: 45 } });
     // Bench went from 135 to 140: better than last week, and the best ever.
@@ -383,5 +383,40 @@ describe("gym shorthand finds the muscles", () => {
     expect(first("Sumo Squat")).toBe("quads");
     expect(first("Burpees")).toBe("quads");
     expect(first("Weight Shift")).toBeNull(); // unclear, so unknown rather than guessed
+  });
+});
+
+describe("what the redesigned report carries", () => {
+  const r = report();
+  const snap = reportSnapshot(r, { coachName: "Vardan", firstName: "Maya" });
+  it("counts the sets done, and marks days still to come", () => {
+    expect(snap.workouts.sets).toBe(r.sets.done);
+    const thursday = reportSnapshot(report(mayaData(), { now: new Date(2026, 8, 24, 20, 0) }));
+    expect(thursday.workouts.days.find((d) => d.k === "Sat")).toMatchObject({ p: true, d: false, u: true });
+    expect(snap.workouts.days.find((d) => d.k === "Sat").u).toBeUndefined();
+  });
+  it("hands out a gold medal for a best-ever lift, carrying its number", () => {
+    expect(snap.medals[0]).toEqual({ tone: "gold", value: "140", unit: "lb", title: "Barbell Bench Press", sub: "Best ever" });
+  });
+  it("gives a heaviest-week medal only against an earlier real week", () => {
+    expect(r.volume.record).toBe(true);
+    expect(snap.medals.some((m) => m.title === "Heaviest week")).toBe(true);
+    // With nothing before the week, there is no record to have beaten.
+    const subs = mayaSubmissions().filter((s) => s.payload.date >= WEEK);
+    const linked = linkClientData(subs, { plan: PLAN, coachUnits: "imperial" });
+    const fresh = report({ ...mayaData(), history: linked.history, submissions: linked.submissions });
+    expect(fresh.volume.record).toBe(false);
+  });
+  it("drops a medal when the coach unticks its section", () => {
+    const s = reportSnapshot(r, { sections: { wins: false, volume: false, workouts: false } });
+    expect(s.medals).toBeUndefined();
+  });
+  it("lists the top muscles by sets ticked", () => {
+    expect(snap.muscles.sets.length).toBeLessThanOrEqual(4);
+    expect(snap.muscles.sets[0].n).toBeGreaterThanOrEqual(snap.muscles.sets[snap.muscles.sets.length - 1].n);
+  });
+  it("shortens big numbers for a medal", async () => {
+    const { compactNumber } = await import("../weeklyReport.js");
+    expect([19046, 2880, 640, 20000].map(compactNumber)).toEqual(["19K", "2.9K", "640", "20K"]);
   });
 });

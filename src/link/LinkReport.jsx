@@ -2,34 +2,23 @@ import React from "react";
 import BodyMap from "../components/BodyMap.jsx";
 import { GROUP_LABEL } from "../lib/exerciseLibrary.js";
 import { muscleWords } from "../lib/muscleHeat.js";
-import { weekLabel, volumeLine } from "../coach/lib/weeklyReport.js";
+import { weekLabel, volumeLine, compactNumber } from "../coach/lib/weeklyReport.js";
 import { Icon } from "../coach/ui/primitives.jsx";
-import { winWords } from "../lib/workoutWins.js";
+import { winNumbers } from "../lib/workoutWins.js";
+import Medal, { useDisplayFonts } from "../components/Medal.jsx";
+import "./report.css";
 
 // A report the coach shared, as the client sees it on their link.
 //
 // It draws only the frozen snapshot the coach chose to send (reportSnapshot):
 // nothing here is worked out afresh, so what the client reads is exactly what
 // the coach saw in "Preview" — the coach's preview renders this same component.
-// One idea per card, the coach's own words first, verdict words throughout.
+// The coach's own words first, verdict words throughout, detail behind a tap.
 
-const DAY_LONG = { Mon: "Mon", Tue: "Tue", Wed: "Wed", Thu: "Thu", Fri: "Fri", Sat: "Sat", Sun: "Sun" };
 // How a region reads in a sentence about the client.
 const REGION_PHRASE = { "Upper body": "Everything above the waist", Legs: "Your legs", Core: "Your core" };
 const phrase = (label) => REGION_PHRASE[label] || `Your ${String(label || "").toLowerCase()}`;
 const num = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
-
-// The report uses Theryn's display faces. The link page is otherwise system
-// fonts, so they load only when a report is actually opened.
-const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=JetBrains+Mono:wght@500;700&display=swap";
-export function useReportFonts() {
-  React.useEffect(() => {
-    if (typeof document === "undefined" || document.querySelector('link[href*="Big+Shoulders+Display"]')) return;
-    const l = document.createElement("link");
-    l.rel = "stylesheet"; l.href = FONTS_HREF;
-    document.head.appendChild(l);
-  }, []);
-}
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const shortWeek = (iso) => { const [, m, d] = String(iso).split("-").map(Number); return `${d} ${MON[(m || 1) - 1]}`; };
@@ -68,83 +57,230 @@ export function ReportEntry({ report, onOpen }) {
   );
 }
 
-/** The report itself. `onBack` returns to the link; in the coach's preview it closes the preview. */
+const DAYS7 = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const TICK = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5 10 17 19 7" /></svg>;
+const CHEVRON = <svg className="rw-chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>;
+
+/** The seven days: done, still to come, missed, or a rest day. */
+function WeekDots({ days }) {
+  const by = new Map((days || []).map((d) => [d.k, d]));
+  return (
+    <ol className="rw-days">
+      {DAYS7.map((k) => {
+        const d = by.get(k);
+        const state = !d ? "rest" : d.d ? "done" : d.u ? "next" : "missed";
+        const said = { done: "done", next: "still to come", missed: "missed", rest: "rest day" }[state];
+        return (
+          <li key={k} className={state}>
+            <span className="dot" aria-hidden="true">{state === "done" ? TICK : null}</span>
+            <span aria-hidden="true">{k}</span>
+            <span className="lk-sr">{k}: {said}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Medals for a report shared before medals existed: its best-ever lifts. */
+function medalsOf(s) {
+  if (Array.isArray(s.medals)) return s.medals;
+  const out = [];
+  for (const x of (s.wins?.items || []).filter((w) => w.ever).slice(0, 2)) {
+    const n = winNumbers(x, s.wins.unit);
+    out.push({ tone: "gold", value: n.to, unit: n.what, title: x.name, sub: "Best ever" });
+  }
+  if (!out.length && s.best) out.push({ tone: "gold", value: num(s.best.weight), unit: s.best.unit, title: s.best.name, sub: "New best" });
+  return out;
+}
+
+// A round number just above the tallest bar, for the chart's scale.
+function niceMax(max) {
+  if (!(max > 0)) return 1;
+  const pow = 10 ** Math.floor(Math.log10(max)), n = max / pow;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+}
+
+/**
+ * Weight lifted by week, with a scale: only the weeks since they started
+ * (leading empty weeks are dropped), a value on every bar, this week bright.
+ */
+function VolumeChart({ weeks, unit }) {
+  const from = Math.max(0, weeks.findIndex((w) => w.t > 0));
+  const shown = weeks.slice(from);
+  const top = niceMax(Math.max(...shown.map((w) => w.t)));
+  const last = shown.length - 1;
+  return (
+    <div className={`rw-chart${shown.length > 4 ? " many" : ""}`} role="img" aria-label={`Weight lifted by week: ${shown.map((w, i) => `${i === last ? "this week" : shortWeek(w.s)} ${bigNum(w.t)} ${unit}`).join(", ")}`}>
+      <div className="rw-chart-y" aria-hidden="true"><span>{compactNumber(top).toLowerCase()}</span><span>{compactNumber(top / 2).toLowerCase()}</span><span>0</span></div>
+      <div className="rw-chart-plot" aria-hidden="true">
+        <i className="grid top" /><i className="grid mid" />
+        <div className="rw-chart-bars">
+          {shown.map((w, i) => (
+            <div key={w.s} className={`rw-bar${i === last ? " now" : ""}`}>
+              <span>{shown.length > 4 ? compactNumber(w.t).toLowerCase() : bigNum(w.t)}</span>
+              <i style={{ height: `${Math.max(w.t > 0 ? 3 : 0, Math.round((w.t / top) * 100))}%` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <span />
+      <div className="rw-chart-x" aria-hidden="true">
+        {shown.map((w, i) => <span key={w.s} className={i === last ? "now" : ""}>{i === last ? "This week" : shortWeek(w.s)}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/** One win: where it was (grey), where it is now (lime). */
+function WinTrack({ win, unit }) {
+  const x = winNumbers(win, unit);
+  const pct = Math.max(6, Math.min(90, Math.round((Number(win.before) / Math.max(1, Number(win.now))) * 100)));
+  return (
+    <li className="rw-win">
+      <div><b>{win.name}</b><span>{x.from} <em>→</em> <strong>{x.to}</strong> {x.what}</span></div>
+      <div className="rw-track" aria-hidden="true" style={{ "--p": `${pct}%` }}><i className="line" /><i className="gain" /><i className="was" /><i className="now" /></div>
+    </li>
+  );
+}
+
+/** A line of the report that opens: the insight in a sentence, the chart behind a tap. */
+function Row({ id, open, onToggle, icon, title, sub, children }) {
+  return (
+    <div className={`rw-row${open ? " open" : ""}`}>
+      <button type="button" className="rw-row-hd" aria-expanded={open} aria-controls={`rw-${id}`} onClick={() => onToggle(id)}>
+        <span className="rw-row-ic" aria-hidden="true">{icon}</span>
+        <span className="rw-row-tx"><b>{title}</b>{sub && <span>{sub}</span>}</span>
+        {CHEVRON}
+      </button>
+      {open && <div className="rw-row-body" id={`rw-${id}`}>{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * The report itself. `onBack` returns to the link; in the coach's preview it
+ * closes the preview.
+ *
+ * Three questions, in order: how did the week go (the lime panel), what did
+ * I earn (medals), what's next (the coach's focus). The detail — every win,
+ * the weekly chart, the body map — sits behind one tap each, because a page
+ * of charts is what made people stop reading.
+ */
 export function ReportView({ snapshot, onBack, backLabel = "Back to today's workout", inSheet = false }) {
-  useReportFonts();
+  useDisplayFonts();
   const s = snapshot || {};
   const label = s.period?.start ? weekLabel(s.period.start) : "";
-  const w = s.workouts || {};
+  const w = s.workouts;
   const m = s.muscles;
   const worked = (m?.worked || []).filter((g) => GROUP_LABEL[g]);
+  const medals = medalsOf(s);
+  const wins = s.wins?.items || [];
+  const winCount = wins.length + (s.wins?.more || 0);
+  const [open, setOpen] = React.useState({});
+  const toggle = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+  const first = wins[0] ? winNumbers(wins[0], s.wins.unit) : null;
+  const hasVolume = s.volume?.total > 0 && Array.isArray(s.volume.weeks);
+  const hasBody = s.body && (s.body.weight != null || s.body.waist != null);
+  const hasRows = winCount > 0 || hasVolume || (m && worked.length > 0) || hasBody;
   return (
-    <div className={`lk-page cx-app lk-rep${inSheet ? " in-sheet" : ""}`}>
-      <div className="lk-rep-top">
-        <span className="lk-rep-mark" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 48 48"><path d="M12 12 36 36M36 12 12 36" stroke="currentColor" strokeWidth="9" strokeLinecap="round" /></svg></span>
-        <span className="lk-rep-from">From {s.coach ? `Coach ${s.coach}` : "your coach"}</span>
-      </div>
-      <div className="lk-rep-head">
-        <span className="lk-rep-eyebrow accent">Your week{label ? ` · ${label}` : ""}</span>
-        <h1 className="lk-rep-title">{s.headline || "Your week."}</h1>
-      </div>
-
-      {s.note && (
-        <section className="lk-card lk-rep-note" aria-label="Note from your coach">
-          <p>{s.note}</p>
-          <span className="lk-rep-by">{s.coach ? `Coach ${s.coach}` : "Your coach"}</span>
-        </section>
-      )}
-
-      {s.workouts && <section className="lk-card lk-rep-sec" aria-label="Workouts">
-        <div className="lk-rep-big"><b>{w.planned ? `${w.done || 0} of ${w.planned}` : w.done || 0}</b><span>workout{(w.planned || w.done) === 1 ? "" : "s"} done</span></div>
-        {Array.isArray(w.days) && w.days.length > 0 && (
-          <ul className="lk-rep-days">
-            {w.days.map((d) => (
-              <li key={d.k} className={d.d ? "done" : "missed"}><span className="bar" aria-hidden="true" /><span>{DAY_LONG[d.k] || d.k}</span><span className="lk-sr">{d.d ? "done" : "not done"}</span></li>
-            ))}
-          </ul>
+    <div className={`lk-page cx-app lk-rep rw${inSheet ? " in-sheet" : ""}`}>
+      {/* How did the week go */}
+      <header className="rw-hero">
+        <div className="rw-hero-top">
+          <span className="rw-from"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 12 36 36M36 12 12 36" stroke="currentColor" strokeWidth="9" strokeLinecap="round" fill="none" /></svg>From {s.coach ? `Coach ${s.coach}` : "your coach"}</span>
+          {label && <span className="rw-dates">{label}</span>}
+        </div>
+        <h1 className="rw-title">{s.headline || "Your week."}</h1>
+        {s.note && <p className="rw-note">{s.note}</p>}
+        {w && (
+          <>
+            <hr />
+            <dl className="rw-stats">
+              <div><dt>workout{(w.planned || w.done) === 1 ? "" : "s"}</dt><dd>{w.done || 0}{w.planned ? <small> of {w.planned}</small> : null}</dd></div>
+              {w.sets > 0 && <div><dt>sets done</dt><dd>{w.sets}</dd></div>}
+              {w.streak >= 2 && <div><dt>in a row</dt><dd>{w.streak}</dd></div>}
+            </dl>
+            <WeekDots days={w.days} />
+          </>
         )}
-      </section>}
+      </header>
 
-      {s.wins?.items?.length > 0 && (
-        <section className="lk-card lk-rep-sec lk-rep-wins" aria-label="Better than last week">
-          <span className="lk-rep-eyebrow accent">Better than last week</span>
-          <p className="lk-rep-say">{s.wins.items.length + (s.wins.more || 0) === 1 ? "You beat last week." : `You beat last week on ${s.wins.items.length + (s.wins.more || 0)} exercises.`}</p>
-          <ul>
-            {s.wins.items.map((x) => { const t = winWords(x, s.wins.unit); return (
-              <li key={x.name}><span className="lk-wins-tag">{x.ever ? "Best ever" : t.tag}</span><b>{x.name}</b><span>{t.line}</span></li>
-            ); })}
-          </ul>
-          {s.wins.more > 0 && <span className="lk-rep-sub">And {s.wins.more} more.</span>}
-        </section>
-      )}
-
-      {s.volume?.total > 0 && Array.isArray(s.volume.weeks) && (
-        <section className="lk-card lk-rep-sec" aria-label="Weight lifted">
-          <span className="lk-rep-eyebrow">Weight lifted</span>
-          <b className="lk-rep-num">{bigNum(s.volume.total)} {s.volume.unit}</b>
-          <span className="lk-rep-sub">In total this week{volumeLine(s.volume) ? `. ${volumeLine(s.volume)}` : "."}</span>
-          <VolumeBars weeks={s.volume.weeks} unit={s.volume.unit} />
-        </section>
-      )}
-
-      {m && worked.length > 0 && (
-        <section className="lk-card lk-rep-sec" aria-label="What you trained">
-          <span className="lk-rep-eyebrow">What you trained</span>
-          <div className="lk-heat-figs">
-            <BodyMap view="front" levels={m.levels} width={112} stroke="#101010" label={`Front of body. Trained: ${worked.map((g) => GROUP_LABEL[g]).join(", ")}`} />
-            <BodyMap view="back" levels={m.levels} width={112} stroke="#101010" label={`Back of body. Trained: ${worked.map((g) => GROUP_LABEL[g]).join(", ")}`} />
-          </div>
-          {m.top?.length > 0 && <p className="lk-rep-say">Mostly {muscleWords(m.top)}.</p>}
-          <ul className="lk-heat-list">
-            {worked.map((g) => (
-              <li key={g} className={`lk-heat-m l${m.levels?.[g] || 1}`}><span className="lk-heat-dot" aria-hidden="true" />{GROUP_LABEL[g]}</li>
+      {/* What did I earn */}
+      {medals.length > 0 && (
+        <section className="rw-card rw-medals" aria-label="Earned this week">
+          <span className="lk-rep-eyebrow">Earned this week</span>
+          <ul className={`n${medals.length}`}>
+            {medals.map((x, i) => (
+              <li key={i}>
+                <Medal tone={x.tone} value={x.value} unit={x.unit} flame={x.flame} label="" />
+                <b>{x.title}</b>
+                <span className={x.tone}>{x.sub}</span>
+              </li>
             ))}
           </ul>
         </section>
       )}
 
+      {/* The detail, one tap away */}
+      {hasRows && (
+        <section className="rw-card rw-rows" aria-label="The details">
+          {winCount > 0 && (
+            <Row id="wins" open={open.wins} onToggle={toggle}
+              icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>}
+              title={`${winCount} exercise${winCount === 1 ? "" : "s"} went up`}
+              sub={first ? `${wins[0].name} ${first.from} → ${first.to} ${first.what}${winCount > 1 ? `, and ${winCount - 1} more` : ""}` : null}>
+              <ul className="rw-wins">{wins.map((x) => <WinTrack key={x.name} win={x} unit={s.wins.unit} />)}</ul>
+              <div className="rw-legend">
+                <span>{s.wins.more > 0 ? `And ${s.wins.more} more.` : ""}</span>
+                <span><i className="was" />last week<i className="now" />now</span>
+              </div>
+            </Row>
+          )}
+          {hasVolume && (
+            <Row id="lifted" open={open.lifted} onToggle={toggle}
+              icon={<span className="rw-minibars"><i /><i /><i /></span>}
+              title={`${bigNum(s.volume.total)} ${s.volume.unit} lifted`}
+              sub={volumeLine(s.volume).replace(/\.$/, "") || "This week's total"}>
+              <VolumeChart weeks={s.volume.weeks} unit={s.volume.unit} />
+              <p className="rw-foot">Every set's weight × reps, added up.</p>
+            </Row>
+          )}
+          {m && worked.length > 0 && (
+            <Row id="body" open={open.body} onToggle={toggle}
+              icon={<BodyMap view="front" levels={m.levels} width={19} stroke="#1B1B1E" label="" />}
+              title={m.top?.length > 0 ? `Mostly ${muscleWords(m.top)}` : "What you trained"}
+              sub="See which muscles you trained">
+              <div className="rw-figs">
+                <figure><BodyMap view="front" levels={m.levels} width={116} stroke="#101010" label={`Front of body. Trained: ${worked.map((g) => GROUP_LABEL[g]).join(", ")}`} /><figcaption>Front</figcaption></figure>
+                <figure><BodyMap view="back" levels={m.levels} width={116} stroke="#101010" label={`Back of body. Trained: ${worked.map((g) => GROUP_LABEL[g]).join(", ")}`} /><figcaption>Back</figcaption></figure>
+              </div>
+              <div className="rw-key" aria-hidden="true"><span><i className="l3" />Most</span><span><i className="l2" />Some</span><span><i className="l1" />A little</span><span><i />Rested</span></div>
+              {Array.isArray(m.sets) && m.sets.length > 0
+                ? <ul className="rw-sets">{m.sets.filter((x) => GROUP_LABEL[x.g]).map((x) => <li key={x.g}><span>{GROUP_LABEL[x.g]}</span><span><b>{x.n}</b> set{x.n === 1 ? "" : "s"}</span></li>)}</ul>
+                : <ul className="lk-heat-list">{worked.map((g) => <li key={g} className={`lk-heat-m l${m.levels?.[g] || 1}`}><span className="lk-heat-dot" aria-hidden="true" />{GROUP_LABEL[g]}</li>)}</ul>}
+            </Row>
+          )}
+          {hasBody && (
+            <div className="rw-row">
+              <div className="rw-row-hd static">
+                <span className="rw-row-ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M9 9.5a3 3 0 0 1 6 0M12 9.5V11" /></svg></span>
+                <span className="rw-row-tx">
+                  {s.body.weight != null && <b>{num(s.body.weight)} {s.body.unit} average weight</b>}
+                  {s.body.weight != null && s.body.weightDelta != null && s.body.weightDelta !== 0 && <span>{s.body.weightDelta < 0 ? "Down" : "Up"} {num(Math.abs(s.body.weightDelta))} {s.body.unit} from last week</span>}
+                  {s.body.waist != null && (s.body.weight != null
+                    ? <span>Waist {num(s.body.waist)} {s.body.lengthUnit}{s.body.waistDelta ? `, ${s.body.waistDelta < 0 ? "down" : "up"} ${num(Math.abs(s.body.waistDelta))}` : ""}</span>
+                    : <b>Waist {num(s.body.waist)} {s.body.lengthUnit}</b>)}
+                </span>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Only in a week where part of the plan fell behind */}
       {s.gap?.weak && (
-        <section className="lk-card lk-rep-sec" aria-label={`${s.gap.weak.label} next`}>
+        <section className="rw-card rw-gap" aria-label={`${s.gap.weak.label} next`}>
           <span className="lk-rep-eyebrow">{s.gap.weak.label} next</span>
           <p className="lk-rep-say">{phrase(s.gap.weak.label)} got {s.gap.weak.done} of the {s.gap.weak.planned} sets in your plan.</p>
           <div className="lk-rep-bar" role="img" aria-label={`${s.gap.weak.done} of ${s.gap.weak.planned} sets`}><span style={{ width: `${Math.min(100, Math.round((s.gap.weak.done / Math.max(1, s.gap.weak.planned)) * 100))}%` }} /></div>
@@ -152,30 +288,12 @@ export function ReportView({ snapshot, onBack, backLabel = "Back to today's work
         </section>
       )}
 
-      {s.best && (
-        <section className="lk-card lk-rep-sec" aria-label="New best">
-          <span className="lk-rep-eyebrow accent">New best</span>
-          <span className="lk-rep-sub">{s.best.name}</span>
-          <b className="lk-rep-num">{num(s.best.weight)} {s.best.unit} × {s.best.reps}</b>
-          {s.best.prev != null && <span className="lk-rep-sub">Up from {num(s.best.prev)} {s.best.unit} last time.</span>}
-        </section>
-      )}
-
-      {s.body && (s.body.weight != null || s.body.waist != null) && (
-        <section className="lk-card lk-rep-sec" aria-label="Body">
-          <span className="lk-rep-eyebrow">Body</span>
-          <div className="lk-rep-pair">
-            {s.body.weight != null && <div><span>Weight, this week's average</span><b>{num(s.body.weight)} {s.body.unit}</b>{s.body.weightDelta != null && s.body.weightDelta !== 0 && <small>{s.body.weightDelta < 0 ? "Down" : "Up"} {num(Math.abs(s.body.weightDelta))} {s.body.unit} from last week</small>}</div>}
-            {s.body.waist != null && <div><span>Waist</span><b>{num(s.body.waist)} {s.body.lengthUnit}</b>{s.body.waistDelta != null && s.body.waistDelta !== 0 && <small>{s.body.waistDelta < 0 ? "Down" : "Up"} {num(Math.abs(s.body.waistDelta))} {s.body.lengthUnit}</small>}</div>}
-          </div>
-        </section>
-      )}
-
+      {/* What's next */}
       {s.focus && (
-        <section className="lk-card lk-rep-sec" aria-label="Next week">
-          <span className="lk-rep-eyebrow">Next week</span>
-          <b className="lk-rep-focus">{s.focus}</b>
-          <span className="lk-rep-sub">Your coach's focus</span>
+        <section className="rw-card rw-next" aria-label="Next week">
+          <span className="lk-rep-eyebrow accent">Next week</span>
+          <b>{s.focus}</b>
+          <span>Your coach's focus</span>
         </section>
       )}
 
