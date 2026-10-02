@@ -103,12 +103,16 @@ function buildDay(data, iso, key, todayIso, subById) {
       for (const e of w.exercises || []) add(e.name, 0, Array.isArray(e.sets) ? e.sets.length : 0);
     }
   }
-  if (!workouts.length && planned) {
+  // A day still to come, in a week that isn't over, isn't behind yet: its
+  // sets aren't counted against the plan, or a Thursday report reads
+  // "legs mostly missed" because Friday's leg work hasn't happened.
+  const upcoming = planned && !workouts.length && iso > todayIso;
+  if (!workouts.length && planned && !upcoming) {
     for (const e of plan.exercises) { const n = normalizeExercise(e); add(n.name, plannedSetsOf(n), 0); }
   }
   const done = workouts.length > 0;
   return {
-    key, iso, type, planned, done,
+    key, iso, type, planned, done, upcoming,
     missed: planned && !done && iso < todayIso,
     feel: workouts.map((w) => w.feel).filter(Boolean),
     rows: [...rows.values()],
@@ -182,26 +186,35 @@ const VOLUME_WEEKS = 6;
 const volumeOf = (h) => (Number(h?.totalVolume) > 0 ? Number(h.totalVolume)
   : (h?.exercises || []).reduce((a, e) => a + (e.sets || []).reduce((t, x) => t + (Number(x?.w) || 0) * (Number(x?.r) || 0), 0), 0));
 function volumeWeeks(history, weekStart) {
-  const weeks = Array.from({ length: VOLUME_WEEKS }, (_, i) => ({ start: addDays(weekStart, -7 * (VOLUME_WEEKS - 1 - i)), total: 0 }));
+  const weeks = Array.from({ length: VOLUME_WEEKS }, (_, i) => ({ start: addDays(weekStart, -7 * (VOLUME_WEEKS - 1 - i)), total: 0, workouts: 0 }));
   const first = weeks[0].start, last = addDays(weekStart, 6);
   for (const h of history || []) {
     if (!h?.date || h.date < first || h.date > last) continue;
     const i = weeks.findIndex((w) => h.date >= w.start && h.date <= addDays(w.start, 6));
-    if (i >= 0) weeks[i].total += volumeOf(h);
+    if (i >= 0) { weeks[i].total += volumeOf(h); weeks[i].workouts += 1; }
   }
   for (const w of weeks) w.total = Math.round(w.total);
   const now = weeks[weeks.length - 1].total, prev = weeks[weeks.length - 2].total;
+  // A change is only worth a number against a real week: one workout last
+  // week makes this one "up 508%", which is true and tells nobody anything.
   // Within 3% either way is the same week, not a rise or a fall.
-  const pct = now > 0 && prev > 0 ? Math.round(((now - prev) / prev) * 100) : null;
+  const comparable = now > 0 && prev > 0 && weeks[weeks.length - 2].workouts >= 2;
+  const pct = comparable ? Math.round(((now - prev) / prev) * 100) : null;
   return { weeks, total: now, prev, pct, trend: pct == null ? null : pct >= 3 ? "up" : pct <= -3 ? "down" : "same" };
 }
 
 // ── Body ─────────────────────────────────────────────────────────────────────
 const avg = (xs) => (xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null);
+const median = (xs) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const round1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 function bodyFacts(data, start, end) {
   const unit = data?.profile?.unit_system === "metric" ? "metric" : "imperial";
-  const ws = (data?.weights || []).filter((w) => w?.date && Number(w.weight) > 0);
+  const all = (data?.weights || []).filter((w) => w?.date && Number(w.weight) > 0);
+  // A weigh-in far from their usual weight is a slip (kg typed into the lb
+  // box, a missing digit), not a change of 70 lb in a day. Left out, so one
+  // typo doesn't drag the week's average with it.
+  const usual = median(all.map((w) => Number(w.weight)));
+  const ws = usual ? all.filter((w) => Number(w.weight) >= usual * 0.7 && Number(w.weight) <= usual * 1.3) : all;
   const inRange = (a, b) => ws.filter((w) => w.date >= a && w.date <= b).map((w) => Number(w.weight));
   const thisWeek = inRange(start, end), lastWeek = inRange(addDays(start, -7), addDays(start, -1));
   const weight = round1(avg(thisWeek));
@@ -313,7 +326,8 @@ function headlines(regions, workouts, quiet, cutShort) {
   const allOn = planned.every(([, r]) => r.verdict === "on plan");
   if (allOn && workouts.done >= workouts.planned) return { coach: "Everything went to plan.", athlete: "Every workout done." };
   const byVerdict = (v) => planned.filter(([, r]) => r.verdict === v).map(([, r]) => r.label);
-  const joinLabels = (xs) => (xs.length <= 1 ? xs[0] || "" : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1].toLowerCase()}`);
+  // "Upper body, legs and core": only the first word of the sentence is capitalised.
+  const joinLabels = (xs) => (xs.length <= 1 ? xs[0] || "" : `${[xs[0], ...xs.slice(1, -1).map((x) => x.toLowerCase())].join(", ")} and ${xs[xs.length - 1].toLowerCase()}`);
   const parts = [];
   for (const v of ["on plan", "mostly done", "mostly missed"]) {
     const xs = byVerdict(v);
@@ -360,7 +374,7 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
 
   const plannedDays = days.filter((d) => d.planned).length;
   const doneDays = days.filter((d) => d.done).length;
-  const workouts = { planned: plannedDays, done: doneDays, days: days.map((d) => ({ key: d.key, iso: d.iso, type: d.type, planned: d.planned, done: d.done, missed: d.missed })) };
+  const workouts = { planned: plannedDays, done: doneDays, days: days.map((d) => ({ key: d.key, iso: d.iso, type: d.type, planned: d.planned, done: d.done, missed: d.missed, upcoming: d.upcoming })) };
   const sets = { planned: rows.reduce((a, r) => a + r.planned, 0), done: rows.reduce((a, r) => a + r.done, 0) };
   const quiet = doneDays < QUIET_BELOW;
 

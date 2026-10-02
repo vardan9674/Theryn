@@ -346,3 +346,42 @@ describe("showing up is not the same as finishing", () => {
     expect(report().patterns.map((p) => p.kind)).not.toContain("cut_short");
   });
 });
+
+describe("fair on real data", () => {
+  it("doesn't count a day still to come against the plan", () => {
+    // Thursday evening: Friday and Saturday's legs haven't happened yet.
+    const r = report(mayaData(), { now: new Date(2026, 8, 24, 20, 0) });
+    const sat = r.workouts.days.find((d) => d.key === "Sat");
+    expect(sat).toMatchObject({ planned: true, done: false, upcoming: true, missed: false });
+    expect(r.regions.legs.planned).toBe(13); // Wednesday's legs only
+    // Once the week is over, Saturday's legs (missed) count as well.
+    expect(report().regions.legs.planned).toBe(26);
+  });
+  it("gives no % change against a week with one workout", () => {
+    // Only the 14 Sep push the week before: one workout.
+    const subs = mayaSubmissions().filter((s) => s.payload.date >= "2026-09-14" && s.payload.date !== "2026-09-16");
+    const linked = linkClientData(subs, { plan: PLAN, coachUnits: "imperial" });
+    const r = report({ ...mayaData(), history: linked.history, submissions: linked.submissions });
+    expect(r.volume.total).toBeGreaterThan(0);
+    expect(r.volume.pct).toBeNull();
+  });
+  it("leaves a weigh-in typo out of the average", () => {
+    const r = report(mayaData({ weights: [{ date: "2026-09-21", weight: 168 }, { date: "2026-09-22", weight: 167 }, { date: "2026-09-23", weight: 76 }, { date: "2026-09-24", weight: 166 }] }));
+    expect(r.body.weight).toBe(167);
+  });
+});
+
+describe("gym shorthand finds the muscles", () => {
+  it("reads DB, Bentover, Rowing and everyday names", async () => {
+    const { musclesForExercise } = await import("../../../lib/muscleHeat.js");
+    const { MUSCLE_MAP } = await import("../../../lib/muscleMap.generated.js");
+    const first = (n) => (musclesForExercise(n, MUSCLE_MAP) || [])[0] || null;
+    expect(first("Flat DB Press")).toBe("chest");
+    expect(first("DB Overhead Press")).toBe("shoulders");
+    expect(first("Dumbbell Bentover Rowing")).toBe("upperback");
+    expect(first("Rope Tricep Pushdown")).toBe("triceps");
+    expect(first("Sumo Squat")).toBe("quads");
+    expect(first("Burpees")).toBe("quads");
+    expect(first("Weight Shift")).toBeNull(); // unclear, so unknown rather than guessed
+  });
+});

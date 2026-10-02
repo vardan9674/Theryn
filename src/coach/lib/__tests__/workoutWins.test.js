@@ -118,3 +118,21 @@ describe("the badge's numbers", () => {
     expect(winNumbers({ kind: "more", now: 30, before: 25 })).toEqual({ from: "25", to: "30", what: "reps", note: "in all" });
   });
 });
+
+describe("what isn't a win, from real logs", () => {
+  it("doesn't count a plank logged as reps", async () => {
+    const { workoutWins, lastTimes } = await import("../../../lib/workoutWins.js");
+    const last = lastTimes([{ date: "2026-09-22", exercises: [{ name: "Plank", sets: sets([null, 1], [null, 0]) }] }], "2026-09-29");
+    expect(workoutWins([{ name: "Plank", sets: sets([null, 30], [null, 0]) }], last)).toEqual([]);
+  });
+  it("still counts a plank held longer", async () => {
+    const { workoutWins, lastTimes } = await import("../../../lib/workoutWins.js");
+    const last = lastTimes([{ date: "2026-09-22", exercises: [{ name: "Plank", sets: sets([null, null, 30]) }] }], "2026-09-29");
+    expect(workoutWins([{ name: "Plank", sets: sets([null, null, 45]) }], last)[0]).toMatchObject({ kind: "longer" });
+  });
+  it("still counts a rope pushdown, whatever 'rope' sounds like", async () => {
+    const { workoutWins, lastTimes } = await import("../../../lib/workoutWins.js");
+    const last = lastTimes([{ date: "2026-09-22", exercises: [{ name: "Rope Tricep Pushdown", sets: sets([35, 12]) }] }], "2026-09-29");
+    expect(workoutWins([{ name: "Rope Tricep Pushdown", sets: sets([40, 12]) }], last)[0]).toMatchObject({ kind: "heavier" });
+  });
+});
