@@ -128,9 +128,10 @@ export function createPreviewApi() {
   const reports = [{
     id: "preview-report", period_start: lastMonday, shared_at: new Date().toISOString(), seen: false,
     snapshot: {
-      v: 2, period: { start: lastMonday }, coach: "Sam", first: "Alex", headline: "Strong upper-body week.",
-      workouts: { done: 4, planned: 5, days: [{ k: "Mon", p: true, d: true }, { k: "Tue", p: true, d: true }, { k: "Wed", p: true, d: true }, { k: "Fri", p: true, d: true }, { k: "Sat", p: true, d: false }] },
-      muscles: { levels: { chest: 3, shoulders: 3, upperback: 3, triceps: 2, biceps: 2, calves: 1, lowerback: 1, quads: 1, forearms: 1, glutes: 1, hamstrings: 1, traps: 1 }, top: ["chest", "shoulders"], worked: ["chest", "shoulders", "upperback", "triceps", "biceps"] },
+      v: 3, period: { start: lastMonday }, coach: "Sam", first: "Alex", headline: "Strong upper-body week.",
+      workouts: { done: 4, planned: 5, sets: 49, streak: 6, days: [{ k: "Mon", p: true, d: true }, { k: "Tue", p: true, d: true }, { k: "Wed", p: true, d: true }, { k: "Fri", p: true, d: true }, { k: "Sat", p: true, d: false }] },
+      medals: [{ tone: "gold", value: "47.5", unit: "kg", title: "Barbell bench press", sub: "Best ever" }, { tone: "lime", value: "9.8K", unit: "kg", title: "Heaviest week", sub: "Your most yet" }, { tone: "lime", flame: true, value: "6", title: "In a row", sub: "Workouts" }],
+      muscles: { levels: { chest: 3, shoulders: 3, upperback: 3, triceps: 2, biceps: 2, calves: 1, lowerback: 1, quads: 1, forearms: 1, glutes: 1, hamstrings: 1, traps: 1 }, top: ["chest", "shoulders"], worked: ["chest", "shoulders", "upperback", "triceps", "biceps"], sets: [{ g: "chest", n: 14 }, { g: "shoulders", n: 12 }, { g: "upperback", n: 12 }, { g: "triceps", n: 6 }] },
       gap: { weak: { label: "Legs", done: 5, planned: 26 }, strong: { label: "Upper body", done: 44, planned: 45 } },
       wins: { unit: "kg", more: 0, items: [{ name: "Barbell bench press", kind: "heavier", now: 47.5, before: 45, reps: 6, ever: true }, { name: "Pull-Up", kind: "reps", now: 10, before: 8, weight: 0 }, { name: "Plank", kind: "longer", now: 60, before: 45 }] },
       volume: { unit: "kg", total: 9840, pct: 8, trend: "up", weeks: [7, 6, 5, 4, 3, 2].map((n, i) => { const x = new Date(lastMonday + "T12:00:00"); x.setDate(x.getDate() - 7 * (n - 2)); return { s: `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`, t: [7200, 8100, 0, 8650, 9110, 9840][i] }; }) },

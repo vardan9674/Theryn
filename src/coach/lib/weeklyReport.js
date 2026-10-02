@@ -18,7 +18,8 @@ import { DAYS, DAY_LONG, isoDate, startOfWeek, normalizeExercise } from "./forma
 import { heatFromWorkout, musclesForExercise, normalizeExerciseName, muscleWords } from "../../lib/muscleHeat.js";
 import { MUSCLE_MAP } from "../../lib/muscleMap.generated.js";
 import { computeBMI, bmiCategory } from "../../lib/coachInsights.js";
-import { weekWins, winKey } from "../../lib/workoutWins.js";
+import { weekWins, winKey, winNumbers } from "../../lib/workoutWins.js";
+import { streakStats } from "./streak.js";
 
 const REGIONS = {
   upper: { label: "Upper body", word: "upper-body", groups: ["chest", "shoulders", "triceps", "biceps", "forearms", "upperback", "traps", "lowerback", "neck"] },
@@ -198,9 +199,21 @@ function volumeWeeks(history, weekStart) {
   // A change is only worth a number against a real week: one workout last
   // week makes this one "up 508%", which is true and tells nobody anything.
   // Within 3% either way is the same week, not a rise or a fall.
+  // The heaviest week they've had: beats every earlier week on record, and
+  // there is a real week (2+ workouts) to have beaten.
+  const earlier = new Map();
+  for (const h of history || []) {
+    if (!h?.date || h.date >= weekStart) continue;
+    const k = isoDate(startOfWeek(parseIso(h.date)));
+    const w = earlier.get(k) || { total: 0, workouts: 0 };
+    w.total += volumeOf(h); w.workouts += 1;
+    earlier.set(k, w);
+  }
+  const real = [...earlier.values()].filter((w) => w.workouts >= 2 && w.total > 0);
+  const record = now > 0 && real.length > 0 && now > Math.max(...[...earlier.values()].map((w) => w.total));
   const comparable = now > 0 && prev > 0 && weeks[weeks.length - 2].workouts >= 2;
   const pct = comparable ? Math.round(((now - prev) / prev) * 100) : null;
-  return { weeks, total: now, prev, pct, trend: pct == null ? null : pct >= 3 ? "up" : pct <= -3 ? "down" : "same" };
+  return { weeks, total: now, prev, pct, record, trend: pct == null ? null : pct >= 3 ? "up" : pct <= -3 ? "down" : "same" };
 }
 
 // ── Body ─────────────────────────────────────────────────────────────────────
@@ -403,6 +416,13 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
   const everKeys = new Set(allBests.map((b) => winKey(b.name)));
   const wins = weekWins(data?.history, weekStart, end).map((w) => ({ ...w, ever: everKeys.has(winKey(w.name)) }));
   const volume = volumeWeeks(data?.history, weekStart);
+  // Workouts in a row as the week ended (or as it stands, mid-week). Rest
+  // days keep a streak going without adding to it: the link's own rule.
+  const asOf = todayIso <= end ? now : new Date(parseIso(end).setHours(12));
+  const st = streakStats((data?.history || []).map((h) => h.date).filter((d) => d && d <= end), data?.routine, asOf, data?.restDates || []);
+  const streak = { current: st.current, best: st.best };
+  // Sets ticked per muscle, by the main muscle each exercise is for.
+  const muscleSets = Object.entries(mainDone).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([g, n]) => ({ g, n }));
 
   // ── What Theryn noticed (coach only) ──
   const patterns = [];
@@ -483,9 +503,9 @@ export function buildWeeklyReport(data, { start, firstName = "", now = new Date(
     athleteHeadline: heads.athlete,
     workouts, sets,
     feel: { hard: hardCount, rated: feelAll.length },
-    muscles: { levels: doneHeat.levels, top: quiet ? [] : doneHeat.top, worked: doneHeat.worked, unknown: doneHeat.unknown, sentence: quiet ? "" : (doneHeat.top.length ? `Most sets went to ${muscleWords(doneHeat.top)}.` : "") },
+    muscles: { levels: doneHeat.levels, top: quiet ? [] : doneHeat.top, worked: doneHeat.worked, unknown: doneHeat.unknown, sets: quiet ? [] : muscleSets, sentence: quiet ? "" : (doneHeat.top.length ? `Most sets went to ${muscleWords(doneHeat.top)}.` : "") },
     gaps, regions, weakest, strongest,
-    bests, wins, volume, body, patterns, suggestions,
+    bests, wins, volume, streak, body, patterns, suggestions,
     doneList: quiet ? rows.filter((r) => r.done > 0).map((r) => ({ name: r.name, sets: r.done })) : [],
     draftNote: quiet ? `Quiet week${firstName ? `, ${firstName}` : ""}. Everything OK? Want me to make next week lighter?` : draftNote(firstName, { regions, workouts, bests, wins, skipped, weakest, cutShort }),
     draftFocus: cutShort && workouts.done >= workouts.planned ? "Full sessions" : !quiet && weakest && weakest.verdict !== "on plan" ? capital(focusFor(weakest.label)) : "Keep it going",
@@ -551,15 +571,22 @@ const clip = (s, n) => String(s || "").trim().slice(0, n);
 export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "", focus = "", coachName = "", firstName = "" } = {}) {
   const s = { ...DEFAULT_SECTIONS, ...sections };
   const out = {
-    v: 2,
+    v: 3,
     period: { start: report.period.start, end: report.period.end },
     coach: clip(coachName, 40),
     first: clip(firstName, 40),
     headline: report.athleteHeadline,
   };
   if (s.workouts) {
-    out.workouts = { done: report.workouts.done, planned: report.workouts.planned, days: report.workouts.days.filter((d) => d.planned || d.done).map((d) => ({ k: d.key, p: d.planned, d: d.done })) };
+    out.workouts = {
+      done: report.workouts.done, planned: report.workouts.planned,
+      days: report.workouts.days.filter((d) => d.planned || d.done).map((d) => ({ k: d.key, p: d.planned, d: d.done, ...(d.upcoming ? { u: true } : {}) })),
+      sets: report.sets.done,
+      ...(report.streak?.current >= 2 ? { streak: report.streak.current } : {}),
+    };
   }
+  const medals = reportMedals(report, s);
+  if (medals.length) out.medals = medals;
   if (s.wins && report.wins?.length) {
     out.wins = {
       unit: report.body.weightUnit,
@@ -578,7 +605,7 @@ export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "",
     out.volume = { unit: report.body.weightUnit, total: v.total, pct: v.pct, trend: v.trend, weeks: v.weeks.map((w) => ({ s: w.start, t: w.total })) };
   }
   if (s.muscles && !report.quiet && report.muscles.worked.length) {
-    out.muscles = { levels: report.muscles.levels, top: report.muscles.top, worked: report.muscles.worked };
+    out.muscles = { levels: report.muscles.levels, top: report.muscles.top, worked: report.muscles.worked, sets: (report.muscles.sets || []).slice(0, 4) };
   }
   if (s.gap && report.weakest && report.weakest.verdict !== "on plan") {
     out.gap = { weak: { label: report.weakest.label, done: report.weakest.done, planned: report.weakest.planned } };
@@ -595,6 +622,38 @@ export function reportSnapshot(report, { sections = DEFAULT_SECTIONS, note = "",
     if (f) out.focus = f;
   }
   return out;
+}
+
+/** 19046 → "19K", 2880 → "2.9K", 640 → "640": short enough to sit on a medal. */
+export function compactNumber(n) {
+  const x = Number(n) || 0;
+  if (x >= 10000) return `${Math.round(x / 1000)}K`;
+  if (x >= 1000) return `${(Math.round(x / 100) / 10).toString().replace(/\.0$/, "")}K`;
+  return String(Math.round(x));
+}
+
+/**
+ * What the week earned, as medals: at most four, each carrying its own
+ * number. Gold is a best-ever lift; lime is a milestone (heaviest week,
+ * streak). Only from sections the coach left on, and only things the data
+ * can back: a best needs an earlier lift to beat, a record week an earlier
+ * real week, a streak three workouts.
+ */
+export function reportMedals(report, sections = DEFAULT_SECTIONS) {
+  const s = { ...DEFAULT_SECTIONS, ...sections };
+  const unit = report.body.weightUnit;
+  const out = [];
+  if (s.wins) {
+    for (const w of (report.wins || []).filter((x) => x.ever).slice(0, 2)) {
+      const x = winNumbers(w, unit);
+      out.push({ tone: "gold", value: x.to, unit: x.what, title: clip(w.name, 60), sub: "Best ever" });
+    }
+  }
+  if (s.volume && report.volume?.record) out.push({ tone: "lime", value: compactNumber(report.volume.total), unit, title: "Heaviest week", sub: "Your most yet" });
+  if (s.workouts && report.streak?.current >= 3) {
+    out.push({ tone: "lime", flame: true, value: String(report.streak.current), title: "In a row", sub: report.streak.current >= report.streak.best ? "Best streak" : "Workouts" });
+  }
+  return out.slice(0, 4);
 }
 
 /** "Up 8% on last week", in words a client reads at a glance. */
