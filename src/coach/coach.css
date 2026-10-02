@@ -574,6 +574,10 @@
 .cx-by { font-size: 11px; color: var(--cx-mu); margin-left: 6px; }
 .lw-empty, .lw-warn { font-size: 13px; color: var(--cx-tx2); background: var(--cx-s2); border-radius: 10px; padding: 10px 12px; line-height: 1.4; }
 .lw-warn { color: #F5A742; }
+.lw-existing { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--cx-bd2); border-radius: 12px; background: var(--cx-s1); }
+.lw-existing-h { font-size: 12px; font-weight: 600; color: var(--cx-mu); }
+.lw-existing-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.lw-existing-acts { display: flex; gap: 6px; flex-wrap: wrap; }
 .lw-quick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 14px; border-radius: 14px; border: 0; background: var(--cx-a); color: var(--cx-bg); text-align: left; font: inherit; cursor: pointer; }
 .lw-quick span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .lw-quick b { font-size: 16px; }
