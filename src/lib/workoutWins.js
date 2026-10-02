@@ -13,6 +13,14 @@
 //    for less.
 //  - One win per exercise, the strongest kind.
 import { normalizeExerciseName } from "./muscleHeat.js";
+import { defaultMode } from "../coach/lib/exerciseKinds.js";
+
+// A hold (plank, wall sit) is measured in seconds. Logged as reps, its
+// numbers are whatever went in the box ("30", then "0"), so comparing them
+// would celebrate "30 reps, up from 1". Holds only count by time. "Timed"
+// names also catch "Rope Tricep Pushdown", so anything with a weight on it
+// is a lift whatever its name says.
+const heldButNoTime = (name, ...stats) => defaultMode(name) === "time" && stats.some((x) => !(x.secs > 0) && !(x.top > 0));
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
 
@@ -81,7 +89,9 @@ export function workoutWins(exercises, lastOf) {
     seen.add(k);
     const prev = lastOf(e.name);
     if (!prev || !prev.length) continue;
-    const win = compareExercise(exerciseStats(e.sets), exerciseStats(prev));
+    const a = exerciseStats(e.sets), b = exerciseStats(prev);
+    if (heldButNoTime(e.name, a, b)) continue;
+    const win = compareExercise(a, b);
     if (win) out.push({ name: String(e.name).trim(), ...win, gain: gainOf(win) });
   }
   return out.sort(byStrength);
@@ -122,7 +132,9 @@ export function weekWins(history, start, end) {
       if (!k || !(e.sets || []).length) continue;
       const prev = lastBefore(e.name);
       if (!prev) continue;
-      const win = compareExercise(exerciseStats(e.sets), exerciseStats(prev));
+      const a = exerciseStats(e.sets), b = exerciseStats(prev);
+      if (heldButNoTime(e.name, a, b)) continue;
+      const win = compareExercise(a, b);
       if (!win) continue;
       const cur = best.get(k);
       const cand = { name: String(e.name).trim(), ...win, gain: gainOf(win) };

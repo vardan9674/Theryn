@@ -76,7 +76,37 @@ export function normalizeExerciseName(name) {
     .join(" ");
 }
 
-const words = (name) => normalizeExerciseName(name).split(" ").filter(Boolean);
+// Gym shorthand, spelled out before lookup: "Flat DB Press" is a dumbbell
+// press, "Bentover Rowing" a bent-over row. Lookup only; names are never
+// rewritten anywhere a client or coach would see them.
+const SHORTHAND = { db: "dumbbell", dbs: "dumbbell", bb: "barbell", kb: "kettlebell", bentover: "bent over", rowing: "row" };
+const words = (name) => normalizeExerciseName(name).split(" ").filter(Boolean).flatMap((w) => (SHORTHAND[w] || w).split(" "));
+
+// Everyday names for lifts the bundled map knows under another name. Keys are
+// lookup keys (after shorthand and singulars); values are map names.
+const SAME_AS = {
+  "dumbbell press": "dumbbell bench press",
+  "dumbbell overhead press": "dumbbell shoulder press",
+  "rope tricep pushdown": "tricep pushdown rope attachment",
+  "bar tricep pushdown": "tricep pushdown",
+  "cable tricep pushdown": "tricep pushdown",
+  "tricep rope pushdown": "tricep pushdown rope attachment",
+  "kickback": "tricep dumbbell kickback",
+  "sumo squat": "plie dumbbell squat",
+  "slam ball front": "arm medicine ball slam",
+  "slam ball": "arm medicine ball slam",
+  "ball slam": "arm medicine ball slam",
+};
+// Bodyweight and conditioning moves the map doesn't carry, main muscle first.
+// Only ones whose work is plain; anything vaguer stays unknown and is named
+// as such, rather than guessed.
+const MOVES = {
+  "burpee": ["quads", "chest", "shoulders", "triceps", "abs"],
+  "jumping jack": ["calves", "shoulders", "quads", "glutes"],
+  "high knee": ["quads", "abs", "calves"],
+  "shoulder tap": ["abs", "shoulders", "chest"],
+  "hamstring walk": ["hamstrings", "glutes"],
+};
 const droppable = (w) => LOAD_WORDS.has(w) || STYLE_WORDS.has(w);
 
 /**
@@ -115,7 +145,7 @@ export function mapKeys(name) {
 export function musclesForExercise(name, map) {
   if (!map) return null;
   for (const key of mapKeys(name)) {
-    const hit = map[key];
+    const hit = map[key] || map[SAME_AS[key]] || MOVES[key];
     if (Array.isArray(hit) && hit.length) return hit;
   }
   return null;
