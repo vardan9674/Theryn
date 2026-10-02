@@ -1,0 +1,82 @@
+/* New feature sections on the landing page. Prefix nf-. Uses the tl- tokens.
+   The real app components keep their own dark styling in both themes, like the
+   other devices on the page, so each sits in a dark panel. */
+
+/* .tl-screen marks "real app UI inside": the landing's element rules skip it.
+   nf-live drops the fixed phone box that .tl-screen normally brings. */
+/* .cx-app (needed for the app tokens) asks for a full-screen column; these are panels. */
+.nf-live { display: block; height: auto; min-height: 0; aspect-ratio: auto; overflow: visible; pointer-events: auto; background: #080808; color: #f0f0f0; border: 1px solid #262a22; border-radius: 22px; }
+
+/* the coach: small, round, lime ring */
+.nf-coach { display: flex; align-items: center; gap: 12px; }
+.nf-coach-clip { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; flex: none; background: #cfd0cc; border: 3px solid var(--acc); box-shadow: 0 0 0 4px rgba(200, 255, 0, .14); }
+@keyframes nf-say { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+.nf-coach-line { animation: nf-say .45s ease both; position: relative; padding: 9px 13px; border-radius: 14px 14px 14px 4px; background: var(--s2); border: 1px solid var(--line); font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--tx); }
+
+/* shared chips */
+.nf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.nf-chips button { min-height: 42px; padding: 8px 14px; border-radius: 100px; border: 1.5px solid var(--line-strong); background: none; color: var(--mute); font: 800 15px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+.nf-chips button[aria-pressed="true"] { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+
+/* ── 1. what they get back ── */
+.nf-payoff-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.nf-stage { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 300px; padding: 26px 16px 22px; overflow: hidden; position: relative;
+  background: radial-gradient(70% 60% at 50% 42%, rgba(255, 140, 40, .16), transparent 70%), #080808; }
+/* the ring is the hero of this section: draw it bigger than it is in the app */
+.nf-stage .lk-ring { transform: scale(1.3); margin: 34px auto 44px; }
+.nf-stage .lk-heat-word { position: relative; z-index: 1; }
+.nf-best { position: relative; z-index: 1; color: #a8aeb7; font-size: 14px; }
+.nf-days { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.nf-days span { font: 700 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); flex-basis: 100%; text-align: center; }
+.nf-days button { width: 50px; min-height: 44px; border-radius: 12px; border: 1.5px solid var(--line-strong); background: none; color: var(--mute); font: 900 19px/1 var(--display); cursor: pointer; transition: background .2s, color .2s, border-color .2s, transform .15s; }
+.nf-days button:active { transform: scale(.94); }
+.nf-days button[aria-pressed="true"] { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.nf-panel { padding: 18px 16px; min-height: 150px; }
+.nf-panel .lk-heat, .nf-panel .lk-card { border: 0; background: none; padding: 0; }
+
+/* ── 2. the weekly report ── */
+.nf-report-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.nf-report-copy { display: grid; gap: 16px; align-content: start; }
+.nf-share { justify-self: stretch; }
+.nf-share[aria-pressed="true"] { border-color: var(--acc-bd); color: var(--acc-tx); background: var(--acc-soft); }
+.nf-phone { position: relative; width: min(310px, 84vw); margin: 0 auto; }
+.nf-phone-face { border-radius: 40px; background: #040503; padding: 10px; box-shadow: inset 0 0 0 1.5px #4a513d, 0 0 0 6px #12140e, 0 40px 80px rgba(0, 0, 0, .55), 0 0 60px rgba(200, 255, 0, .08); }
+.nf-report-screen { border-radius: 31px; pointer-events: auto; overflow-y: auto; overscroll-behavior: auto; scrollbar-width: none; aspect-ratio: 390 / 760; }
+.nf-report-screen::-webkit-scrollbar { display: none; }
+.nf-report-in { height: auto; min-height: 760px; background: #080808; }
+.nf-state { position: absolute; top: -12px; right: 14px; z-index: 2; padding: 7px 12px; border-radius: 100px; font: 700 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; background: #2a1a0c; border: 1px solid rgba(255, 140, 66, .5); color: #ff8c42; transition: background .3s, color .3s, border-color .3s; }
+.nf-state.on { background: #1c2606; border-color: rgba(200, 255, 0, .5); color: #c8ff00; }
+
+/* ── 3. the exercise library ── */
+.nf-lib-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.nf-body { display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 14px; padding: 22px 12px; }
+.nf-body svg { cursor: pointer; }
+.nf-lib-side { display: grid; gap: 14px; align-content: start; }
+.nf-muscles { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(var(--gut) * -1); padding-inline: var(--gut); }
+.nf-muscles::-webkit-scrollbar { display: none; }
+.nf-muscles button { flex: none; }
+.nf-count { font-size: 16px; color: var(--mute); }
+.nf-count b { font: 900 34px/1 var(--display); color: var(--acc-tx); margin-right: 6px; }
+.nf-exlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; min-height: 330px; align-content: start; }
+.nf-exlist li { padding: 12px 14px; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); display: grid; gap: 3px; animation: nf-rise .4s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i) * 50ms); }
+.nf-exlist b { font-size: 16px; }
+.nf-exlist span { font: 500 12.5px/1.35 var(--mono); color: var(--mute); }
+@keyframes nf-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (min-width: 700px) {
+  .nf-payoff-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "stage wins" "days heat"; gap: 16px; align-items: start; }
+  .nf-payoff-grid .nf-stage { grid-area: stage; min-height: 360px; }
+  .nf-payoff-grid .nf-days { grid-area: days; }
+  .nf-payoff-grid .nf-panel:nth-of-type(3) { grid-area: wins; }
+  .nf-payoff-grid .nf-panel:nth-of-type(4) { grid-area: heat; }
+  .nf-share { justify-self: start; }
+  .nf-muscles { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; }
+}
+@media (min-width: 960px) {
+  .nf-report-grid { grid-template-columns: minmax(0, 1fr) auto; gap: 72px; align-items: center; }
+  .nf-lib-grid { grid-template-columns: auto minmax(0, 1fr); gap: 48px; align-items: start; }
+  .nf-body { padding: 30px 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nf-exlist li, .nf-coach-line { animation: none; }
+}
