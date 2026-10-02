@@ -58,13 +58,17 @@ export async function connectLink(token, code) {
   return data;
 }
 
-/** Google, then straight back to this same link. */
+/**
+ * Google, then straight back to this same link. Answers true: the page is on its
+ * way to Google, so the caller must stop there and pick up on the way back.
+ */
 export async function signInWithGoogle(token) {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: `${window.location.origin}/f/${token}`, queryParams: { prompt: "select_account" } },
   });
   if (error) throw new Error(error.message);
+  return true;
 }
 
 export async function signOutLink() {
