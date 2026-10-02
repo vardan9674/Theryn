@@ -53,7 +53,8 @@ const WORKED = [{ name: "Bench Press", sets: 3 }, { name: "Overhead Press", sets
 export function Payoff() {
   const [ref, seen] = useSeen(0.25);
   const [streak, setStreak] = useState({ from: 6, to: 7 });
-  const pick = to => setStreak(s => ({ from: s.to, to }));
+  // Like one more workout landing on it: the number arrives in a single step, not a long count.
+  const pick = to => setStreak({ from: to - 1, to });
   return (
     <section className="tl-section nf-payoff" id="payoff" ref={ref}>
       <div className="tl-wrap">
